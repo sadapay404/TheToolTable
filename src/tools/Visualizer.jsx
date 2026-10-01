@@ -2,6 +2,18 @@ import React, { useRef, useState } from 'react'
 import { Dropzone, Field, Select, Note, Progress } from '../components/ui.jsx'
 import { fmtTime, download, baseName, recentAction } from '../lib/utils.js'
 
+function hexRgb(hex) {
+  const h = hex.replace('#', '')
+  const n = parseInt(h.length === 3 ? h.split('').map((c) => c + c).join('') : h, 16)
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 }
+}
+/** mix accent towards white; share = 0..1 portion of accent */
+function mixW(hex, share) {
+  const a = hexRgb(hex)
+  const s = Math.max(0, Math.min(1, share))
+  return `rgb(${Math.round(a.r * s + 255 * (1 - s))},${Math.round(a.g * s + 255 * (1 - s))},${Math.round(a.b * s + 255 * (1 - s))})`
+}
+
 const RATIOS = { '16:9': [1920, 1080], '9:16': [1080, 1920], '1:1': [1080, 1080] }
 const STYLES = [['bars', 'Equalizer bars'], ['radial', 'Radial spectrum'], ['wave', 'Fluid waveform'], ['particles', 'Particle burst']]
 
@@ -45,7 +57,7 @@ export default function Visualizer() {
       for (let i = 0; i < n; i++) {
         const v = freq[Math.floor(i * (freq.length / 2 / n))] / 255
         const h = Math.max(4, v * H * 0.55)
-        ctx.fillStyle = `color-mix(in srgb, ${accent} ${40 + v * 60}%, white)`
+        ctx.fillStyle = mixW(accent, (40 + v * 60) / 100)
         ctx.fillRect(i * bw + bw * 0.18, H * 0.72 - h, bw * 0.64, h)
       }
     } else if (style === 'radial') {
@@ -56,7 +68,7 @@ export default function Visualizer() {
         const v = freq[Math.floor(i * (freq.length / 2 / n))] / 255
         const a = (i / n) * Math.PI * 2
         const len = R * 0.2 + v * R * 1.3
-        ctx.strokeStyle = `color-mix(in srgb, ${accent} ${35 + v * 65}%, white)`
+        ctx.strokeStyle = mixW(accent, (35 + v * 65) / 100)
         ctx.lineWidth = Math.max(2, (Math.PI * 2 * R) / n / 2.4)
         ctx.beginPath()
         ctx.moveTo(Math.cos(a) * R, Math.sin(a) * R)
@@ -74,7 +86,7 @@ export default function Visualizer() {
           const y = H * 0.55 + wave[i] * H * (0.18 + layer * 0.08)
           x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
         }
-        ctx.strokeStyle = `color-mix(in srgb, ${accent} ${80 - layer * 28}%, white)`
+        ctx.strokeStyle = mixW(accent, (80 - layer * 28) / 100)
         ctx.lineWidth = 4 - layer; ctx.stroke()
       }
     } else { // particles
@@ -88,7 +100,7 @@ export default function Visualizer() {
         const x = cx + Math.cos(p.a + t * 0.0003 * p.s) * rad
         const y = cy + Math.sin(p.a + t * 0.0003 * p.s) * rad
         ctx.beginPath(); ctx.arc(x, y, 2 + v * 9 + bass * 6, 0, Math.PI * 2)
-        ctx.fillStyle = `color-mix(in srgb, ${accent} ${30 + v * 70}%, white)`; ctx.fill()
+        ctx.fillStyle = mixW(accent, (30 + v * 70) / 100); ctx.fill()
       })
     }
 

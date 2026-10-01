@@ -1,0 +1,13 @@
+{
+  "name": "TheToolTab — Universal Multi-Tool Studio",
+  "short_name": "TheToolTab",
+  "description": "12 desktop-grade tools in one ultra-slick studio. Convert, compress, edit, generate — 100% in your browser.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FDFBF7",
+  "theme_color": "#FDFBF7",
+  "icons": [
+    { "src": "/logo.png", "sizes": "1024x1024", "type": "image/png", "purpose": "any" },
+    { "src": "/logo.png", "sizes": "1024x1024", "type": "image/png", "purpose": "maskable" }
+  ]
+}

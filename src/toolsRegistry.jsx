@@ -35,9 +35,9 @@ export const TOOLS = [
   },
   {
     id: 'clipper', n: 4, name: 'Media Clipper & Downloader', icon: '✂️', color: '#7B6CB0',
-    tag: 'Cut · Download',
-    desc: 'Waveform timeline clipping of local files and direct media URLs.',
-    keywords: 'clip trim cut waveform timeline download url audio video segment',
+    tag: 'Download · Cut',
+    desc: 'Paste any link — yt-dlp fetches it in the quality, format and time range you pick. Or clip a local file losslessly.',
+    keywords: 'download yt-dlp youtube video audio mp3 clip trim cut waveform timeline url playlist section',
     comp: Clipper,
   },
   {

@@ -54,3 +54,13 @@ npm run build                  # production build → dist/
 
 - **Windows**: Tauri wrapper — reuse `public/logo.png` as `.ico`/`.png` app icon.
 - **Android**: Capacitor/TWA wrapping the same PWA (manifest already ships).
+
+## Tool 04 — yt-dlp download engine
+
+Downloading from video sites needs a native program, so TheToolTable ships a tiny companion engine (`server/ytdlp-api.js`, zero npm deps) that wraps the real **yt-dlp** + ffmpeg.
+
+- **Dev / preview:** mounted automatically by Vite at `/api/ytdlp` — just run `npm run setup:engine` once (creates `~/.ytvenv` with yt-dlp + ffmpeg), then `npm run dev`.
+- **Self-host / desktop sidecar:** `npm run engine` → `http://127.0.0.1:8787/api/ytdlp`. Env: `PORT`, `HOST`, `YTDLP_PATH`, `FFMPEG_PATH`, `YTDLP_CORS`, `YTDLP_ALLOW_PRIVATE=1`.
+- **Vercel / static hosting:** the site can't run yt-dlp itself; open Tool 04 and paste your engine address (stored in localStorage).
+- User input is never passed to a shell; options are whitelisted and URLs restricted to public http(s).
+- Keep yt-dlp fresh: `~/.ytvenv/bin/pip install -U yt-dlp`.

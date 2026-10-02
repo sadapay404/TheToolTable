@@ -7,7 +7,9 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
-    "preview": "vite preview --host 0.0.0.0"
+    "preview": "vite preview --host 0.0.0.0",
+    "engine": "node server/standalone.js",
+    "setup:engine": "bash scripts/setup-engine.sh"
   },
   "dependencies": {
     "@ffmpeg/ffmpeg": "^0.12.10",

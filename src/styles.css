@@ -186,3 +186,16 @@ table.kv td:first-child { color: var(--muted); font-weight: 600; width: 40%; }
   font-family: ui-monospace, monospace; font-size: 10.5px; padding: 2px 6px; border-radius: 5px;
   border: 1px solid var(--border); border-bottom-width: 2px; background: var(--surface2); color: var(--muted);
 }
+
+/* ---------- raised panel (hero cards inside tools) ---------- */
+.card-raised {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  box-shadow: var(--shadow-lg);
+}
+.card-raised::before {
+  content: ""; position: absolute; left: 24px; top: -1px; width: 48px; height: 3px;
+  background: var(--copper); border-radius: 0 0 3px 3px;
+}

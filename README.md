@@ -1,4 +1,4 @@
-# TheToolTab — Universal Multi-Tool Studio
+# TheToolTable — Universal Multi-Tool Studio
 
 Twelve desktop-grade tools in one ultra-slick, 3D-animated web studio. **Everything runs 100% client-side** — no uploads, no server, no quality loss unless a tool explicitly exists to compress (Tool 3).
 

@@ -135,11 +135,11 @@ export default function App() {
         <div className="max-w-6xl mx-auto px-5 h-16 flex items-center gap-4">
           <motion.button
             className="flex items-center gap-3 shrink-0" whileTap={{ scale: 0.94 }}
-            onClick={() => setActive(null)} title="TheToolTab — Home"
+            onClick={() => setActive(null)} title="TheToolTable — Home"
           >
             <Logo className="w-9 h-9 rounded-xl" shadow />
             <div className="text-left leading-none">
-              <div className="font-extrabold tracking-tight text-[17px]">TheToolTab</div>
+              <div className="font-extrabold tracking-tight text-[17px]">TheToolTable</div>
               <div className="text-[10px] font-semibold tracking-[0.18em] uppercase" style={{ color: 'var(--muted)' }}>Multi-Tool Studio</div>
             </div>
           </motion.button>
@@ -174,7 +174,7 @@ export default function App() {
                   Twelve desktop-grade tools.
                   <br />
                   <span style={{ background: 'linear-gradient(90deg, var(--accent), var(--accent2))', WebkitBackgroundClip: 'text', color: 'transparent' }}>
-                    One slick tab.
+                    One slick table.
                   </span>
                 </motion.h1>
                 <motion.p className="mt-4 text-[15px] max-w-xl mx-auto" style={{ color: 'var(--muted)' }} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }}>
@@ -194,7 +194,7 @@ export default function App() {
               </section>
 
               <footer className="mt-20 text-center text-xs" style={{ color: 'var(--muted)' }}>
-                TheToolTab · Phase 1 web build — Phase 2: Windows & Android wrappers · All processing happens on your device.
+                TheToolTable · Phase 1 web build — Phase 2: Windows & Android wrappers · All processing happens on your device.
               </footer>
             </motion.div>
           ) : (

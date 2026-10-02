@@ -1,8 +1,8 @@
 {
-  "name": "thetooltab",
+  "name": "thetooltable",
   "private": true,
   "version": "1.0.0",
-  "description": "TheToolTab — 12 desktop-grade tools in one ultra-slick 3D animated studio.",
+  "description": "TheToolTable — 12 desktop-grade tools in one ultra-slick 3D animated studio.",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",

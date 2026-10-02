@@ -13,10 +13,10 @@ function isEye(r, c, n) {
 
 export default function QRStudio() {
   const [mode, setMode] = useState('url')
-  const [url, setUrl] = useState('https://thetooltab.app')
-  const [text, setText] = useState('Hello from TheToolTab')
+  const [url, setUrl] = useState('https://thetooltable.app')
+  const [text, setText] = useState('Hello from TheToolTable')
   const [wifi, setWifi] = useState({ ssid: '', pass: '', enc: 'WPA' })
-  const [vcard, setVcard] = useState({ name: 'Ada Lovelace', phone: '+1234567890', email: 'ada@example.com', org: 'TheToolTab' })
+  const [vcard, setVcard] = useState({ name: 'Ada Lovelace', phone: '+1234567890', email: 'ada@example.com', org: 'TheToolTable' })
   const [fg, setFg] = useState('#1A1817')
   const [gradOn, setGradOn] = useState(false)
   const [fg2, setFg2] = useState('#C87941')
@@ -99,11 +99,11 @@ export default function QRStudio() {
     const c = document.createElement('canvas')
     c.width = c.height = size
     c.getContext('2d').drawImage(img, 0, 0, size, size)
-    c.toBlob((b) => { download(b, 'thetooltab-qr.png'); recentAction(`Exported QR PNG (${size}px)`) }, 'image/png')
+    c.toBlob((b) => { download(b, 'thetooltable-qr.png'); recentAction(`Exported QR PNG (${size}px)`) }, 'image/png')
   }
 
   function exportSVG() {
-    download(new Blob([svgString(true)], { type: 'image/svg+xml' }), 'thetooltab-qr.svg')
+    download(new Blob([svgString(true)], { type: 'image/svg+xml' }), 'thetooltable-qr.svg')
     recentAction('Exported QR SVG')
   }
 

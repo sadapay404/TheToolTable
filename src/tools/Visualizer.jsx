@@ -22,7 +22,7 @@ export default function Visualizer() {
   const [url, setUrl] = useState('')
   const [ratio, setRatio] = useState('16:9')
   const [style, setStyle] = useState('bars')
-  const [title, setTitle] = useState('TheToolTab Session')
+  const [title, setTitle] = useState('TheToolTable Session')
   const [accent, setAccent] = useState('#C87941')
   const [bgImage, setBgImage] = useState(null)
   const [recording, setRecording] = useState(false)

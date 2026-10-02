@@ -90,7 +90,7 @@ export default function BackgroundStudio() {
     const out = document.createElement('canvas')
     draw(out, { W, H, type, stops, angle, solid, blobs, grain, bgA })
     const mime = fmt === 'webp' ? 'image/webp' : 'image/png'
-    out.toBlob((b) => { download(b, `thetooltab-bg-${W}x${H}.${fmt}`); recentAction(`Exported ${fmt.toUpperCase()} background ${W}×${H}`) }, mime, 1.0)
+    out.toBlob((b) => { download(b, `thetooltable-bg-${W}x${H}.${fmt}`); recentAction(`Exported ${fmt.toUpperCase()} background ${W}×${H}`) }, mime, 1.0)
   }
 
   return (

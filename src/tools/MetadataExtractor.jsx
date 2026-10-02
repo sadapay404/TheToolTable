@@ -105,6 +105,7 @@ export default function MetadataExtractor() {
 
   async function analyze([f]) {
     setFile(f); setError(''); setCleaned(null); setMeta(null); setFilter('')
+    try {
     const buf = await f.arrayBuffer()
 
     // file-level facts — always available
@@ -137,6 +138,9 @@ export default function MetadataExtractor() {
 
     const structure = detectType(buf) === 'jpeg' ? jpegStructure(buf) : detectType(buf) === 'png' ? pngStructure(buf) : []
     setMeta({ fileInfo, all, exif, iptc, xmp, gps, icc, structure, buf })
+    } catch (e) {
+      setError('Analysis failed: ' + (e?.message || e) + ' — try another file or report this image format.')
+    }
   }
 
   const sections = useMemo(() => {
@@ -177,15 +181,23 @@ export default function MetadataExtractor() {
             </div>
             <input className="input max-w-[220px]" placeholder="Filter tags…" value={filter} onChange={(e) => setFilter(e.target.value)} />
             <button className="btn" onClick={() => { setFile(null); setMeta(null) }}>New file</button>
-            <button className="btn" onClick={() => { exportPDF({ file, fileInfo: meta.fileInfo, sections, gps: meta.gps }); recentAction(`Exported metadata PDF for ${file.name}`) }}>
+            <button className="btn" disabled={!meta} onClick={() => { exportPDF({ file, fileInfo: meta.fileInfo, sections, gps: meta.gps }); recentAction(`Exported metadata PDF for ${file.name}`) }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 21h16" /></svg>
               Report PDF
             </button>
-            <button className="btn btn-primary" onClick={sanitizeFile}>Scrub & Sanitize</button>
+            <button className="btn btn-primary" disabled={!meta} onClick={sanitizeFile}>Scrub & Sanitize</button>
           </div>
 
           {cleaned && <Note tone="ok">Sanitized copy downloaded — {fmtBytes(cleaned.before)} → {fmtBytes(cleaned.after)}. Pixel data untouched.</Note>}
           {error && <Note tone="warn">{error}</Note>}
+
+          {!meta ? (
+            <div className="card p-8 text-center">
+              <div className="display font-semibold text-[16px]">Reading metadata…</div>
+              <div className="text-[12.5px] mt-1" style={{ color: 'var(--muted)' }}>Parsing EXIF, IPTC, XMP, GPS and file structure on-device.</div>
+            </div>
+          ) : (
+          <>
           {totalTags === 0 && <Note>This file carries no embedded metadata blocks — the report still includes its file information and structure below.</Note>}
 
           <div className="grid lg:grid-cols-[300px_1fr] gap-5 items-start">
@@ -238,6 +250,8 @@ export default function MetadataExtractor() {
               </div>
             </div>
           </div>
+          </>
+          )}
         </>
       )}
     </div>

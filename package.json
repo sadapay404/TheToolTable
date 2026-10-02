@@ -2,14 +2,15 @@
   "name": "thetooltable",
   "private": true,
   "version": "1.0.0",
-  "description": "TheToolTable — a growing set of desktop-grade tools in one ultra-slick 3D animated studio.",
+  "description": "TheToolTable \u2014 a growing set of desktop-grade tools in one ultra-slick 3D animated studio.",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0",
     "engine": "node server/standalone.js",
-    "setup:engine": "bash scripts/setup-engine.sh"
+    "setup:engine": "bash scripts/setup-engine.sh",
+    "sidecars": "node scripts/fetch-sidecars.mjs"
   },
   "dependencies": {
     "@ffmpeg/ffmpeg": "^0.12.10",

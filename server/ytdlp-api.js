@@ -15,6 +15,7 @@ import os from 'node:os'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { fileURLToPath } from 'node:url'
+import { err as httpErr, normalizeUrl, cleanErr, summarise, buildArgs, infoArgs, JobTracker } from '../src/lib/ytdlp-core.js'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const HOME = os.homedir()
@@ -63,21 +64,7 @@ function extractorCount(ytdlp) {
   return _extractors
 }
 
-/* ------------------------------ validation helpers ------------------------------ */
-
-const PRIVATE_HOST = /^(localhost|.*\.local|.*\.internal|0\.0\.0\.0|127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.|\[?::1\]?$|\[?f[cd][0-9a-f]{2}:)/i
-
-function validateUrl(raw, allowPrivate) {
-  if (typeof raw !== 'string' || raw.length > 2048) throw httpErr(400, 'Invalid URL')
-  let u
-  try { u = new URL(raw.trim()) } catch { throw httpErr(400, 'That does not look like a valid URL') }
-  if (!/^https?:$/.test(u.protocol)) throw httpErr(400, 'Only http(s) URLs are supported')
-  if (!allowPrivate && PRIVATE_HOST.test(u.hostname)) throw httpErr(400, 'Private / local addresses are blocked on this engine')
-  return u.toString()
-}
-
-const httpErr = (status, message) => Object.assign(new Error(message), { status })
-const num = (v, lo, hi) => { const n = Number(v); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : null }
+const validateUrl = normalizeUrl
 
 /* ------------------------------ process helpers ------------------------------ */
 
@@ -97,90 +84,11 @@ function runJson(bin, args, timeout = 75000) {
   })
 }
 
-function cleanErr(s) {
-  const line = String(s).split('\n').filter((l) => /^ERROR/i.test(l.trim())).pop() || String(s).trim().split('\n').pop() || ''
-  return line.replace(/^ERROR:\s*/i, '').replace(/\s*\(caused by .*$/i, '').replace(/; please report this issue.*$/i, '').slice(0, 320)
-}
-
-/* ------------------------------ info ------------------------------ */
-
-function summarise(j) {
-  if (j._type === 'playlist') {
-    return {
-      kind: 'playlist', title: j.title, uploader: j.uploader || j.channel, count: j.playlist_count || (j.entries || []).length,
-      extractor: j.extractor_key,
-      entries: (j.entries || []).slice(0, 300).map((e, i) => ({
-        i: i + 1, id: e.id, title: e.title, url: e.url || e.webpage_url, duration: e.duration,
-        thumbnail: e.thumbnails?.[0]?.url || e.thumbnail,
-      })).filter((e) => e.url),
-    }
-  }
-  const formats = j.formats || []
-  const video = formats.filter((f) => f.vcodec && f.vcodec !== 'none' && f.height)
-  const audio = formats.filter((f) => f.acodec && f.acodec !== 'none' && (!f.vcodec || f.vcodec === 'none'))
-  const size = (f) => f?.filesize || f?.filesize_approx || 0
-  const bestAudio = audio.slice().sort((a, b) => (b.abr || 0) - (a.abr || 0))[0]
-  const byH = new Map()
-  for (const f of video) {
-    const cur = byH.get(f.height)
-    if (!cur || (f.tbr || 0) > (cur.tbr || 0)) byH.set(f.height, f)
-  }
-  const hasMuxedOnly = video.length > 0 && audio.length === 0
-  const heights = [...byH.entries()].sort((a, b) => b[0] - a[0]).map(([h, f]) => ({
-    height: h, fps: f.fps || null, vcodec: (f.vcodec || '').split('.')[0], ext: f.ext,
-    bytes: size(f) ? size(f) + (hasMuxedOnly || (f.acodec && f.acodec !== 'none') ? 0 : size(bestAudio)) : 0,
-  }))
-  const subs = Object.keys(j.subtitles || {})
-  return {
-    kind: 'video', id: j.id, title: j.title, uploader: j.uploader || j.channel || j.creator, duration: j.duration || null,
-    thumbnail: j.thumbnail, extractor: j.extractor_key || j.extractor, webpageUrl: j.webpage_url,
-    uploadDate: j.upload_date, views: j.view_count, likes: j.like_count, isLive: !!j.is_live,
-    description: (j.description || '').slice(0, 500), chapters: (j.chapters || []).length,
-    heights, needsMerge: !hasMuxedOnly && video.some((f) => !f.acodec || f.acodec === 'none'),
-    hasVideo: video.length > 0, hasAudio: audio.length > 0 || video.some((f) => f.acodec && f.acodec !== 'none'),
-    audioKbps: bestAudio?.abr ? Math.round(bestAudio.abr) : null,
-    audioBytes: size(bestAudio), subtitles: subs.slice(0, 40), autoSubs: Object.keys(j.automatic_captions || {}).length,
-    formatCount: formats.length,
-  }
-}
-
 /* ------------------------------ jobs ------------------------------ */
 
 const jobs = new Map()
 
 const MIME = { mp4: 'video/mp4', mkv: 'video/x-matroska', webm: 'video/webm', mp3: 'audio/mpeg', m4a: 'audio/mp4', opus: 'audio/ogg', ogg: 'audio/ogg', flac: 'audio/flac', wav: 'audio/wav', aac: 'audio/aac', mov: 'video/quicktime' }
-
-function buildArgs(o, bins, outDir) {
-  const args = ['--no-playlist', '--no-warnings', '--newline', '--no-colors', '--no-mtime', '--restrict-filenames',
-    '--progress-template', 'download:TTT|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s',
-    '-o', path.join(outDir, '%(title).120B [%(id)s].%(ext)s'), '--paths', 'temp:' + path.join(outDir, '.tmp')]
-  if (bins.ffmpeg) args.push('--ffmpeg-location', bins.ffmpeg)
-
-  if (o.mode === 'audio') {
-    const af = ['best', 'mp3', 'm4a', 'opus', 'flac', 'wav', 'aac'].includes(o.audioFormat) ? o.audioFormat : 'best'
-    args.push('-f', 'ba/b', '-x', '--audio-format', af, '--audio-quality', '0')
-  } else {
-    const h = num(o.height, 100, 4320)
-    const c = ['mp4', 'mkv', 'webm'].includes(o.container) ? o.container : 'mp4'
-    const hf = h ? `[height<=${h}]` : ''
-    // Prefer codecs that already fit the container → stream copy, never re-encode.
-    const sel = c === 'mp4'
-      ? `bv*${hf}[ext=mp4]+ba[ext=m4a]/bv*${hf}+ba/b${hf}/b`
-      : c === 'webm'
-        ? `bv*${hf}[ext=webm]+ba[ext=webm]/bv*${hf}+ba/b${hf}/b`
-        : `bv*${hf}+ba/b${hf}/b`
-    args.push('-f', sel, '--merge-output-format', c, '--remux-video', c) // remux = container swap only, never a re-encode
-  }
-  const s = num(o.start, 0, 86400 * 3), e = num(o.end, 0, 86400 * 3)
-  if (o.clip && s != null && e != null && e > s) {
-    args.push('--download-sections', `*${s}-${e}`)
-    if (o.accurateCuts) args.push('--force-keyframes-at-cuts')
-  }
-  if (o.metadata !== false) args.push('--embed-metadata', '--embed-chapters')
-  if (o.subs && o.mode !== 'audio') args.push('--write-subs', '--write-auto-subs', '--sub-langs', 'en.*,en', '--embed-subs')
-  args.push('--', o.url)
-  return args
-}
 
 function startJob(o, bins, allowPrivate) {
   if (!bins.ytdlp) throw httpErr(503, 'yt-dlp is not installed on the engine')
@@ -191,62 +99,24 @@ function startJob(o, bins, allowPrivate) {
   const id = crypto.randomBytes(8).toString('hex')
   const dir = path.join(WORK, id)
   fs.mkdirSync(path.join(dir, '.tmp'), { recursive: true })
-  const job = {
-    id, state: 'running', stage: 'fetching', percent: null, downloaded: 0, total: 0, speed: 0, eta: null,
-    part: 0, parts: Math.round(num(o.parts, 1, 3) || 1), created: Date.now(), dir, file: null, size: 0, error: null, log: [],
-    startedAt: Date.now(),
-  }
+  const tracker = new JobTracker(id, o.parts)
+  const job = { id, tracker, dir, created: Date.now(), proc: null, get state() { return tracker.s.state } }
   jobs.set(id, job)
 
-  const p = spawn(bins.ytdlp, buildArgs(o, bins, dir), { stdio: ['ignore', 'pipe', 'pipe'], cwd: dir })
+  const argv = buildArgs(o, { ffmpeg: bins.ffmpeg, outTemplate: path.join(dir, '%(title).120B [%(id)s].%(ext)s'), tempDir: path.join(dir, '.tmp') })
+  const p = spawn(bins.ytdlp, argv, { stdio: ['ignore', 'pipe', 'pipe'], cwd: dir })
   job.proc = p
-  const onLine = (line) => {
-    if (!line) return
-    job.log.push(line); if (job.log.length > 60) job.log.shift()
-    if (line.startsWith('TTT|')) {
-      const [, dl, tot, est, spd, eta] = line.split('|')
-      const d = +dl || 0, t = +tot || +est || 0
-      job.downloaded = d; job.total = t; job.speed = +spd || 0; job.eta = Number.isFinite(+eta) && eta !== 'NA' ? +eta : null
-      if (t > 0) {
-        const within = Math.min(1, d / t)
-        job.percent = Math.min(99, ((job.part + within) / job.parts) * 100)
-      }
-      job.stage = 'downloading'
-    } else if (/^\[download\] Destination:/.test(line)) {
-      if (job.stage === 'downloading') job.part = Math.min(job.parts - 1, job.part + 1)
-    } else if (/^\[(Merger|ExtractAudio|VideoConvertor|EmbedSubtitle|Metadata|ModifyChapters|FixupM4a|FixupM3u8|VideoRemuxer)\]/.test(line)) {
-      job.stage = /Merger/.test(line) ? 'merging' : /ExtractAudio|VideoConvertor|VideoRemuxer/.test(line) ? 'converting' : 'finishing'
-      job.percent = 99
-    } else if (/^\[(ffmpeg|download)\].*(clip|section)/i.test(line) || /^\[download\] Downloading/.test(line)) {
-      job.stage = 'downloading'
-    }
-  }
-  let buf = ''
-  const feed = (chunk) => { buf += chunk; const lines = buf.split(/\r?\n/); buf = lines.pop(); lines.forEach(onLine) }
-  p.stdout.on('data', (d) => feed(String(d)))
-  p.stderr.on('data', (d) => feed(String(d)))
-  p.on('error', (e) => { job.state = 'error'; job.error = 'Could not start yt-dlp: ' + e.message })
-  p.on('close', (code) => {
-    if (buf) onLine(buf)
-    job.proc = null
-    if (job.state === 'cancelled') return
-    if (code !== 0) { job.state = 'error'; job.error = cleanErr(job.log.filter((l) => /ERROR/.test(l)).join('\n') || job.log.join('\n')) || 'Download failed'; return }
-    try {
-      const files = fs.readdirSync(dir).filter((f) => !f.startsWith('.') && !/\.(part|ytdl|json|vtt|srt)$/i.test(f))
-        .map((f) => ({ f, s: fs.statSync(path.join(dir, f)).size })).sort((a, b) => b.s - a.s)
-      if (!files.length) throw new Error('No output file was produced')
-      job.file = files[0].f; job.size = files[0].s
-      job.state = 'done'; job.stage = 'ready'; job.percent = 100; job.doneAt = Date.now()
-    } catch (e) { job.state = 'error'; job.error = e.message }
-  })
+  p.stdout.on('data', (d) => tracker.feed(String(d)))
+  p.stderr.on('data', (d) => tracker.feed(String(d)))
+  p.on('error', (e) => { tracker.s.state = 'error'; tracker.s.error = 'Could not start yt-dlp: ' + e.message })
+  p.on('close', (code) => { job.proc = null; tracker.finish(code, async (f) => fs.statSync(f).size).then(() => { job.doneAt = Date.now() }) })
   return job
 }
 
-const pub = (j) => ({
-  id: j.id, state: j.state, stage: j.stage, percent: j.percent, downloaded: j.downloaded, total: j.total,
-  speed: j.speed, eta: j.eta, part: j.part + 1, parts: j.parts, file: j.file, size: j.size, error: j.error,
-  elapsed: ((j.doneAt || Date.now()) - j.startedAt) / 1000,
-})
+const pub = (j) => {
+  const s = j.tracker.snapshot()
+  return { ...s, file: s.file ? path.basename(s.file) : null }
+}
 
 function dropJob(j) {
   try { j.proc?.kill('SIGKILL') } catch { /* noop */ }
@@ -303,8 +173,7 @@ export function createYtdlpHandler({ allowPrivate = process.env.YTDLP_ALLOW_PRIV
       if (route === '/info' && req.method === 'POST') {
         const b = await readBody(req)
         const u = validateUrl(b.url, allowPrivate)
-        const args = ['-J', '--no-warnings', '--no-colors', b.playlist ? '--flat-playlist' : '--no-playlist', '--', u]
-        const j = await runJson(bins.ytdlp, args)
+        const j = await runJson(bins.ytdlp, infoArgs(u, !!b.playlist))
         return json(res, 200, { ...summarise(j), sourceUrl: u })
       }
 
@@ -319,14 +188,15 @@ export function createYtdlpHandler({ allowPrivate = process.env.YTDLP_ALLOW_PRIV
         const job = jobs.get(m[1])
         if (!job) throw httpErr(404, 'Job not found or expired')
         if (!m[2] && req.method === 'GET') return json(res, 200, pub(job))
-        if (!m[2] && req.method === 'DELETE') { job.state = 'cancelled'; dropJob(job); return json(res, 200, { ok: true }) }
+        if (!m[2] && req.method === 'DELETE') { job.tracker.cancelled = true; job.tracker.s.state = 'cancelled'; dropJob(job); return json(res, 200, { ok: true }) }
         if (m[2] && req.method === 'GET') {
           if (job.state !== 'done') throw httpErr(409, 'File is not ready yet')
-          const fp = path.join(job.dir, job.file)
-          const ext = path.extname(job.file).slice(1).toLowerCase()
+          const fp = job.tracker.s.file
+          const name = path.basename(fp)
+          const ext = path.extname(name).slice(1).toLowerCase()
           res.writeHead(200, {
-            'Content-Type': MIME[ext] || 'application/octet-stream', 'Content-Length': job.size,
-            'Content-Disposition': `attachment; filename="${job.file.replace(/[^\x20-\x7e]/g, '_').replace(/"/g, '')}"; filename*=UTF-8''${encodeURIComponent(job.file)}`,
+            'Content-Type': MIME[ext] || 'application/octet-stream', 'Content-Length': job.tracker.s.size,
+            'Content-Disposition': `attachment; filename="${name.replace(/[^\x20-\x7e]/g, '_').replace(/"/g, '')}"; filename*=UTF-8''${encodeURIComponent(name)}`,
             'Cache-Control': 'no-store',
           })
           return fs.createReadStream(fp).pipe(res)

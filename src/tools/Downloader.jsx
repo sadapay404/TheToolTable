@@ -3,24 +3,9 @@ import { motion, AnimatePresence, useMotionValue, useSpring, useTransform } from
 import { AnimatedNumber, LiveProgress, Note } from '../components/ui.jsx'
 import RangeTrack, { TimeField, clock } from '../components/RangeTrack.jsx'
 import { fmtBytes, recentAction } from '../lib/utils.js'
+import { engine, getBase, setBase } from '../lib/engine.js'
 
 const SPRING = { type: 'spring', stiffness: 300, damping: 25 }
-const BASE_KEY = 'ttt.engine.base'
-const getBase = () => (localStorage.getItem(BASE_KEY) || '/api/ytdlp').replace(/\/+$/, '')
-
-async function api(path, opts = {}) {
-  const res = await fetch(getBase() + path, {
-    ...opts,
-    headers: opts.body ? { 'Content-Type': 'application/json' } : undefined,
-    body: opts.body ? JSON.stringify(opts.body) : undefined,
-  })
-  const text = await res.text()
-  let json = null
-  try { json = JSON.parse(text) } catch { /* html fallback → engine absent */ }
-  if (!json) throw Object.assign(new Error('Engine not reachable'), { offline: true })
-  if (!res.ok) throw new Error(json.error || `Engine error ${res.status}`)
-  return json
-}
 
 /* ---------------------------------- tiny UI atoms ---------------------------------- */
 
@@ -62,17 +47,17 @@ const Card = ({ children, delay = 0, className = '' }) => (
 
 /* ---------------------------------- engine status ---------------------------------- */
 
-function EnginePill({ engine, onRetry }) {
-  const on = engine.status === 'online'
+function EnginePill({ engine: st, onRetry }) {
+  const on = st.status === 'online'
   return (
     <button onClick={onRetry} className="flex items-center gap-2.5 rounded-full border border-line px-3.5 py-1.5 text-[11.5px] font-semibold" style={{ background: 'var(--surface)' }} title="Re-check engine">
       <span className="relative flex w-2.5 h-2.5">
-        {engine.status !== 'offline' && <motion.span className="absolute inset-0 rounded-full" style={{ background: on ? '#4E937A' : 'var(--copper)' }} animate={{ scale: [1, 2.3], opacity: [0.5, 0] }} transition={{ repeat: Infinity, duration: 1.8, ease: 'easeOut' }} />}
-        <span className="relative w-2.5 h-2.5 rounded-full" style={{ background: on ? '#4E937A' : engine.status === 'offline' ? '#D04841' : 'var(--copper)' }} />
+        {st.status !== 'offline' && <motion.span className="absolute inset-0 rounded-full" style={{ background: on ? '#4E937A' : 'var(--copper)' }} animate={{ scale: [1, 2.3], opacity: [0.5, 0] }} transition={{ repeat: Infinity, duration: 1.8, ease: 'easeOut' }} />}
+        <span className="relative w-2.5 h-2.5 rounded-full" style={{ background: on ? '#4E937A' : st.status === 'offline' ? '#D04841' : 'var(--copper)' }} />
       </span>
       {on ? (
-        <span>yt-dlp {engine.info.ytdlp} · <AnimatedNumber value={engine.info.extractors} /> sites{engine.info.ffmpeg ? ' · ffmpeg' : ' · no ffmpeg'}</span>
-      ) : engine.status === 'offline' ? <span>Engine offline</span> : <span>Connecting…</span>}
+        <span>yt-dlp {st.info.ytdlp}{st.info.extractors ? <> · <AnimatedNumber value={st.info.extractors} /> sites</> : ''}{st.info.ffmpeg ? ' · ffmpeg' : ' · no ffmpeg'}{engine.kind !== 'http' ? ' · built in' : ''}</span>
+      ) : st.status === 'offline' ? <span>Engine offline</span> : <span>Connecting…</span>}
     </button>
   )
 }
@@ -105,7 +90,7 @@ function OfflineCard({ onRetry }) {
           </div>
           <div className="mt-5 grid sm:grid-cols-[1fr_auto] gap-2">
             <input className="input mono text-[12.5px]" value={base} onChange={(e) => setBase(e.target.value)} placeholder="Engine address — default /api/ytdlp" />
-            <button className="btn btn-primary" onClick={() => { localStorage.setItem(BASE_KEY, base.trim() || '/api/ytdlp'); onRetry() }}>Connect</button>
+            <button className="btn btn-primary" onClick={() => { setBase(base); onRetry() }}>Connect</button>
           </div>
           <p className="text-[11.5px] mt-2" style={{ color: 'var(--muted)' }}>Self-hosting? Point this at e.g. <span className="mono">http://127.0.0.1:8787/api/ytdlp</span> or your own server.</p>
         </div>
@@ -123,16 +108,14 @@ function JobCard({ job, onRemove }) {
   const [s, setS] = useState({ state: 'running', stage: 'fetching', percent: null })
   const fired = useRef(false)
 
-  const fileUrl = `${getBase()}/jobs/${job.id}/file`
-  const save = useCallback(() => {
-    const a = document.createElement('a'); a.href = fileUrl; a.download = ''; document.body.appendChild(a); a.click(); a.remove()
-  }, [fileUrl])
+  const [savedMsg, setSavedMsg] = useState(null)
+  const save = useCallback(async () => { setSavedMsg(await engine.save(job.id)) }, [job.id])
 
   useEffect(() => {
     let alive = true
     const tick = async () => {
       try {
-        const j = await api(`/jobs/${job.id}`)
+        const j = await engine.status(job.id)
         if (!alive) return
         setS(j)
         if (j.state === 'running') setTimeout(tick, 600)
@@ -197,7 +180,7 @@ function JobCard({ job, onRemove }) {
 
         <div className="flex items-center gap-2 shrink-0">
           {s.state === 'done' && <motion.button className="btn btn-primary" initial={{ scale: 0.7, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={SPRING} onClick={save}>Save again</motion.button>}
-          <button className="btn btn-ghost" aria-label="Remove" onClick={() => { if (s.state === 'running') api(`/jobs/${job.id}`, { method: 'DELETE' }).catch(() => {}); onRemove() }}>
+          <button className="btn btn-ghost" aria-label="Remove" onClick={() => { if (s.state === 'running') engine.cancel(job.id); onRemove() }}>
             {s.state === 'running' ? 'Cancel' : '✕'}
           </button>
         </div>
@@ -212,7 +195,7 @@ function JobCard({ job, onRemove }) {
           </div>
         </div>
       )}
-      {s.state === 'done' && <div className="mt-3 text-[12px]" style={{ color: 'var(--muted)' }}>{s.file} · {fmtBytes(s.size)} · {s.elapsed.toFixed(1)}s</div>}
+      {s.state === 'done' && <div className="mt-3 text-[12px]" style={{ color: 'var(--muted)' }}>{savedMsg || s.file} · {fmtBytes(s.size)} · {s.elapsed.toFixed(1)}s</div>}
     </motion.div>
   )
 }
@@ -260,7 +243,7 @@ const AUDIO_FORMATS = [['best', 'Original', 'no re-encode'], ['mp3', 'MP3'], ['m
 const looksLikePlaylist = (u) => /\/playlist\?|\/sets\/|\/albums?\//i.test(u)
 
 export default function Downloader() {
-  const [engine, setEngine] = useState({ status: 'checking' })
+  const [eng, setEng] = useState({ status: 'checking' })
   const [url, setUrl] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -270,8 +253,8 @@ export default function Downloader() {
   const inputRef = useRef(null)
 
   const check = useCallback(async () => {
-    setEngine({ status: 'checking' })
-    try { setEngine({ status: 'online', info: await api('/health') }) } catch { setEngine({ status: 'offline' }) }
+    setEng({ status: 'checking' })
+    try { const h = await engine.health(); setEng(h.ok ? { status: 'online', info: h } : { status: 'offline' }) } catch { setEng({ status: 'offline' }) }
   }, [])
   useEffect(() => { check() }, [check])
 
@@ -282,11 +265,11 @@ export default function Downloader() {
     if (!u || busy) return
     setBusy(true); setError(''); setInfo(null)
     try {
-      const j = await api('/info', { method: 'POST', body: { url: u, playlist: looksLikePlaylist(u) } })
+      const j = await engine.info(u, looksLikePlaylist(u))
       setInfo(j)
       if (j.kind === 'video') set({ mode: j.hasVideo ? 'video' : 'audio', height: null, clip: false, start: 0, end: j.duration || 0 })
     } catch (e) {
-      if (e.offline) setEngine({ status: 'offline' }); else setError(e.message)
+      if (e.offline) setEng({ status: 'offline' }); else setError(e.message)
     } finally { setBusy(false) }
   }
 
@@ -307,16 +290,16 @@ export default function Downloader() {
     if (!info || info.kind !== 'video') return
     setError('')
     try {
-      const j = await api('/jobs', { method: 'POST', body: {
+      const j = await engine.start({
         url: info.sourceUrl, mode: opts.mode, height: opts.height, container: opts.container, audioFormat: opts.audioFormat,
         clip: opts.clip && info.duration > 0, start: opts.start, end: opts.end, accurateCuts: opts.accurate, subs: opts.subs, metadata: true,
         parts: opts.mode === 'video' && info.needsMerge ? 2 : 1,
-      } })
+      })
       const label = opts.mode === 'audio'
         ? `Audio · ${opts.audioFormat === 'best' ? 'original codec' : opts.audioFormat.toUpperCase()}`
         : `${opts.height ? opts.height + 'p' : selected ? selected.height + 'p best' : 'Best'} · ${opts.container.toUpperCase()}`
       setJobs((js) => [{ id: j.id, title: info.title, label: label + (opts.clip ? ` · ${clock(opts.start)}–${clock(opts.end)}` : '') }, ...js])
-    } catch (e) { if (e.offline) setEngine({ status: 'offline' }); else setError(e.message) }
+    } catch (e) { if (e.offline) setEng({ status: 'offline' }); else setError(e.message) }
   }
 
   return (
@@ -328,7 +311,7 @@ export default function Downloader() {
             <div className="eyebrow">Powered by yt-dlp</div>
             <h3 className="display font-semibold text-[22px] mt-1 leading-tight">Paste a link. Get the file.</h3>
           </div>
-          <EnginePill engine={engine} onRetry={check} />
+          <EnginePill engine={eng} onRetry={check} />
         </div>
 
         <div className="relative">
@@ -337,13 +320,13 @@ export default function Downloader() {
               <input
                 ref={inputRef} className="input text-[14.5px] py-3.5 pr-24" placeholder="https://…  video, audio, shorts, reels, playlists"
                 value={url} onChange={(e) => setUrl(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && analyze()}
-                disabled={engine.status !== 'online'} spellCheck={false}
+                disabled={eng.status !== 'online'} spellCheck={false}
               />
-              <button className="absolute right-2 top-1/2 -translate-y-1/2 btn btn-ghost !py-1.5 !px-3 text-[12px]" onClick={paste} disabled={engine.status !== 'online'}>Paste</button>
+              <button className="absolute right-2 top-1/2 -translate-y-1/2 btn btn-ghost !py-1.5 !px-3 text-[12px]" onClick={paste} disabled={eng.status !== 'online'}>Paste</button>
             </div>
             <motion.button
               className="btn btn-primary btn-sheen px-7 py-3.5 text-[14.5px] min-w-[130px]" whileHover={{ y: -1, scale: 1.02 }} whileTap={{ scale: 0.95, y: 1 }}
-              onClick={() => analyze()} disabled={busy || !url.trim() || engine.status !== 'online'}
+              onClick={() => analyze()} disabled={busy || !url.trim() || eng.status !== 'online'}
             >
               {busy ? (
                 <span className="flex items-center justify-center gap-1.5">
@@ -365,7 +348,7 @@ export default function Downloader() {
         </AnimatePresence>
       </motion.div>
 
-      {engine.status === 'offline' && <OfflineCard onRetry={check} />}
+      {eng.status === 'offline' && (engine.bundled ? <Card><Note tone="warn">The built-in download engine didn't start. Reinstall the app, or update it to restore yt-dlp.</Note></Card> : <OfflineCard onRetry={check} />)}
 
       {/* ---------- playlist ---------- */}
       <AnimatePresence mode="wait">
@@ -493,7 +476,7 @@ export default function Downloader() {
                 Download
               </motion.button>
               {info.isLive && <Note tone="warn">Live streams can't be downloaded until they end.</Note>}
-              {!engine.info?.ffmpeg && <Note tone="warn">ffmpeg is missing on the engine — merging, sections and audio conversion need it.</Note>}
+              {!eng.info?.ffmpeg && <Note tone="warn">ffmpeg is missing on the engine — merging, sections and audio conversion need it.</Note>}
             </motion.div>
           </div>
         </>
@@ -513,7 +496,7 @@ export default function Downloader() {
       )}
 
       <p className="text-[11.5px] leading-relaxed" style={{ color: 'var(--muted)' }}>
-        Download only content you own or have permission to save, and respect each site's terms. Files stream from the engine straight to your browser — nothing is stored after the session.
+        Download only content you own or have permission to save, and respect each site's terms. Downloads run on your own device or engine, and nothing is kept after the session on the web build.
       </p>
     </div>
   )

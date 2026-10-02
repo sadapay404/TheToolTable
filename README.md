@@ -57,10 +57,17 @@ npm run build                  # production build → dist/
 
 ## Tool 04 — yt-dlp download engine
 
-Downloading from video sites needs a native program, so TheToolTable ships a tiny companion engine (`server/ytdlp-api.js`, zero npm deps) that wraps the real **yt-dlp** + ffmpeg.
+yt-dlp is a native program, so one tiny engine layer (`src/lib/engine.js`) picks the right transport:
 
-- **Dev / preview:** mounted automatically by Vite at `/api/ytdlp` — just run `npm run setup:engine` once (creates `~/.ytvenv` with yt-dlp + ffmpeg), then `npm run dev`.
-- **Self-host / desktop sidecar:** `npm run engine` → `http://127.0.0.1:8787/api/ytdlp`. Env: `PORT`, `HOST`, `YTDLP_PATH`, `FFMPEG_PATH`, `YTDLP_CORS`, `YTDLP_ALLOW_PRIVATE=1`.
-- **Vercel / static hosting:** the site can't run yt-dlp itself; open Tool 04 and paste your engine address (stored in localStorage).
-- User input is never passed to a shell; options are whitelisted and URLs restricted to public http(s).
-- Keep yt-dlp fresh: `~/.ytvenv/bin/pip install -U yt-dlp`.
+| Where the app runs | How yt-dlp is provided | User setup |
+|---|---|---|
+| Windows / Android app | bundled **inside** the installer / APK (Tauri sidecar / youtubedl-android) | none |
+| Web (dev, Vercel) | companion engine (`server/ytdlp-api.js`, zero npm deps) | run it, or paste its address |
+
+`npm run setup:engine` and `npm run engine` are **developer-only** (run in this project folder on your own PC, for the web build).
+Shipped apps never need them. Full native plan: [docs/NATIVE-ENGINE.md](docs/NATIVE-ENGINE.md).
+
+- Web dev: `npm run setup:engine` once (creates `~/.ytvenv` with yt-dlp + ffmpeg), then `npm run dev` — the engine mounts at `/api/ytdlp`.
+- Self-host: `npm run engine` → `http://127.0.0.1:8787/api/ytdlp` (env: `PORT`, `HOST`, `YTDLP_PATH`, `FFMPEG_PATH`, `YTDLP_CORS`, `YTDLP_ALLOW_PRIVATE=1`).
+- Windows installer prep: `node scripts/fetch-sidecars.mjs`.
+- Input is never passed to a shell; options are whitelisted; web engine only accepts public http(s) URLs.

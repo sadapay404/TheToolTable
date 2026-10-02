@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
+import ReactDOM from 'react-dom'
 import { AnimatePresence, motion, useMotionValue, useSpring, useTransform } from 'framer-motion'
 import { TOOLS } from './toolsRegistry.jsx'
 import { THEMES, THEME_ORDER, applyTheme } from './themes.js'
@@ -87,42 +88,64 @@ function TiltCard({ tool, onOpen, i }) {
 
 function ThemePicker({ theme, setTheme }) {
   const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState({ top: 0, right: 0 })
   const ref = useRef(null)
+
   useEffect(() => {
-    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
-    window.addEventListener('mousedown', h)
-    return () => window.removeEventListener('mousedown', h)
-  }, [])
+    if (!open) return
+    const onDown = (e) => { if (ref.current && !ref.current.contains(e.target) && !e.target.closest('[data-theme-menu]')) setOpen(false) }
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(false) }
+    const onScroll = () => setOpen(false)
+    window.addEventListener('mousedown', onDown)
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('scroll', onScroll, true)
+    window.addEventListener('resize', onScroll)
+    return () => {
+      window.removeEventListener('mousedown', onDown)
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('scroll', onScroll, true)
+      window.removeEventListener('resize', onScroll)
+    }
+  }, [open])
+
+  function toggle() {
+    if (!open && ref.current) {
+      const r = ref.current.getBoundingClientRect()
+      setPos({ top: r.bottom + 8, right: Math.max(8, window.innerWidth - r.right) })
+    }
+    setOpen((o) => !o)
+  }
+
   return (
-    <div className="relative" ref={ref}>
-      <motion.button className="btn" whileTap={{ scale: 0.95 }} onClick={() => setOpen(!open)}>
+    <>
+      <button ref={ref} className="btn" onClick={toggle} aria-haspopup="menu" aria-expanded={open}>
         <span className="w-3 h-3 rounded-full border border-[var(--border)]" style={{ background: THEMES[theme].vars['--bg'] }} />
         {THEMES[theme].name}
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="m6 9 6 6 6-6" /></svg>
-      </motion.button>
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ opacity: 0, y: -6, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -6, scale: 0.97 }}
-            transition={SPRING}
-            className="card absolute right-0 mt-2 w-56 p-2 z-50"
-          >
-            {THEME_ORDER.map((id) => (
-              <button
-                key={id}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-[10px] text-sm font-medium hover:bg-[var(--surface2)] transition-colors"
-                onClick={() => { setTheme(id); setOpen(false) }}
-              >
-                <span className="w-4 h-4 rounded-[5px] border border-[var(--border)]" style={{ background: THEMES[id].vars['--bg'] }} />
-                <span className="w-3 h-3 rounded-full" style={{ background: THEMES[id].vars['--accent'] }} />
-                {THEMES[id].name}
-                {id === theme && <span className="ml-auto" style={{ color: 'var(--accent)' }}>—</span>}
-              </button>
-            ))}
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }}><path d="m6 9 6 6 6-6" /></svg>
+      </button>
+      {open && ReactDOM.createPortal(
+        <div
+          data-theme-menu
+          className="card fixed w-56 p-2 z-[60]"
+          style={{ top: pos.top, right: pos.right, boxShadow: 'var(--shadow-lg)' }}
+        >
+          {THEME_ORDER.map((id) => (
+            <button
+              key={id}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-[10px] text-sm font-medium hover:bg-[var(--surface2)] transition-colors"
+              style={id === theme ? { background: 'var(--surface2)' } : undefined}
+              onClick={() => { setTheme(id); setOpen(false) }}
+            >
+              <span className="w-4 h-4 rounded-[5px] border border-[var(--border)]" style={{ background: THEMES[id].vars['--bg'] }} />
+              <span className="w-3 h-3 rounded-full" style={{ background: THEMES[id].vars['--accent'] }} />
+              {THEMES[id].name}
+              {id === theme && <span className="ml-auto" style={{ color: 'var(--accent)' }}>—</span>}
+            </button>
+          ))}
+        </div>,
+        document.body,
+      )}
+    </>
   )
 }
 

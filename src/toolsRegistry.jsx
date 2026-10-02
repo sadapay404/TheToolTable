@@ -15,7 +15,7 @@ export const TOOLS = [
   {
     id: 'metadata', n: 1, name: 'Metadata Extractor', icon: '🔍', color: '#C87941',
     tag: 'Image · Files',
-    desc: 'Full EXIF / IPTC / XMP / GPS inspection with one-click Scrub & Sanitize.',
+    desc: 'Full EXIF / IPTC / XMP / GPS / ICC extraction with PDF reports and one-click Scrub & Sanitize.',
     keywords: 'exif iptc xmp gps metadata scrub sanitize clean privacy hex camera',
     comp: MetadataExtractor,
   },

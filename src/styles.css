@@ -164,6 +164,23 @@ table.kv td:first-child { color: var(--muted); font-weight: 600; width: 40%; }
   background: var(--copper);
   transition: width .3s ease;
 }
+.stripes {
+  background-image: repeating-linear-gradient(-45deg, var(--copper) 0 8px, color-mix(in srgb, var(--copper) 70%, white) 8px 16px);
+  background-size: 22.6px 100%;
+  animation: stripe-slide 0.9s linear infinite;
+}
+@keyframes stripe-slide { to { background-position: 22.6px 0; } }
+
+@keyframes dash-breathe { 0%,100% { border-color: var(--border); } 50% { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); } }
+.dropzone[data-hot="true"] { animation: dash-breathe 1.2s ease-in-out infinite; }
+
+@keyframes sheen-sweep { 0% { transform: translateX(-120%);} 100% { transform: translateX(220%);} }
+.btn-sheen { position: relative; overflow: hidden; }
+.btn-sheen::after {
+  content: ""; position: absolute; top: 0; bottom: 0; width: 40%;
+  background: linear-gradient(105deg, transparent, rgba(255,255,255,0.28), transparent);
+  animation: sheen-sweep 2.8s ease-in-out infinite;
+}
 
 .kbd {
   font-family: ui-monospace, monospace; font-size: 10.5px; padding: 2px 6px; border-radius: 5px;

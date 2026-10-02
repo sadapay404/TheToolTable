@@ -1,5 +1,27 @@
-import React, { useRef, useState } from 'react'
-import { motion } from 'framer-motion'
+import React, { useEffect, useRef, useState } from 'react'
+import { motion, useMotionValue, useSpring, useMotionValueEvent } from 'framer-motion'
+
+/** Spring-animated numeric readout */
+export function AnimatedNumber({ value, format = (n) => Math.round(n).toLocaleString(), className = '', stiffness = 120 }) {
+  const mv = useMotionValue(value)
+  const sp = useSpring(mv, { stiffness, damping: 22 })
+  const [txt, setTxt] = useState(() => format(value))
+  useMotionValueEvent(sp, 'change', (v) => setTxt(format(v)))
+  useEffect(() => { mv.set(value) }, [value])
+  return <span className={className}>{txt}</span>
+}
+
+/** Thin animated striped progress for engine work */
+export function LiveProgress({ value, label }) {
+  return (
+    <div>
+      {label && <div className="flex justify-between text-xs font-semibold mb-1.5" style={{ color: 'var(--muted)' }}><span>{label}</span><AnimatedNumber value={value} className="tabular-nums" />%</div>}
+      <div className="progress-shell relative overflow-hidden">
+        <motion.div className="progress-fill stripes" initial={{ width: 0 }} animate={{ width: `${Math.min(100, Math.max(0, value))}%` }} transition={{ type: 'spring', stiffness: 120, damping: 20 }} />
+      </div>
+    </div>
+  )
+}
 
 export function Dropzone({ onFiles, multiple = false, accept, label = 'Drop files here', sub = 'or click to browse', children }) {
   const [hot, setHot] = useState(false)

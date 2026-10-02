@@ -1,0 +1,302 @@
+import { extName } from './utils.js'
+
+/* ================= catalog (CloudConvert-style categories) ================= */
+
+export const GROUPS = [
+  ['Images', ['png', 'jpeg', 'webp', 'bmp', 'tiff', 'tga', 'svg']],
+  ['Video', ['mp4', 'mkv', 'webm', 'avi', 'mov', 'flv', 'wmv', 'ts', 'gif']],
+  ['Audio', ['mp3', 'wav', 'flac', 'ogg', 'opus', 'm4a', 'aac', 'wma', 'aiff']],
+  ['Documents', ['txt', 'md', 'html', 'json', 'csv', 'rtf', 'docx', 'pdf']],
+  ['Spreadsheets', ['xlsx', 'ods', 'tsv']],
+  ['Slides', ['pptx']],
+  ['E-books', ['epub']],
+  ['Archives', ['zip']],
+]
+
+export const KIND_TARGETS = {
+  image: ['png', 'jpeg', 'webp', 'bmp', 'tiff', 'tga', 'svg', 'zip'],
+  svg: ['png', 'jpeg', 'webp', 'bmp', 'svg', 'zip'],
+  video: ['mp4', 'mkv', 'webm', 'avi', 'mov', 'flv', 'wmv', 'ts', 'gif', 'mp3', 'wav', 'flac', 'ogg', 'opus', 'm4a', 'aac', 'wma', 'aiff', 'zip'],
+  audio: ['mp3', 'wav', 'flac', 'ogg', 'opus', 'm4a', 'aac', 'wma', 'aiff', 'zip'],
+  pdf: ['txt', 'md', 'html', 'json', 'rtf', 'docx', 'zip'],
+  docx: ['txt', 'md', 'html', 'zip'],
+  odt: ['txt', 'md', 'html', 'zip'],
+  text: ['txt', 'md', 'html', 'json', 'csv', 'rtf', 'docx', 'xlsx', 'epub', 'pptx', 'zip'],
+  sheet: ['xlsx', 'ods', 'csv', 'tsv', 'html', 'json', 'txt', 'zip'],
+  zip: ['txt', 'json', 'zip'],
+  epub: ['txt', 'md', 'html', 'zip'],
+  pptx: ['txt', 'html', 'zip'],
+}
+
+export function kindOf(f) {
+  const e = extName(f.name)
+  if (f.type === 'application/pdf' || e === 'pdf') return 'pdf'
+  if (e === 'svg' || f.type === 'image/svg+xml') return 'svg'
+  if (e === 'zip' || e === 'tttzip') return 'zip'
+  if (e === 'epub') return 'epub'
+  if (e === 'pptx' || e === 'ppt') return 'pptx'
+  if (e === 'docx') return 'docx'
+  if (e === 'odt') return 'odt'
+  if (['xlsx', 'xls', 'ods', 'csv', 'tsv'].includes(e)) return 'sheet'
+  if (f.type.startsWith('image/')) return 'image'
+  if (f.type.startsWith('video/') || ['mkv', 'avi', 'mov', 'flv', 'wmv', 'webm', 'ts'].includes(e)) return 'video'
+  if (f.type.startsWith('audio/') || ['flac', 'aac', 'm4a', 'ogg', 'opus', 'wav', 'wma'].includes(e)) return 'audio'
+  return 'text'
+}
+
+export const KIND_LABEL = {
+  image: 'Image', svg: 'Vector', video: 'Video', audio: 'Audio', pdf: 'PDF', docx: 'Word',
+  odt: 'ODT', text: 'Document', sheet: 'Spreadsheet', zip: 'Archive', epub: 'E-book', pptx: 'Slides',
+}
+
+/* ================= shared helpers ================= */
+
+const enc = new TextEncoder()
+const dec = (b) => new TextDecoder().decode(b)
+const stripTags = (s) => s.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/\s+\n/g, '\n').replace(/[ \t]{2,}/g, ' ')
+const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
+async function unzip(buf) {
+  const { unzipSync } = await import('fflate')
+  return unzipSync(new Uint8Array(buf))
+}
+
+/* ================= engines ================= */
+
+async function canvasPath(file, target, onProg) {
+  const url = URL.createObjectURL(file)
+  try {
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url })
+    const c = document.createElement('canvas')
+    c.width = img.naturalWidth || 1024; c.height = img.naturalHeight || 1024
+    c.getContext('2d').drawImage(img, 0, 0)
+    onProg?.(70)
+    const mime = { png: 'image/png', jpeg: 'image/jpeg', webp: 'image/webp', bmp: 'image/bmp' }[target]
+    const blob = await new Promise((res) => c.toBlob(res, mime, target === 'jpeg' || target === 'webp' ? 0.98 : undefined))
+    if (!blob) throw new Error('Browser encoder unavailable for ' + target)
+    onProg?.(100)
+    return { blob, ext: target === 'jpeg' ? 'jpg' : target }
+  } finally { URL.revokeObjectURL(url) }
+}
+
+async function svgEmbed(file) {
+  const url = URL.createObjectURL(file)
+  const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url })
+  URL.revokeObjectURL(url)
+  const w = img.naturalWidth, h = img.naturalHeight
+  const data = await file.arrayBuffer()
+  let inner = dec(data)
+  if (!inner.includes('xmlns=')) inner = inner.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"')
+  return { blob: new Blob([inner], { type: 'image/svg+xml' }), ext: 'svg', w, h }
+}
+
+const FF_ARGS = {
+  mp4: ['-c:v', 'libx264', '-crf', '16', '-preset', 'fast', '-c:a', 'aac', '-b:a', '320k'],
+  mov: ['-c:v', 'libx264', '-crf', '16', '-preset', 'fast', '-c:a', 'aac', '-b:a', '320k'],
+  mkv: ['-c:v', 'libx264', '-crf', '16', '-preset', 'fast', '-c:a', 'libmp3lame', '-b:a', '320k'],
+  webm: ['-c:v', 'libvpx', '-crf', '8', '-b:v', '4M', '-c:a', 'libvorbis', '-q:a', '8'],
+  avi: ['-c:v', 'mpeg4', '-q:v', '4', '-c:a', 'libmp3lame', '-b:a', '192k'],
+  flv: ['-c:v', 'flv', '-c:a', 'libmp3lame', '-b:a', '192k'],
+  wmv: ['-c:v', 'wmv2', '-q:v', '4', '-c:a', 'wmav2', '-b:a', '192k'],
+  ts: ['-c:v', 'libx264', '-crf', '16', '-c:a', 'aac', '-b:a', '192k'],
+  gif: ['-vf', 'fps=15,scale=480:-1:flags=lanczos,split[a][b];[a]palettegen[p];[b][p]paletteuse'],
+  mp3: ['-vn', '-c:a', 'libmp3lame', '-b:a', '320k'],
+  wav: ['-vn', '-c:a', 'pcm_s16le'],
+  aiff: ['-vn', '-c:a', 'pcm_s16be'],
+  flac: ['-vn', '-c:a', 'flac'],
+  ogg: ['-vn', '-c:a', 'libvorbis', '-q:a', '9'],
+  opus: ['-vn', '-c:a', 'libopus', '-b:a', '192k'],
+  m4a: ['-vn', '-c:a', 'aac', '-b:a', '320k'],
+  aac: ['-vn', '-c:a', 'aac', '-b:a', '320k'],
+  wma: ['-vn', '-c:a', 'wmav2', '-b:a', '192k'],
+  tiff: ['-frames:v', '1', '-update', '1'],
+  tga: ['-frames:v', '1', '-update', '1'],
+}
+
+async function ffmpegPath(file, target, onProg) {
+  const { convertWithFFmpeg } = await import('./ffmpeg.js')
+  const blob = await convertWithFFmpeg(file, `out.${target}`, FF_ARGS[target], onProg)
+  return { blob, ext: target === 'jpeg' ? 'jpg' : target }
+}
+
+async function pdfText(file, onProg) {
+  const pdfjs = await import('pdfjs-dist')
+  const worker = await import('pdfjs-dist/build/pdf.worker.min.mjs?url')
+  pdfjs.GlobalWorkerOptions.workerSrc = worker.default
+  const doc = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise
+  const pages = []
+  for (let p = 1; p <= doc.numPages; p++) {
+    const page = await doc.getPage(p)
+    const tc = await page.getTextContent()
+    pages.push(tc.items.map((it) => it.str).join(' '))
+    onProg?.((p / doc.numPages) * 60)
+  }
+  return { pages, text: pages.join('\n\n') }
+}
+
+function docxReadText(entries) {
+  const doc = entries['word/document.xml']
+  if (!doc) throw new Error('word/document.xml missing')
+  return dec(doc).split('</w:p>').map(stripTags).join('\n').trim()
+}
+
+async function writeText(text, title, target, onProg) {
+  const lines = String(text).split(/\r?\n/)
+  onProg?.(70)
+  if (target === 'txt') return { blob: new Blob([text], { type: 'text/plain' }), ext: 'txt' }
+  if (target === 'md') return { blob: new Blob([`# ${title}\n\n${text}`], { type: 'text/markdown' }), ext: 'md' }
+  if (target === 'html') return { blob: new Blob([`<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title></head><body><h1>${esc(title)}</h1>${lines.map((l) => `<p>${esc(l)}</p>`).join('\n')}</body></html>`], { type: 'text/html' }), ext: 'html' }
+  if (target === 'json') return { blob: new Blob([JSON.stringify({ title, lines: lines.length, content: lines }, null, 2)], { type: 'application/json' }), ext: 'json' }
+  if (target === 'csv') return { blob: new Blob([lines.map((l) => `"${l.replace(/"/g, '""')}"`).join('\n')], { type: 'text/csv' }), ext: 'csv' }
+  if (target === 'tsv') return { blob: new Blob([lines.join('\n')], { type: 'text/tab-separated-values' }), ext: 'tsv' }
+  if (target === 'rtf') return { blob: new Blob([`{\\rtf1\\ansi\\deff0 {\\fonttbl {\\f0 Calibri;}}\\f0\\fs22 ${lines.map((l) => `${l.replace(/[\\{}]/g, (m) => '\\' + m)}\\par `).join('')}}`], { type: 'application/rtf' }), ext: 'rtf' }
+  if (target === 'docx') {
+    const { zipSync, strToU8 } = await import('fflate')
+    const paras = lines.map((l) => `<w:p><w:r><w:t xml:space="preserve">${esc(l)}</w:t></w:r></w:p>`).join('')
+    const zip = zipSync({
+      '[Content_Types].xml': strToU8(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`),
+      '_rels/.rels': strToU8(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`),
+      'word/document.xml': strToU8(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${paras}<w:sectPr/></w:body></w:document>`),
+    })
+    return { blob: new Blob([zip], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }), ext: 'docx' }
+  }
+  if (target === 'xlsx' || target === 'ods') {
+    const XLSX = await import('xlsx')
+    const ws = XLSX.utils.aoa_to_sheet(lines.map((l) => [l]))
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Content')
+    const out = XLSX.write(wb, { bookType: target, type: 'array' })
+    return { blob: new Blob([out]), ext: target }
+  }
+  if (target === 'epub') {
+    const { zipSync, strToU8 } = await import('fflate')
+    const paras = lines.map((l) => `<p>${esc(l) || '&#160;'}</p>`).join('\n')
+    const zip = zipSync({
+      'mimetype': [strToU8('application/epub+zip'), { level: 0 }],
+      'META-INF/container.xml': strToU8(`<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>`),
+      'OEBPS/content.opf': strToU8(`<?xml version="1.0" encoding="utf-8"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">urn:uuid:${crypto.randomUUID()}</dc:identifier><dc:title>${esc(title)}</dc:title><dc:language>en</dc:language><meta property="dcterms:modified">${new Date().toISOString().replace(/\.\d+Z$/, 'Z')}</meta></metadata><manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="ch1" href="chapter.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="ch1"/></spine></package>`),
+      'OEBPS/nav.xhtml': strToU8(`<?xml version="1.0" encoding="utf-8"?><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><head><title>${esc(title)}</title></head><body><nav epub:type="toc"><ol><li><a href="chapter.xhtml">${esc(title)}</a></li></ol></nav></body></html>`),
+      'OEBPS/chapter.xhtml': strToU8(`<?xml version="1.0" encoding="utf-8"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>${esc(title)}</title></head><body><h1>${esc(title)}</h1>${paras}</body></html>`),
+    })
+    return { blob: new Blob([zip], { type: 'application/epub+zip' }), ext: 'epub' }
+  }
+  if (target === 'pptx') {
+    const PptxGenJS = (await import('pptxgenjs')).default
+    const p = new PptxGenJS()
+    p.title = title
+    for (let i = 0; i < lines.length; i += 6) {
+      const s = p.addSlide()
+      s.addText(title, { fontSize: 24, bold: true, color: '2A211C', y: 0.4 })
+      s.addText(lines.slice(i, i + 6).map((l) => ({ text: l, options: { bullet: true, breakLine: true } })), { x: 0.6, y: 1.4, fontSize: 16, color: '46403A' })
+    }
+    const blob = await p.writeFile({ outputType: 'blob' })
+    return { blob, ext: 'pptx' }
+  }
+  throw new Error('No writer for ' + target)
+}
+
+async function sheetPath(file, target, onProg) {
+  const XLSX = await import('xlsx')
+  const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' })
+  onProg?.(60)
+  const first = wb.SheetNames[0]
+  if (target === 'json') {
+    const data = Object.fromEntries(wb.SheetNames.map((n) => [n, XLSX.utils.sheet_to_json(wb.Sheets[n])]))
+    return { blob: new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), ext: 'json' }
+  }
+  if (target === 'txt') return { blob: new Blob([wb.SheetNames.map((n) => XLSX.utils.sheet_to_csv(wb.Sheets[n])).join('\n\n')], { type: 'text/plain' }), ext: 'txt' }
+  if (target === 'csv') return { blob: new Blob([XLSX.utils.sheet_to_csv(wb.Sheets[first])], { type: 'text/csv' }), ext: 'csv' }
+  if (target === 'tsv') {
+    const csv = XLSX.utils.sheet_to_csv(wb.Sheets[first], { FS: '\t' })
+    return { blob: new Blob([csv], { type: 'text/tab-separated-values' }), ext: 'tsv' }
+  }
+  const out = XLSX.write(wb, { bookType: target, type: 'array' })
+  onProg?.(100)
+  return { blob: new Blob([out]), ext: target }
+}
+
+async function zipWrap(file) {
+  const { zipSync } = await import('fflate')
+  const z = zipSync({ [file.name]: new Uint8Array(await file.arrayBuffer()) })
+  return { blob: new Blob([z], { type: 'application/zip' }), ext: 'zip' }
+}
+
+async function zipTexts(file) {
+  const entries = await unzip(await file.arrayBuffer())
+  const texts = []
+  const manifest = []
+  for (const [name, data] of Object.entries(entries)) {
+    manifest.push({ name, bytes: data.length })
+    if (/\.(txt|md|html?|xml|json|csv|svg)$/i.test(name)) texts.push(`--- ${name} ---\n${dec(data)}`)
+  }
+  return { texts: texts.join('\n\n'), manifest }
+}
+
+function pptxText(entries) {
+  const slides = Object.keys(entries).filter((k) => /^ppt\/slides\/slide\d+\.xml$/.test(k)).sort((a, b) => (a.match(/\d+/)[0] | 0) - (b.match(/\d+/)[0] | 0))
+  return slides.map((s, i) => `Slide ${i + 1}: ` + [...dec(entries[s]).matchAll(/<a:t[^>]*>([\s\S]*?)<\/a:t>/g)].map((m) => m[1]).join(' ')).join('\n')
+}
+
+function odtText(entries) {
+  if (!entries['content.xml']) throw new Error('content.xml missing')
+  return stripTags(dec(entries['content.xml'])).trim()
+}
+
+function epubText(entries) {
+  const htmls = Object.keys(entries).filter((k) => /\.x?html?$/.test(k) && !/nav/.test(k)).sort()
+  return htmls.map((k) => stripTags(dec(entries[k]))).join('\n\n').trim()
+}
+
+/* ================= router ================= */
+
+export async function convertFile(file, kind, target, onProg) {
+  if (target === 'zip') return zipWrap(file)
+
+  switch (kind) {
+    case 'image':
+    case 'svg': {
+      if (['png', 'jpeg', 'webp', 'bmp'].includes(target)) return canvasPath(file, target, onProg)
+      if (target === 'svg') return svgEmbed(file)
+      if (['tiff', 'tga'].includes(target)) return ffmpegPath(file, target, onProg)
+      break
+    }
+    case 'video':
+    case 'audio': {
+      if (FF_ARGS[target]) return ffmpegPath(file, target, onProg)
+      break
+    }
+    case 'pdf': {
+      const { text, pages } = await pdfText(file, onProg)
+      if (target === 'json') return writeText(JSON.stringify(pages), file.name, 'json', onProg)
+      return writeText(text, file.name, target, onProg)
+    }
+    case 'docx': {
+      const entries = await unzip(await file.arrayBuffer())
+      return writeText(docxReadText(entries), file.name, target, onProg)
+    }
+    case 'odt': {
+      const entries = await unzip(await file.arrayBuffer())
+      return writeText(odtText(entries), file.name, target, onProg)
+    }
+    case 'pptx': {
+      const entries = await unzip(await file.arrayBuffer())
+      return writeText(pptxText(entries), file.name, target === 'html' ? 'html' : 'txt', onProg)
+    }
+    case 'epub': {
+      const entries = await unzip(await file.arrayBuffer())
+      return writeText(epubText(entries), file.name, target, onProg)
+    }
+    case 'zip': {
+      const { texts, manifest } = await zipTexts(file)
+      if (target === 'json') return { blob: new Blob([JSON.stringify({ files: manifest }, null, 2)], { type: 'application/json' }), ext: 'json' }
+      return writeText(texts, file.name, target, onProg)
+    }
+    case 'sheet':
+      return sheetPath(file, target, onProg)
+    case 'text': {
+      const text = await file.text()
+      return writeText(text, file.name, target, onProg)
+    }
+  }
+  throw new Error(`No on-device engine for ${kind} → ${target}. That pair needs a server engine (Phase 2).`)
+}

@@ -7,6 +7,26 @@ import { Logo } from './components/Logo.jsx'
 
 const SPRING = { type: 'spring', stiffness: 300, damping: 25 }
 
+class ErrorBoundary extends React.Component {
+  constructor(p) { super(p); this.state = { err: null } }
+  static getDerivedStateFromError(err) { return { err } }
+  componentDidCatch(err) { console.error('TheToolTable crash:', err) }
+  render() {
+    if (this.state.err) {
+      return (
+        <div className="card p-8 my-10 text-center">
+          <div className="display font-semibold text-[18px]">Something crashed here.</div>
+          <pre className="mono text-[11px] mt-4 text-left overflow-auto max-h-48 card p-4" style={{ color: 'var(--muted)' }}>
+            {String(this.state.err?.stack || this.state.err).slice(0, 800)}
+          </pre>
+          <button className="btn btn-primary mt-5" onClick={() => this.setState({ err: null })}>Try again</button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
 function SearchIcon() {
   return (
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -155,6 +175,7 @@ export default function App() {
       </header>
 
       <main className="max-w-6xl mx-auto px-6 pb-28 relative">
+        <ErrorBoundary>
         <AnimatePresence mode="wait">
           {!active ? (
             <motion.div key="home" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -14 }} transition={SPRING}>
@@ -218,6 +239,7 @@ export default function App() {
             </motion.div>
           )}
         </AnimatePresence>
+        </ErrorBoundary>
       </main>
 
       <CommandPalette

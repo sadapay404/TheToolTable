@@ -5,6 +5,16 @@ import { Dropzone, Note } from '../components/ui.jsx'
 import { fmtBytes, download, baseName, extName, recentAction } from '../lib/utils.js'
 import { scrub, detectType } from '../lib/sanitize.js'
 
+/* embedded 64×64 sample PNG carrying Software/Author tEXt tags — for the in-browser self test */
+const SAMPLE_PNG_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAAAADEAAAAJnRFWHRTb2Z0d2FyZQBUaGVUb29sVGFibGUgc2VsZi10ZXN0IHNhbXBsZQAAAFoAAAAPdEVYdEF1dGhvcgBNdWJhc2hpcgAAAHUAAABeSURBVHic7c8xDQAwDMCwwh78gthhVYoRJPOOGx3wqwGtAa0BrQGtAa0BrQGtAa0BrQGtAa0BrQGtAa0BrQGtAa0BrQGtAa0BrQGtAa0BrQGtAa0BrQGtAa0BrQFtAQBQgUsAAAALAAAAAElFTkQAAAAA'
+
+export function sampleFile() {
+  const bin = atob(SAMPLE_PNG_B64)
+  const bytes = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+  return new File([bytes], 'self-test-sample.png', { type: 'image/png' })
+}
+
 /* ---------- value formatting (every tag type renders) ---------- */
 function fmtVal(v) {
   if (v == null) return ''
@@ -139,7 +149,7 @@ export default function MetadataExtractor() {
     const structure = detectType(buf) === 'jpeg' ? jpegStructure(buf) : detectType(buf) === 'png' ? pngStructure(buf) : []
     setMeta({ fileInfo, all, exif, iptc, xmp, gps, icc, structure, buf })
     } catch (e) {
-      setError('Analysis failed: ' + (e?.message || e) + ' — try another file or report this image format.')
+      setError('Analysis failed: ' + String(e?.stack || e?.message || e).slice(0, 400))
     }
   }
 
@@ -169,7 +179,13 @@ export default function MetadataExtractor() {
   return (
     <div className="space-y-5">
       {!file ? (
+        <>
         <Dropzone onFiles={analyze} accept="image/*,.heic,.tif,.tiff,.webp" label="Drop a photo or image file" sub="JPEG · PNG · TIFF · HEIC · WebP — parsed entirely on this device" />
+        <div className="text-center">
+          <button className="btn" onClick={() => analyze([sampleFile()])}>🩺 Run built-in self-test</button>
+          <div className="text-[11.5px] mt-2" style={{ color: 'var(--muted)' }}>Parses an embedded sample image end-to-end in your browser and shows the result — proves the engine live.</div>
+        </div>
+        </>
       ) : (
         <>
           <div className="card p-6 flex flex-wrap items-center gap-5">

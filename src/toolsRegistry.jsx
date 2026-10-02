@@ -22,7 +22,7 @@ export const TOOLS = [
   {
     id: 'converter', n: 2, name: 'Any-to-Any Converter', icon: '🔁', color: '#3E8ED0',
     tag: 'Convert',
-    desc: 'Client-side WASM conversion across video, audio, image & document formats.',
+    desc: 'Per-file batch conversion across image, video, audio, document & PDF formats with live progress.',
     keywords: 'convert png webp mp4 mkv wav flac gif jpg batch wasm ffmpeg',
     comp: Converter,
   },

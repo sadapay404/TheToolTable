@@ -16,9 +16,11 @@ export function Dropzone({ onFiles, multiple = false, accept, label = 'Drop file
       <input ref={ref} type="file" hidden multiple={multiple} accept={accept} onChange={(e) => { const fs = [...e.target.files]; if (fs.length) onFiles(fs); e.target.value = '' }} />
       {children || (
         <>
-          <motion.div className="text-4xl mb-3" animate={{ y: [0, -6, 0] }} transition={{ repeat: Infinity, duration: 2.4, ease: 'easeInOut' }}>📂</motion.div>
-          <div className="font-bold">{label}</div>
-          <div className="text-sm mt-1" style={{ color: 'var(--muted)' }}>{sub}</div>
+          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--copper)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="mx-auto mb-4">
+            <path d="M12 16V4m0 0 4 4m-4-4-4 4" /><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
+          </svg>
+          <div className="display font-semibold text-[17px]">{label}</div>
+          <div className="text-[13px] mt-1.5" style={{ color: 'var(--muted)' }}>{sub}</div>
         </>
       )}
     </div>
@@ -63,8 +65,12 @@ export function Stat({ k, v }) {
 export function Note({ children, tone = 'info' }) {
   const colors = { info: 'var(--accent2)', warn: '#E8A33D', ok: '#4E937A' }
   return (
-    <div className="rounded-xl px-4 py-3 text-[13px] flex items-start gap-2 border" style={{ background: `color-mix(in srgb, ${colors[tone]} 10%, var(--surface))`, borderColor: `color-mix(in srgb, ${colors[tone]} 35%, transparent)` }}>
-      <span>{tone === 'warn' ? '⚠️' : tone === 'ok' ? '✅' : 'ℹ️'}</span>
+    <div className="rounded-xl px-4 py-3 text-[13px] flex items-start gap-2.5 border" style={{ background: `color-mix(in srgb, ${colors[tone]} 10%, var(--surface))`, borderColor: `color-mix(in srgb, ${colors[tone]} 35%, transparent)` }}>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={colors[tone]} strokeWidth="2" strokeLinecap="round" className="mt-0.5 shrink-0">
+        {tone === 'warn' ? <path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
+          : tone === 'ok' ? <path d="M20 6 9 17l-5-5" />
+          : <><circle cx="12" cy="12" r="9" /><path d="M12 11v5m0-8h.01" /></>}
+      </svg>
       <span>{children}</span>
     </div>
   )

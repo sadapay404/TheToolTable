@@ -56,7 +56,9 @@ export default function CommandPalette({ open, onClose, onTool, onTheme }) {
             onMouseDown={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-3 px-4 border-b border-line">
-              <span style={{ color: 'var(--muted)' }}>🔎</span>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{ color: 'var(--muted)' }}>
+                <circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" />
+              </svg>
               <input
                 ref={inputRef}
                 className="flex-1 bg-transparent py-4 outline-none text-[15px]"

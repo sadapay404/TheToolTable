@@ -7,57 +7,58 @@ import { Logo } from './components/Logo.jsx'
 
 const SPRING = { type: 'spring', stiffness: 300, damping: 25 }
 
+function SearchIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" />
+    </svg>
+  )
+}
+
 function TiltCard({ tool, onOpen, i }) {
   const ref = useRef(null)
-  const mx = useMotionValue(0.5)
-  const my = useMotionValue(0.5)
-  const rx = useSpring(useTransform(my, [0, 1], [9, -9]), SPRING)
-  const ry = useSpring(useTransform(mx, [0, 1], [-11, 11]), SPRING)
-  const gx = useTransform(mx, [0, 1], ['0%', '100%'])
-  const gy = useTransform(my, [0, 1], ['0%', '100%'])
+  const px = useMotionValue(0)
+  const py = useMotionValue(0)
+  const rx = useSpring(useTransform(py, [-0.5, 0.5], [7, -7]), SPRING)
+  const ry = useSpring(useTransform(px, [-0.5, 0.5], [-9, 9]), SPRING)
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 26 }}
+      initial={{ opacity: 0, y: 22 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ ...SPRING, delay: i * 0.045 }}
-      className="tilt-wrap"
-      style={{ perspective: 1000 }}
+      transition={{ ...SPRING, delay: 0.05 * i }}
+      className="tilt-stage h-full"
     >
       <motion.div
         ref={ref}
-        className="card relative overflow-hidden cursor-pointer select-none h-full"
-        style={{ rotateX: rx, rotateY: ry, transformStyle: 'preserve-3d' }}
+        className="card3d"
+        style={{ rotateX: rx, rotateY: ry }}
         onMouseMove={(e) => {
           const r = ref.current.getBoundingClientRect()
-          mx.set((e.clientX - r.left) / r.width)
-          my.set((e.clientY - r.top) / r.height)
+          const x = (e.clientX - r.left) / r.width
+          const y = (e.clientY - r.top) / r.height
+          px.set(x - 0.5)
+          py.set(y - 0.5)
+          ref.current.style.setProperty('--mx', `${x * 100}%`)
+          ref.current.style.setProperty('--my', `${y * 100}%`)
         }}
-        onMouseLeave={() => { mx.set(0.5); my.set(0.5) }}
+        onMouseLeave={() => { px.set(0); py.set(0) }}
         onClick={() => onOpen(tool)}
-        whileHover={{ scale: 1.02 }}
-        whileTap={{ scale: 0.97, transition: { duration: 0.1 } }}
       >
-        {/* dynamic glow reflection */}
-        <motion.div
-          className="absolute inset-0 pointer-events-none"
-          style={{ background: useTransform([gx, gy], ([x, y]) => `radial-gradient(320px at ${x} ${y}, var(--glow), transparent 70%)`) }}
-        />
-        <div className="relative p-6 flex flex-col gap-3" style={{ transform: 'translateZ(28px)' }}>
+        <div className="sheen" />
+        <div className="inner relative p-7 flex flex-col gap-5">
           <div className="flex items-start justify-between">
-            <div
-              className="w-12 h-12 rounded-2xl grid place-items-center text-2xl"
-              style={{ background: `color-mix(in srgb, ${tool.color} 16%, transparent)`, border: `1px solid color-mix(in srgb, ${tool.color} 35%, transparent)` }}
-            >
-              {tool.icon}
-            </div>
-            <span className="label mt-1">TOOL {String(tool.n).padStart(2, '0')}</span>
+            <span className="eyebrow">{tool.tag}</span>
+            <span className="ghost-num">{String(tool.n).padStart(2, '0')}</span>
           </div>
           <div>
-            <h3 className="font-bold text-[17px] leading-tight">{tool.name}</h3>
-            <span className="chip mt-2 pointer-events-none" data-on="false" style={{ cursor: 'default' }}>{tool.tag}</span>
+            <h3 className="display font-semibold text-[21px] leading-snug">{tool.name}</h3>
+            <p className="text-[13.5px] leading-relaxed mt-2" style={{ color: 'var(--muted)' }}>{tool.desc}</p>
           </div>
-          <p className="text-[13px] leading-relaxed" style={{ color: 'var(--muted)' }}>{tool.desc}</p>
+          <div className="mt-auto">
+            <div className="rule" />
+            <div className="text-[11px] font-semibold tracking-[0.14em] uppercase mt-3" style={{ color: 'var(--muted)' }}>Open tool</div>
+          </div>
         </div>
       </motion.div>
     </motion.div>
@@ -74,28 +75,28 @@ function ThemePicker({ theme, setTheme }) {
   }, [])
   return (
     <div className="relative" ref={ref}>
-      <motion.button className="btn" whileTap={{ scale: 0.93 }} onClick={() => setOpen(!open)}>
-        <span className="w-3.5 h-3.5 rounded-full" style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent2))' }} />
+      <motion.button className="btn" whileTap={{ scale: 0.95 }} onClick={() => setOpen(!open)}>
+        <span className="w-3 h-3 rounded-full border border-[var(--border)]" style={{ background: THEMES[theme].vars['--bg'] }} />
         {THEMES[theme].name}
-        <span style={{ color: 'var(--muted)' }}>▾</span>
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="m6 9 6 6 6-6" /></svg>
       </motion.button>
       <AnimatePresence>
         {open && (
           <motion.div
-            initial={{ opacity: 0, y: -8, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8, scale: 0.96 }}
+            initial={{ opacity: 0, y: -6, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -6, scale: 0.97 }}
             transition={SPRING}
             className="card absolute right-0 mt-2 w-56 p-2 z-50"
           >
             {THEME_ORDER.map((id) => (
               <button
                 key={id}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold hover:bg-[var(--surface2)] transition-colors"
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-[10px] text-sm font-medium hover:bg-[var(--surface2)] transition-colors"
                 onClick={() => { setTheme(id); setOpen(false) }}
               >
-                <span className="w-4 h-4 rounded-md border border-[var(--border)]" style={{ background: THEMES[id].vars['--bg'] }} />
+                <span className="w-4 h-4 rounded-[5px] border border-[var(--border)]" style={{ background: THEMES[id].vars['--bg'] }} />
                 <span className="w-3 h-3 rounded-full" style={{ background: THEMES[id].vars['--accent'] }} />
                 {THEMES[id].name}
-                {id === theme && <span className="ml-auto" style={{ color: 'var(--accent)' }}>✓</span>}
+                {id === theme && <span className="ml-auto" style={{ color: 'var(--accent)' }}>—</span>}
               </button>
             ))}
           </motion.div>
@@ -126,31 +127,26 @@ export default function App() {
 
   return (
     <div className="min-h-screen relative overflow-x-clip">
-      <div className="hero-mesh" />
-      <div className="glow-orb w-72 h-72 floaty" style={{ background: 'var(--accent)', top: -90, left: -60, opacity: 0.14 }} />
-      <div className="glow-orb w-96 h-96 floaty" style={{ background: 'var(--accent2)', top: 200, right: -120, opacity: 0.12, animationDelay: '-3s' }} />
+      <div className="hero-tint" />
 
-      {/* Sticky top bar */}
-      <header className="sticky top-0 z-40 backdrop-blur-xl border-b border-line" style={{ background: 'color-mix(in srgb, var(--bg) 78%, transparent)' }}>
-        <div className="max-w-6xl mx-auto px-5 h-16 flex items-center gap-4">
-          <motion.button
-            className="flex items-center gap-3 shrink-0" whileTap={{ scale: 0.94 }}
-            onClick={() => setActive(null)} title="TheToolTable — Home"
-          >
-            <Logo className="w-9 h-9 rounded-xl" shadow />
-            <div className="text-left leading-none">
-              <div className="font-extrabold tracking-tight text-[17px]">TheToolTable</div>
-              <div className="text-[10px] font-semibold tracking-[0.18em] uppercase" style={{ color: 'var(--muted)' }}>Multi-Tool Studio</div>
-            </div>
+      {/* Top bar */}
+      <header className="sticky top-0 z-40 backdrop-blur-xl border-b border-line" style={{ background: 'color-mix(in srgb, var(--bg) 82%, transparent)' }}>
+        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center gap-5">
+          <motion.button className="flex items-center gap-3.5 shrink-0" whileTap={{ scale: 0.96 }} onClick={() => setActive(null)}>
+            <Logo className="w-9 h-9 rounded-[10px]" shadow />
+            <span className="text-left leading-none">
+              <span className="display block font-semibold text-[19px] tracking-tight">TheToolTable</span>
+              <span className="eyebrow block mt-1" style={{ letterSpacing: '0.24em' }}>By Mubashir</span>
+            </span>
           </motion.button>
 
           <motion.button
-            className="btn btn-ghost flex-1 max-w-md mx-auto justify-start gap-3 text-[13px] font-medium"
+            className="btn btn-ghost flex-1 max-w-xs ml-auto justify-start gap-2.5 text-[13px] font-medium"
             style={{ color: 'var(--muted)', background: 'var(--surface)', border: '1px solid var(--border)' }}
             whileTap={{ scale: 0.97 }}
             onClick={() => setPaletteOpen(true)}
           >
-            <span>🔎</span> Search 12 tools…
+            <SearchIcon /> Search the table
             <span className="ml-auto flex gap-1"><span className="kbd">Ctrl</span><span className="kbd">K</span></span>
           </motion.button>
 
@@ -158,55 +154,64 @@ export default function App() {
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-5 pb-24 relative">
+      <main className="max-w-6xl mx-auto px-6 pb-28 relative">
         <AnimatePresence mode="wait">
           {!active ? (
-            <motion.div key="home" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -18 }} transition={SPRING}>
-              {/* Hero */}
-              <section className="pt-14 pb-10 text-center relative">
-                <motion.div className="floaty inline-block mb-5" initial={{ scale: 0.6, opacity: 0, rotate: -8 }} animate={{ scale: 1, opacity: 1, rotate: 0 }} transition={SPRING}>
-                  <Logo className="w-24 h-24 rounded-[26px]" shadow big />
+            <motion.div key="home" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -14 }} transition={SPRING}>
+              {/* Masthead */}
+              <section className="pt-20 pb-16 text-center relative">
+                <motion.div
+                  className="inline-block mb-8"
+                  initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ ...SPRING, delay: 0.05 }}
+                >
+                  <Logo className="w-[104px] h-[104px] rounded-[22px]" shadow big />
+                </motion.div>
+                <motion.div className="eyebrow mb-5" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.12 }}>
+                  By Mubashir
                 </motion.div>
                 <motion.h1
-                  className="text-4xl md:text-6xl font-extrabold tracking-tight leading-[1.05]"
-                  initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ ...SPRING, delay: 0.08 }}
+                  className="display font-semibold text-[42px] md:text-[60px] leading-[1.04] tracking-tight"
+                  initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ ...SPRING, delay: 0.16 }}
                 >
-                  Twelve desktop-grade tools.
+                  Every tool you need,
                   <br />
-                  <span style={{ background: 'linear-gradient(90deg, var(--accent), var(--accent2))', WebkitBackgroundClip: 'text', color: 'transparent' }}>
-                    One slick table.
-                  </span>
+                  <em className="font-medium" style={{ color: 'var(--accent2)' }}>on one quiet table.</em>
                 </motion.h1>
-                <motion.p className="mt-4 text-[15px] max-w-xl mx-auto" style={{ color: 'var(--muted)' }} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }}>
-                  Everything runs locally in your browser — zero uploads, zero quality loss, zero compression unless you explicitly ask for it.
+                <motion.p
+                  className="mt-6 text-[15px] leading-relaxed max-w-lg mx-auto"
+                  style={{ color: 'var(--muted)' }}
+                  initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.28 }}
+                >
+                  A private workbench for your files. Everything is processed on this device — nothing is uploaded, and nothing is re-encoded unless you choose to.
                 </motion.p>
-                <motion.div className="mt-6 flex items-center justify-center gap-2 flex-wrap" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}>
-                  <span className="chip">🔒 100% client-side</span>
-                  <span className="chip">💎 Lossless by default</span>
-                  <span className="chip">⚡ WASM powered</span>
-                  <span className="chip">🎨 5 themes</span>
-                </motion.div>
               </section>
 
-              {/* Tool grid */}
+              {/* The table */}
+              <motion.div className="flex items-end justify-between mb-7" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}>
+                <h2 className="display font-semibold text-[26px]">The table</h2>
+                <span className="text-[12px] font-medium" style={{ color: 'var(--muted)' }}>{TOOLS.length} tools · the collection grows</span>
+              </motion.div>
+
               <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
                 {TOOLS.map((t, i) => <TiltCard key={t.id} tool={t} i={i} onOpen={openTool} />)}
               </section>
 
-              <footer className="mt-20 text-center text-xs" style={{ color: 'var(--muted)' }}>
-                TheToolTable · Phase 1 web build — Phase 2: Windows & Android wrappers · All processing happens on your device.
+              <footer className="mt-24 pt-8 border-t border-line flex flex-wrap items-center justify-between gap-3 text-[12.5px]" style={{ color: 'var(--muted)' }}>
+                <span className="display text-[15px]" style={{ color: 'var(--ink)' }}>TheToolTable</span>
+                <span>Crafted by Mubashir · desktop &amp; Android editions forthcoming</span>
               </footer>
             </motion.div>
           ) : (
-            <motion.div key={active.id} initial={{ opacity: 0, y: 24, scale: 0.985 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -24, scale: 0.985 }} transition={SPRING}>
-              <div className="pt-8 pb-6 flex items-center gap-4">
-                <motion.button className="btn btn-ghost" whileTap={{ scale: 0.9 }} onClick={() => setActive(null)}>← All tools</motion.button>
-                <div className="flex items-center gap-3">
-                  <span className="w-10 h-10 rounded-xl grid place-items-center text-xl" style={{ background: `color-mix(in srgb, ${active.color} 16%, transparent)` }}>{active.icon}</span>
-                  <div>
-                    <h2 className="font-extrabold text-xl leading-none">{active.name}</h2>
-                    <div className="text-[11px] font-bold tracking-widest uppercase mt-1" style={{ color: 'var(--muted)' }}>Tool {String(active.n).padStart(2, '0')} · {active.tag}</div>
-                  </div>
+            <motion.div key={active.id} initial={{ opacity: 0, y: 20, scale: 0.99 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -20, scale: 0.99 }} transition={SPRING}>
+              <div className="pt-10 pb-8 flex items-center gap-5">
+                <motion.button className="btn btn-ghost" whileTap={{ scale: 0.92 }} onClick={() => setActive(null)}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M19 12H5m7-7-7 7 7 7" /></svg>
+                  The table
+                </motion.button>
+                <div className="h-6 w-px" style={{ background: 'var(--border)' }} />
+                <div>
+                  <div className="eyebrow mb-1">Tool {String(active.n).padStart(2, '0')} · {active.tag}</div>
+                  <h2 className="display font-semibold text-[26px] leading-none">{active.name}</h2>
                 </div>
               </div>
               <ActiveComp />

@@ -56,7 +56,15 @@ const P = {
   flagIn: <><path d="M5 3v18M5 4h11l-2.500 4L16 12H5" /></>,
   film2: <><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M7 3v18M17 3v18M3 8h4M3 12h4M3 16h4M17 8h4M17 12h4M17 16h4" /></>,
   zip: <><path d="M5 3h11l4 4v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" /><path d="M11 3v3M13 6v3M11 9v3M13 12v3" /></>,
-  zoom: <><circle cx="11" cy="11" cy="11" r="7" /><path d="m20 20-3.5-3.5M11 8v6M8 11h6" /></>,
+  viz: <><path d="M4 20V11M9 20V5M14 20v-9M19 20V8" /></>,
+  palette: <><path d="M12 3a9 9 0 1 0 0 18c1.4 0 2-.9 2-1.8 0-1.2-1-1.5-1-2.6 0-1 .8-1.6 1.8-1.6H17a4 4 0 0 0 4-4C21 6.6 17 3 12 3Z" /><circle cx="7.5" cy="11" r="1.1" /><circle cx="10" cy="7" r="1.1" /><circle cx="15" cy="7.5" r="1.1" /></>,
+  type: <><path d="M5 6V4h14v2M12 4v16M9 20h6" /></>,
+  motion: <><path d="M2 12c2-6 4-6 6 0s4 6 6 0 4-6 6 0" /></>,
+  dice: <><rect x="4" y="4" width="16" height="16" rx="3.5" /><circle cx="9" cy="9" r="1.2" /><circle cx="15" cy="9" r="1.2" /><circle cx="12" cy="12" r="1.2" /><circle cx="9" cy="15" r="1.2" /><circle cx="15" cy="15" r="1.2" /></>,
+  music: <><path d="M9 18V6l11-2v12" /><circle cx="6.5" cy="18" r="2.5" /><circle cx="17.5" cy="16" r="2.5" /></>,
+  expand: <><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" /></>,
+  sliders: <><path d="M4 7h10M18 7h2M4 17h2M10 17h10" /><circle cx="16" cy="7" r="2" /><circle cx="8" cy="17" r="2" /></>,
+  zoom: <><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5M11 8v6M8 11h6" /></>,
 }
 export function Icon({ n, s = 18, w = 1.7, className = '' }) {
   return <svg width={s} height={s} viewBox="0 0 24 24" fill={['play', 'pause'].includes(n) ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={w} strokeLinecap="round" strokeLinejoin="round" className={className}>{P[n]}</svg>

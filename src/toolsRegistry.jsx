@@ -69,10 +69,10 @@ export const TOOLS = [
     comp: Visualizer,
   },
   {
-    id: 'units', n: 9, name: 'Unit & Currency Converter', icon: '⚖️', color: '#4E937A',
-    tag: 'Offline-first',
-    desc: '150+ currencies with daily live rates & full offline fallback, plus every unit.',
-    keywords: 'currency exchange rate usd eur btc unit length mass temperature speed bytes energy offline',
+    id: 'units', n: 9, name: 'Currency, Unit & Time Converter', icon: '⚖️', color: '#4E937A',
+    tag: 'Live · Offline-ready',
+    desc: 'Fiat and crypto in every combination, 170+ units, and the time in all 195 countries.',
+    keywords: 'currency exchange rate usd pkr eur inr btc bitcoin ethereum crypto coin unit length mass temperature speed bytes energy tola marla time timezone time zone world clock converter india pakistan offline',
     comp: UnitCurrency,
   },
   {

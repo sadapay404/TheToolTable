@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { COUNTRIES, BY_CC, CONTINENTS, zoneLabel, partsIn, offsetMin, zonedToUtc, fmtOffset, isDst, zoneAbbr, pad2, dateStr, dayDiff, humanDiff } from '../../lib/units/world'
-import { Ico, Flag, FlapBoard, SwapButton, Pass, Picker, StubTrigger, CopyBtn, Chips, usePersist, Stagger, SPRING } from './parts'
+import { Ico, Flag, SwapButton, Picker, SelectChip, CopyBtn, Panel, Label, Seg, SlideText, usePersist, SPRING } from './parts'
 
 const zoneOf = (c, z) => (z && c.zones.some((x) => x.id === z) ? z : c.zone)
 const hhmm = (p, h24) => (h24 ? `${pad2(p.h)}:${pad2(p.mi)}` : `${pad2(p.h % 12 || 12)}:${pad2(p.mi)} ${p.h >= 12 ? 'PM' : 'AM'}`)
@@ -55,14 +55,14 @@ function ClockCard({ c, zone, p, ts, label }) {
   )
 }
 
-function Stepper({ value, onUp, onDown, onType, label, w = 'w-[72px]' }) {
+function TimeBox({ value, onUp, onDown, onType, label }) {
   return (
-    <div className="flex flex-col items-center gap-1">
-      <motion.button type="button" whileHover={{ y: -2 }} whileTap={{ scale: 0.8 }} onClick={onUp} aria-label={'More ' + label} className="w-9 h-6 grid place-items-center rounded-lg" style={{ color: 'var(--muted)', background: 'var(--surface2)' }}><Ico n="up" s={14} w={2.6} /></motion.button>
-      <div className={`${w} relative overflow-hidden rounded-xl border border-line focus-within:border-[var(--copper)] transition-colors`} style={{ background: 'var(--surface)' }}>
-        <input value={pad2(value)} onChange={(e) => onType(e.target.value)} onFocus={(e) => e.target.select()} onWheel={(e) => (e.deltaY < 0 ? onUp() : onDown())} inputMode="numeric" aria-label={label} className="display font-semibold bg-transparent outline-none w-full text-center py-1.5" style={{ fontSize: 40, letterSpacing: '-0.02em' }} />
+    <div className="flex items-center rounded-2xl border border-line focus-within:border-[var(--copper)] transition-colors" style={{ background: 'var(--surface)' }}>
+      <input value={pad2(value)} onChange={(e) => onType(e.target.value)} onFocus={(e) => e.target.select()} onWheel={(e) => (e.deltaY < 0 ? onUp() : onDown())} inputMode="numeric" aria-label={label} className="display font-semibold bg-transparent outline-none text-center w-[64px] sm:w-[78px] py-2" style={{ fontSize: 'clamp(30px,4.4vw,44px)', letterSpacing: '-0.02em' }} />
+      <div className="flex flex-col pr-1.5 gap-0.5">
+        <motion.button type="button" whileTap={{ scale: 0.75 }} onClick={onUp} aria-label={'More ' + label} className="w-6 h-6 grid place-items-center rounded-md" style={{ color: 'var(--muted)', background: 'var(--surface2)' }}><Ico n="up" s={13} w={2.8} /></motion.button>
+        <motion.button type="button" whileTap={{ scale: 0.75 }} onClick={onDown} aria-label={'Less ' + label} className="w-6 h-6 grid place-items-center rounded-md" style={{ color: 'var(--muted)', background: 'var(--surface2)' }}><Ico n="down" s={13} w={2.8} /></motion.button>
       </div>
-      <motion.button type="button" whileHover={{ y: 2 }} whileTap={{ scale: 0.8 }} onClick={onDown} aria-label={'Less ' + label} className="w-9 h-6 grid place-items-center rounded-lg" style={{ color: 'var(--muted)', background: 'var(--surface2)' }}><Ico n="down" s={14} w={2.6} /></motion.button>
     </div>
   )
 }
@@ -128,6 +128,7 @@ function Planner({ fz, tz, fc, tc, fp, instant }) {
 
 export default function TimeTab() {
   const [st, setSt] = usePersist('time', { from: 'IN', fz: '', to: 'PK', tz: '', mode: 'live', date: '', h: 12, mi: 0, h24: true, extras: ['AE', 'GB', 'US', 'JP'] })
+  const [more, setMore] = useState('planner')
   const upd = (p) => setSt((s) => ({ ...s, ...p }))
   const fc = BY_CC[st.from] || BY_CC.IN, tc = BY_CC[st.to] || BY_CC.PK
   const fz = zoneOf(fc, st.fz), tz = zoneOf(tc, st.tz)
@@ -148,17 +149,14 @@ export default function TimeTab() {
   const typeH = (raw) => { const n = +(raw.replace(/\D/g, '').slice(-2) || 0); if (st.h24) setH(Math.min(23, n)); else { const x = Math.min(12, n) % 12; setH(x + (fh >= 12 ? 12 : 0)) } }
   const typeMi = (raw) => setMi(Math.min(59, +(raw.replace(/\D/g, '').slice(-2) || 0)))
   const shiftDay = (n) => { const d = new Date(Date.UTC(Y, M - 1, D + n)); takeover({ date: `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}` }) }
-  const swap = () => {
-    const nfp = tp
-    setSt((s) => ({ ...s, from: s.to, fz: s.tz, to: s.from, tz: s.fz, ...(man ? { date: dateStr(nfp), h: nfp.h, mi: nfp.mi } : {}) }))
-  }
+  const swap = () => setSt((s) => ({ ...s, from: s.to, fz: s.tz, to: s.from, tz: s.fz, ...(man ? { date: dateStr(tp), h: tp.h, mi: tp.mi } : {}) }))
 
   const minute = Math.floor(now / 60000)
   const items = useMemo(() => COUNTRIES.map((c) => {
     const p = partsIn(Date.now(), c.zone)
     return { key: c.cc, title: c.name, sub: `${c.capital} · ${fmtOffset(offsetMin(c.zone, Date.now()))}${c.multi ? ' · ' + c.zones.length + ' zones' : ''}`, meta: hhmm(p, true), group: c.continent, icon: <Flag cc={c.cc} size={34} />, continent: c.continent, multi: c.multi, hay: (c.name + ' ' + c.cc + ' ' + c.capital + ' ' + c.continent + ' ' + c.zones.map((z) => z.id + ' ' + z.label).join(' ')).toLowerCase() }
   }), [minute])
-  const trig = (c, z) => ({ open, onClick }) => <StubTrigger open={open} onClick={onClick} icon={<Flag cc={c.cc} size={44} />} title={c.name} sub={`${c.multi ? zoneLabel(c, z) : c.capital} · ${zoneAbbr(z, instant) ? zoneAbbr(z, instant) + ' · ' : ''}${fmtOffset(offsetMin(z, instant))}`} />
+  const trig = (c) => ({ open, onClick }) => <SelectChip open={open} onClick={onClick} icon={<Flag cc={c.cc} size={36} />} title={c.name} sub={c.multi ? `${c.zones.length} time zones` : c.capital} />
 
   const extras = (st.extras || []).map((k) => BY_CC[k]).filter(Boolean)
   const text = hhmm(tp, st.h24)
@@ -166,107 +164,102 @@ export default function TimeTab() {
   const dstF = isDst(fz, instant), dstT = isDst(tz, instant)
 
   return (
-    <div className="space-y-5">
-      <Pass
-        left={<>
-          <div className="flex items-center justify-between mb-3">
-            <div className="eyebrow">Time in</div>
-            <motion.button type="button" onClick={() => upd({ mode: 'live' })} whileHover={{ y: -2 }} whileTap={{ scale: 0.92 }} className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11.5px] font-bold border border-line" style={{ background: man ? 'var(--surface)' : 'color-mix(in srgb, #2f9c6b 14%, var(--surface))', color: man ? 'var(--muted)' : '#2f9c6b' }}>
+    <div className="space-y-6">
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px] items-start">
+        <Panel>
+          <Label right={
+            <motion.button type="button" onClick={() => upd({ mode: 'live' })} whileHover={{ y: -1 }} whileTap={{ scale: 0.92 }} className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11.5px] font-bold border border-line" style={{ background: man ? 'var(--surface)' : 'color-mix(in srgb, #2f9c6b 14%, var(--surface))', color: man ? 'var(--muted)' : '#2f9c6b' }}>
               <span className={`w-2 h-2 rounded-full ${man ? '' : 'ex-live-dot'}`} style={{ background: man ? 'var(--muted)' : '#2f9c6b' }} />{man ? 'Use current time' : 'Live now'}
-            </motion.button>
+            </motion.button>}>When it is</Label>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <TimeBox label="hour" value={st.h24 ? fh : fh % 12 || 12} onUp={() => setH(fh + 1)} onDown={() => setH(fh - 1)} onType={typeH} />
+              <motion.span className="display text-[34px] font-semibold" animate={{ opacity: [1, 0.25, 1] }} transition={{ duration: 1, repeat: Infinity }}>:</motion.span>
+              <TimeBox label="minute" value={fmi} onUp={() => setMi(fmi + 1)} onDown={() => setMi(fmi - 1)} onType={typeMi} />
+              {!st.h24 && <Seg small value={fh >= 12 ? 'PM' : 'AM'} onChange={(x) => setH((fh % 12) + (x === 'PM' ? 12 : 0))} options={[['AM', 'AM'], ['PM', 'PM']]} />}
+            </div>
+            <div className="ml-auto"><Picker items={items} value={st.from} onChange={(k) => upd({ from: k, fz: '' })} storeId="time" filters={FILTERS} defaultPins={DEFAULT_PINS} placeholder="Search 195 countries, capitals…" trigger={trig(fc)} /></div>
           </div>
-          <Picker items={items} value={st.from} onChange={(k) => upd({ from: k, fz: '' })} storeId="time" filters={FILTERS} defaultPins={DEFAULT_PINS} placeholder="Search 195 countries, capitals…" trigger={trig(fc, fz)} />
           <AnimatePresence initial={false}>{fc.multi && <ZonePick key={fc.cc} c={fc} zone={fz} ts={now} onChange={(z) => upd({ fz: z })} />}</AnimatePresence>
 
-          <div className="mt-5 flex items-center gap-2 sm:gap-3">
-            <Stepper label="hour" value={st.h24 ? fh : fh % 12 || 12} onUp={() => setH(fh + 1)} onDown={() => setH(fh - 1)} onType={typeH} />
-            <motion.span className="display text-[40px] font-semibold pb-0.5" animate={{ opacity: [1, 0.25, 1] }} transition={{ duration: 1, repeat: Infinity }}>:</motion.span>
-            <Stepper label="minute" value={fmi} onUp={() => setMi(fmi + 1)} onDown={() => setMi(fmi - 1)} onType={typeMi} />
-            <div className="ml-1 flex flex-col gap-1.5">
-              {!st.h24 && (
-                <div className="flex flex-col rounded-xl overflow-hidden border border-line">
-                  {['AM', 'PM'].map((x) => { const on = (fh >= 12) === (x === 'PM'); return <motion.button key={x} type="button" whileTap={{ scale: 0.9 }} onClick={() => setH((fh % 12) + (x === 'PM' ? 12 : 0))} className="px-3 py-1.5 text-[12px] font-bold" style={{ background: on ? 'var(--ink)' : 'var(--surface)', color: on ? 'var(--bg)' : 'var(--muted)' }}>{x}</motion.button> })}
-                </div>
-              )}
-              <Chips small value={st.h24 ? '24' : '12'} onChange={(v) => upd({ h24: v === '24' })} options={[['24', '24 h'], ['12', '12 h']]} />
-            </div>
-          </div>
-
-          <div className="mt-4 flex items-center gap-2">
+          <div className="mt-4 flex flex-wrap items-center gap-2">
             <motion.button type="button" whileTap={{ scale: 0.85 }} onClick={() => shiftDay(-1)} aria-label="Previous day" className="w-9 h-9 grid place-items-center rounded-xl border border-line" style={{ background: 'var(--surface)' }}><Ico n="chevron" s={16} style={{ transform: 'rotate(90deg)' }} /></motion.button>
-            <label className="flex-1 flex items-center gap-2 rounded-xl border border-line px-3 py-2 focus-within:border-[var(--copper)] transition-colors" style={{ background: 'var(--surface)' }}>
+            <label className="flex items-center gap-2 rounded-xl border border-line px-3 py-2 focus-within:border-[var(--copper)] transition-colors" style={{ background: 'var(--surface)' }}>
               <Ico n="cal" s={16} style={{ color: 'var(--copper)' }} />
-              <input type="date" value={fdate} onChange={(e) => e.target.value && takeover({ date: e.target.value })} className="bg-transparent outline-none text-[13px] font-semibold flex-1 min-w-0" style={{ colorScheme: 'light dark' }} />
-              <span className="text-[11px] hidden sm:block" style={{ color: 'var(--muted)' }}>{niceDate(fp).split(',')[0]}</span>
+              <input type="date" value={fdate} onChange={(e) => e.target.value && takeover({ date: e.target.value })} className="bg-transparent outline-none text-[13px] font-semibold" style={{ colorScheme: 'light dark' }} />
             </label>
             <motion.button type="button" whileTap={{ scale: 0.85 }} onClick={() => shiftDay(1)} aria-label="Next day" className="w-9 h-9 grid place-items-center rounded-xl border border-line" style={{ background: 'var(--surface)' }}><Ico n="chevron" s={16} style={{ transform: 'rotate(-90deg)' }} /></motion.button>
+            <Seg small className="ml-auto" value={st.h24 ? '24' : '12'} onChange={(v) => upd({ h24: v === '24' })} options={[['24', '24 h'], ['12', '12 h']]} />
           </div>
           <AnimatePresence>{shifted && <motion.p initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="text-[11.5px] mt-2" style={{ color: '#c98a1c' }}>That clock time is skipped by daylight saving — moved to {pad2(fp.h)}:{pad2(fp.mi)}.</motion.p>}</AnimatePresence>
-        </>}
-        mid={<SwapButton onClick={swap} />}
-        right={<>
-          <div className="eyebrow mb-3">Is this time in</div>
-          <Picker items={items} value={st.to} onChange={(k) => upd({ to: k, tz: '' })} storeId="time" filters={FILTERS} defaultPins={DEFAULT_PINS} placeholder="Search 195 countries, capitals…" trigger={trig(tc, tz)} />
+
+          <div className="flex items-center gap-3 my-6"><span className="flex-1 h-px" style={{ background: 'var(--border)' }} /><SwapButton onClick={swap} /><span className="flex-1 h-px" style={{ background: 'var(--border)' }} /></div>
+
+          <Label>It is</Label>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="min-w-0">
+              <SlideText text={text} className="display font-semibold tabular-nums" style={{ fontSize: 'clamp(38px,6vw,58px)', letterSpacing: '-0.03em', color: 'var(--copper)', lineHeight: 1.1 }} />
+              <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                <SlideText text={niceDate(tp)} className="display font-semibold text-[17px]" />
+                <motion.span key={dayWord} initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={SPRING} className="text-[10.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md" style={{ background: dd === 0 ? 'var(--border)' : 'color-mix(in srgb, var(--copper) 18%, transparent)', color: dd === 0 ? 'var(--muted)' : 'var(--copper)' }}>{dayWord}</motion.span>
+                {dstT && <span className="text-[10.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md" style={{ background: 'color-mix(in srgb, #d99a1c 20%, transparent)', color: '#b07a12' }}>DST</span>}
+              </div>
+            </div>
+            <div className="ml-auto"><Picker items={items} value={st.to} onChange={(k) => upd({ to: k, tz: '' })} storeId="time" filters={FILTERS} defaultPins={DEFAULT_PINS} placeholder="Search 195 countries, capitals…" trigger={trig(tc)} /></div>
+          </div>
           <AnimatePresence initial={false}>{tc.multi && <ZonePick key={tc.cc} c={tc} zone={tz} ts={now} onChange={(z) => upd({ tz: z })} />}</AnimatePresence>
-          <div className="mt-5"><FlapBoard text={text} h={82} minChars={5} /></div>
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            <AnimatePresence mode="wait" initial={false}>
-              <motion.span key={niceDate(tp)} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.15 }} className="display font-semibold text-[18px]">{niceDate(tp)}</motion.span>
-            </AnimatePresence>
-            <motion.span key={dayWord} initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={SPRING} className="text-[10.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md" style={{ background: dd === 0 ? 'var(--border)' : 'color-mix(in srgb, var(--copper) 18%, transparent)', color: dd === 0 ? 'var(--muted)' : 'var(--copper)' }}>{dayWord}</motion.span>
-            {dstT && <span className="text-[10.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md" style={{ background: 'color-mix(in srgb, #d99a1c 20%, transparent)', color: '#b07a12' }}>DST</span>}
+
+          <div className="mt-6 pt-5 flex flex-wrap items-center gap-3 border-t border-line">
+            <p className="text-[12.5px] leading-snug" style={{ color: 'var(--muted)' }}>
+              <b style={{ color: 'var(--ink)' }}>{tc.name}</b> is {diff === 0 ? humanDiff(0) : <b style={{ color: 'var(--ink)' }}>{humanDiff(diff)}</b>} <b style={{ color: 'var(--ink)' }}>{fc.name}</b>
+              <span className="mono ml-1.5 text-[11px]">({fmtOffset(offsetMin(fz, instant))} → {fmtOffset(offsetMin(tz, instant))}{dstF ? ' · DST' : ''})</span>
+            </p>
             <span className="ml-auto"><CopyBtn text={`${text} ${niceDate(tp)} (${tc.name})`} label="Copy" /></span>
           </div>
-          <p className="text-[12.5px] mt-3 leading-snug" style={{ color: 'var(--muted)' }}>
-            <b style={{ color: 'var(--ink)' }}>{tc.name}</b> is {diff === 0 ? 'on ' + humanDiff(0) : <b style={{ color: 'var(--ink)' }}>{humanDiff(diff)}</b>} <b style={{ color: 'var(--ink)' }}>{fc.name}</b>
-            <span className="mono ml-1.5 text-[11px]">({fmtOffset(offsetMin(fz, instant))} → {fmtOffset(offsetMin(tz, instant))}{dstF ? ' · DST' : ''})</span>
-          </p>
-        </>}
-      />
+        </Panel>
 
-      <div className="grid gap-5 lg:grid-cols-[1fr_1.55fr]">
-        <Stagger i={2}>
-          <div className="rounded-3xl border border-line p-5 sm:p-6 h-full" style={{ background: 'var(--surface)', boxShadow: 'var(--shadow)' }}>
-            <div className="eyebrow mb-4">Clock faces</div>
-            <div className="flex items-start justify-around gap-3 flex-wrap">
-              <ClockCard c={fc} zone={fz} p={fp} ts={instant} label={fc.name} />
-              <ClockCard c={tc} zone={tz} p={tp} ts={instant} label={tc.name} />
-            </div>
+        <Panel delay={0.1} className="lg:sticky lg:top-4">
+          <Label>Clock faces</Label>
+          <div className="flex items-start justify-around gap-3 flex-wrap">
+            <ClockCard c={fc} zone={fz} p={fp} ts={instant} label={fc.name} />
+            <ClockCard c={tc} zone={tz} p={tp} ts={instant} label={tc.name} />
           </div>
-        </Stagger>
-        <Stagger i={3}><div className="rounded-3xl border border-line p-5 sm:p-6 h-full" style={{ background: 'var(--surface)', boxShadow: 'var(--shadow)' }}><Planner fz={fz} tz={tz} fc={fc} tc={tc} fp={fp} instant={instant} /></div></Stagger>
+        </Panel>
       </div>
 
-      <Stagger i={4}>
-        <div className="rounded-3xl border border-line p-5 sm:p-6" style={{ background: 'var(--surface)', boxShadow: 'var(--shadow)' }}>
-          <div className="flex items-center justify-between mb-4">
-            <div><div className="eyebrow">World clock</div><div className="text-[12px] mt-1" style={{ color: 'var(--muted)' }}>{hhmm(fp, st.h24)} in {fc.name} is…</div></div>
-            {extras.length < 12 && (
-              <Picker items={items.filter((i) => !(st.extras || []).includes(i.key))} value="" onChange={(k) => upd({ extras: [...(st.extras || []), k] })} storeId="time" filters={FILTERS} defaultPins={DEFAULT_PINS} placeholder="Add a country…" width={360}
-                trigger={({ onClick }) => <motion.button type="button" onClick={onClick} whileHover={{ y: -2 }} whileTap={{ scale: 0.9 }} className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 border border-line text-[12px] font-semibold" style={{ background: 'var(--surface2)' }}><Ico n="plus" s={14} w={2.4} />Add country</motion.button>} />
-            )}
-          </div>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
-            <AnimatePresence initial={false} mode="popLayout">
-              {extras.map((c, i) => {
-                const p = partsIn(instant, c.zone), d = dayDiff(fp, p), nt = isNight(p.h)
-                return (
-                  <motion.div key={c.cc} layout initial={{ opacity: 0, scale: 0.85, y: 14 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.8 }} transition={{ ...SPRING, delay: i * 0.04 }} whileHover={{ y: -3 }} className="group relative rounded-2xl p-3.5 border border-line" style={{ background: nt ? 'color-mix(in srgb, #30345a 12%, var(--surface2))' : 'var(--surface2)' }}>
-                    <div className="flex items-center gap-2.5"><Flag cc={c.cc} size={28} /><div className="min-w-0 leading-tight"><div className="text-[12.5px] font-bold truncate">{c.name}</div><div className="text-[10.5px] truncate" style={{ color: 'var(--muted)' }}>{c.capital}</div></div>
-                      <span className="ml-auto" style={{ color: nt ? '#7f8fd8' : '#d99a1c' }}><Ico n={nt ? 'moon' : 'sun'} s={16} /></span></div>
-                    <div className="flex items-baseline gap-2 mt-2.5 overflow-hidden">
-                      <AnimatePresence mode="popLayout" initial={false}><motion.span key={hhmm(p, st.h24)} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} transition={{ duration: 0.16 }} className="display font-semibold text-[26px] tabular-nums">{hhmm(p, st.h24)}</motion.span></AnimatePresence>
-                      <span className="text-[10.5px] font-bold" style={{ color: d ? 'var(--copper)' : 'var(--muted)' }}>{d === 0 ? 'same day' : d > 0 ? `+${d} day` : `${d} day`}</span>
-                    </div>
-                    <div className="text-[10.5px] mono mt-0.5" style={{ color: 'var(--muted)' }}>{fmtOffset(offsetMin(c.zone, instant))}</div>
-                    <button type="button" aria-label={'Remove ' + c.name} onClick={() => upd({ extras: st.extras.filter((k) => k !== c.cc) })} className="absolute top-1.5 right-1.5 w-5 h-5 grid place-items-center rounded-full opacity-0 group-hover:opacity-70 hover:!opacity-100 transition-opacity" style={{ background: 'var(--border)' }}><Ico n="x" s={10} w={3} /></button>
-                  </motion.div>
-                )
-              })}
-            </AnimatePresence>
-          </div>
+      <Panel delay={0.15}>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+          <Seg value={more} onChange={setMore} options={[['planner', 'Day planner'], ['world', 'World clock']]} />
+          {more === 'world' && extras.length < 12 && (
+            <Picker items={items.filter((i) => !(st.extras || []).includes(i.key))} value="" onChange={(k) => upd({ extras: [...(st.extras || []), k] })} storeId="time" filters={FILTERS} defaultPins={DEFAULT_PINS} placeholder="Add a country…" width={360}
+              trigger={({ onClick }) => <motion.button type="button" onClick={onClick} whileHover={{ y: -2 }} whileTap={{ scale: 0.92 }} className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 border border-line text-[12.5px] font-semibold" style={{ background: 'var(--surface2)' }}><Ico n="plus" s={14} w={2.4} />Add country</motion.button>} />
+          )}
         </div>
-      </Stagger>
+        <AnimatePresence mode="wait" initial={false}>
+          {more === 'planner' ? (
+            <motion.div key="pl" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }}><Planner fz={fz} tz={tz} fc={fc} tc={tc} fp={fp} instant={instant} /></motion.div>
+          ) : (
+            <motion.div key="wc" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }}>
+              <p className="text-[12.5px] mb-3" style={{ color: 'var(--muted)' }}>{hhmm(fp, st.h24)} in {fc.name} is…</p>
+              <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                <AnimatePresence initial={false} mode="popLayout">
+                  {extras.map((c, i) => {
+                    const p = partsIn(instant, c.zone), d = dayDiff(fp, p), nt = isNight(p.h)
+                    return (
+                      <motion.div key={c.cc} layout initial={{ opacity: 0, scale: 0.85, y: 14 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.8 }} transition={{ ...SPRING, delay: i * 0.04 }} whileHover={{ y: -3 }} className="group relative rounded-2xl p-3.5 border border-line" style={{ background: nt ? 'color-mix(in srgb, #30345a 12%, var(--surface2))' : 'var(--surface2)' }}>
+                        <div className="flex items-center gap-2.5"><Flag cc={c.cc} size={26} /><div className="min-w-0 leading-tight"><div className="text-[12.5px] font-bold truncate">{c.name}</div><div className="text-[10.5px] truncate" style={{ color: 'var(--muted)' }}>{c.capital} · {fmtOffset(offsetMin(c.zone, instant))}</div></div>
+                          <span className="ml-auto" style={{ color: nt ? '#7f8fd8' : '#d99a1c' }}><Ico n={nt ? 'moon' : 'sun'} s={16} /></span></div>
+                        <div className="flex items-baseline gap-2 mt-2.5"><SlideText text={hhmm(p, st.h24)} className="display font-semibold text-[26px] tabular-nums" /><span className="text-[10.5px] font-bold" style={{ color: d ? 'var(--copper)' : 'var(--muted)' }}>{d === 0 ? 'same day' : d > 0 ? `+${d} day` : `${d} day`}</span></div>
+                        <button type="button" aria-label={'Remove ' + c.name} onClick={() => upd({ extras: st.extras.filter((k) => k !== c.cc) })} className="absolute top-1.5 right-1.5 w-5 h-5 grid place-items-center rounded-full opacity-0 group-hover:opacity-70 hover:!opacity-100 transition-opacity" style={{ background: 'var(--border)' }}><Ico n="x" s={10} w={3} /></button>
+                      </motion.div>
+                    )
+                  })}
+                </AnimatePresence>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </Panel>
       <p className="text-[11px] leading-relaxed px-1" style={{ color: 'var(--muted)' }}>Uses your device’s IANA time-zone database, so daylight-saving rules for any date are applied automatically. Each country uses its capital’s zone unless it spans several (pick one from the zone list). Fully offline.</p>
     </div>
   )

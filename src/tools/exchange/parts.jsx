@@ -1,9 +1,9 @@
-import React, { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence, animate } from 'framer-motion'
+import { numberWords } from '../../lib/units/words'
 
 export const SPRING = { type: 'spring', stiffness: 300, damping: 25 }
-const FLAP_FONT = 'Inter, ui-sans-serif, system-ui, sans-serif'
 
 /* ------------------------------------------------ icons ------------------------------------------------ */
 const P = {
@@ -76,71 +76,6 @@ export function ItemIcon({ item, size = 32 }) {
   return <Flag cc={item.flag} size={size} label={item.code} />
 }
 
-/* ------------------------------------------------ split-flap ------------------------------------------------ */
-function Half({ ch, top, h, color = '#f4ead6', tint }) {
-  return (
-    <div className="absolute left-0 right-0 overflow-hidden" style={{ [top ? 'top' : 'bottom']: 0, height: '50%', background: tint, borderRadius: top ? '6px 6px 1px 1px' : '1px 1px 6px 6px' }}>
-      <div className="absolute left-0 right-0 text-center font-bold" style={{ [top ? 'top' : 'bottom']: 0, height: h, lineHeight: `${h}px`, fontSize: h * 0.62, color, fontFamily: FLAP_FONT, fontVariantNumeric: 'tabular-nums' }}>{ch}</div>
-    </div>
-  )
-}
-const TOP_T = 'linear-gradient(#2d2621, #1f1a16)', BOT_T = 'linear-gradient(#17130f, #231d19)'
-
-export const FlapChar = memo(function FlapChar({ ch, w, h, delay = 0, accent }) {
-  const [st, setSt] = useState({ cur: ch, prev: ch, n: 0 })
-  useEffect(() => {
-    if (ch === st.cur) return
-    const t = setTimeout(() => setSt((s) => ({ cur: ch, prev: s.cur, n: s.n + 1 })), delay)
-    return () => clearTimeout(t)
-  }, [ch])
-  const flipping = st.prev !== st.cur
-  const col = accent || '#f4ead6'
-  return (
-    <div className="relative shrink-0" style={{ width: w, height: h, perspective: h * 4 }}>
-      <div className="absolute inset-0 rounded-[7px]" style={{ boxShadow: '0 6px 14px -6px rgba(0,0,0,.7), inset 0 0 0 1px rgba(255,255,255,.05)' }} />
-      <Half ch={st.cur} top h={h} tint={TOP_T} color={col} />
-      <Half ch={flipping ? st.prev : st.cur} h={h} tint={BOT_T} color={col} />
-      {flipping && (
-        <>
-          <motion.div key={'t' + st.n} className="absolute left-0 right-0 top-0" style={{ height: '50%', transformOrigin: '50% 100%', backfaceVisibility: 'hidden', zIndex: 3 }} initial={{ rotateX: 0 }} animate={{ rotateX: -90 }} transition={{ duration: 0.17, ease: 'easeIn' }}>
-            <Half ch={st.prev} top h={h} tint={TOP_T} color={col} />
-          </motion.div>
-          <motion.div key={'b' + st.n} className="absolute left-0 right-0 bottom-0" style={{ height: '50%', transformOrigin: '50% 0%', backfaceVisibility: 'hidden', zIndex: 3 }} initial={{ rotateX: 90 }} animate={{ rotateX: 0 }}
-            transition={{ delay: 0.17, type: 'spring', stiffness: 520, damping: 20 }} onAnimationComplete={() => setSt((s) => (s.n === st.n ? { ...s, prev: s.cur } : s))}>
-            <Half ch={st.cur} h={h} tint={BOT_T} color={col} />
-          </motion.div>
-        </>
-      )}
-      <div className="absolute left-0 right-0 top-1/2 -mt-px h-[2px] z-[4] pointer-events-none" style={{ background: 'rgba(0,0,0,.75)', boxShadow: '0 1px 0 rgba(255,255,255,.06)' }} />
-      <span className="absolute left-[3px] top-1/2 -mt-[3px] w-[5px] h-[6px] rounded-sm z-[5]" style={{ background: '#0c0a08' }} />
-      <span className="absolute right-[3px] top-1/2 -mt-[3px] w-[5px] h-[6px] rounded-sm z-[5]" style={{ background: '#0c0a08' }} />
-    </div>
-  )
-})
-
-/** A row of flaps that shrinks to fit its container. `text` characters: digits, letters and punctuation. */
-export function FlapBoard({ text, h = 78, accent, pad = 14, minChars = 0, className = '' }) {
-  const wrap = useRef(null), inner = useRef(null)
-  const [scale, setScale] = useState(1)
-  const chars = useMemo(() => { const a = [...String(text)]; while (a.length < minChars) a.unshift(' '); return a }, [text, minChars])
-  const cw = (c) => (c === '.' || c === ',' || c === ' ' || c === ':' ? h * 0.36 : c === '−' || c === '-' ? h * 0.5 : h * 0.66)
-  const natural = chars.reduce((s, c) => s + cw(c) + 5, 0) - 5
-  useLayoutEffect(() => {
-    const f = () => { const a = (wrap.current?.clientWidth || natural) - 2 * pad; setScale(Math.min(1, Math.max(0.3, a / natural))) }
-    f(); const ro = new ResizeObserver(f); ro.observe(wrap.current); return () => ro.disconnect()
-  }, [natural, pad])
-  return (
-    <div ref={wrap} className={`relative rounded-2xl overflow-hidden ${className}`} style={{ background: 'linear-gradient(180deg,#14100d,#0d0a08)', padding: pad, boxShadow: 'inset 0 2px 12px rgba(0,0,0,.8), inset 0 0 0 1px rgba(255,255,255,.05), 0 14px 30px -14px rgba(0,0,0,.6)' }}>
-      {[['left-2 top-2'], ['right-2 top-2'], ['left-2 bottom-2'], ['right-2 bottom-2']].map(([c]) => <span key={c} className={`absolute ${c} w-[6px] h-[6px] rounded-full`} style={{ background: 'radial-gradient(circle at 35% 30%, #6b5e50, #1d1812)' }} />)}
-      <div style={{ height: h * scale, width: natural * scale, margin: '0 auto' }}>
-        <div ref={inner} className="flex items-center" style={{ gap: 5, transform: `scale(${scale})`, transformOrigin: '0 0', width: natural }}>
-          {chars.map((c, i) => <FlapChar key={chars.length - i} ch={c} w={cw(c)} h={h} accent={accent} delay={Math.min(i, 14) * 38} />)}
-        </div>
-      </div>
-    </div>
-  )
-}
-
 /* ------------------------------------------------ sparkline ------------------------------------------------ */
 export function Spark({ data, up = true, w = 120, h = 36, id = 'sp' }) {
   if (!data || data.length < 2) return null
@@ -169,35 +104,6 @@ export function Chips({ value, onChange, options, small }) {
         </motion.button>
       ))}
     </div>
-  )
-}
-
-export function SwapButton({ onClick, vertical }) {
-  const [n, setN] = useState(0)
-  return (
-    <motion.button type="button" aria-label="Swap" onClick={() => { setN((x) => x + 1); onClick() }} whileHover={{ scale: 1.12 }} whileTap={{ scale: 0.86 }} animate={{ rotate: n * 180 }} transition={{ type: 'spring', stiffness: 260, damping: 16 }}
-      className="relative z-10 w-12 h-12 rounded-full grid place-items-center" style={{ background: 'var(--ink)', color: 'var(--bg)', boxShadow: '0 10px 22px -8px rgba(0,0,0,.55), inset 0 0 0 3px var(--surface), 0 0 0 1px var(--border)' }}>
-      <Ico n="swap" s={19} style={{ transform: vertical ? 'rotate(90deg)' : undefined }} />
-    </motion.button>
-  )
-}
-
-/* ------------------------------------------------ boarding-pass shell ------------------------------------------------ */
-export function Pass({ left, right, mid, delay = 0 }) {
-  return (
-    <motion.div className="relative rounded-[28px] overflow-hidden border border-line grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_88px_minmax(0,1fr)]" initial={{ opacity: 0, y: 30, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ ...SPRING, delay }}
-      style={{ background: 'var(--surface)', boxShadow: 'var(--shadow-lg)' }}>
-      <div className="relative p-5 sm:p-7">{left}</div>
-      <div className="relative flex md:flex-col items-center justify-center py-3 md:py-0 min-h-[64px]" style={{ background: 'var(--surface)' }}>
-        <span className="hidden md:block absolute left-1/2 top-3 bottom-3 -ml-px border-l-2 border-dashed" style={{ borderColor: 'var(--border)' }} />
-        <span className="md:hidden absolute top-1/2 left-4 right-4 -mt-px border-t-2 border-dashed" style={{ borderColor: 'var(--border)' }} />
-        {['md:-top-3 md:mt-0 md:left-1/2 md:-ml-3 -left-3 top-1/2 -mt-3', 'md:-bottom-3 md:mt-0 md:top-auto md:left-1/2 md:-ml-3 -right-3 left-auto top-1/2 -mt-3'].map((c) => (
-          <span key={c} className={`absolute w-6 h-6 rounded-full border ${c}`} style={{ background: 'var(--bg)', borderColor: 'var(--border)', boxShadow: 'inset 0 2px 5px rgba(0,0,0,.08)' }} />
-        ))}
-        {mid}
-      </div>
-      <div className="relative p-5 sm:p-7" style={{ background: 'var(--surface2)' }}>{right}</div>
-    </motion.div>
   )
 }
 
@@ -351,29 +257,12 @@ export function Picker({ items, value, onChange, storeId, filters, defaultPins =
   )
 }
 
-/** the big ticket-stub trigger used on both sides of a pass */
-export function StubTrigger({ open, onClick, icon, title, sub, tag, accent }) {
-  return (
-    <motion.button type="button" onClick={onClick} whileHover={{ y: -3 }} whileTap={{ scale: 0.975 }} aria-haspopup="listbox" aria-expanded={open}
-      className="w-full flex items-center gap-3.5 rounded-2xl px-3.5 py-3 text-left" style={{ background: 'var(--surface)', border: `1.5px solid ${open ? 'var(--copper)' : 'var(--border)'}`, boxShadow: open ? '0 0 0 4px var(--glow), var(--shadow)' : 'var(--shadow)', transition: 'border-color .15s, box-shadow .15s' }}>
-      <AnimatePresence mode="wait" initial={false}><motion.span key={title} initial={{ scale: 0.4, rotate: -30, opacity: 0 }} animate={{ scale: 1, rotate: 0, opacity: 1 }} exit={{ scale: 0.4, opacity: 0 }} transition={SPRING} className="shrink-0">{icon}</motion.span></AnimatePresence>
-      <span className="min-w-0 flex-1 leading-tight">
-        <AnimatePresence mode="wait" initial={false}><motion.span key={title} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.14 }} className="block">
-          <span className="flex items-center gap-2"><span className="display font-semibold text-[22px] truncate" style={accent ? { color: accent } : undefined}>{title}</span>{tag && <span className="text-[9.5px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md" style={{ background: 'color-mix(in srgb, var(--copper) 16%, transparent)', color: 'var(--copper)' }}>{tag}</span>}</span>
-          <span className="block text-[12px] truncate mt-0.5" style={{ color: 'var(--muted)' }}>{sub}</span>
-        </motion.span></AnimatePresence>
-      </span>
-      <motion.span animate={{ rotate: open ? 180 : 0 }} transition={SPRING} style={{ color: 'var(--muted)' }}><Ico n="chevron" s={18} /></motion.span>
-    </motion.button>
-  )
-}
-
-export function CopyBtn({ text, label = 'Copy' }) {
+export function CopyBtn({ text, label = 'Copy', small }) {
   const [ok, setOk] = useState(false)
   return (
     <motion.button type="button" whileHover={{ y: -2 }} whileTap={{ scale: 0.9 }} onClick={() => { navigator.clipboard?.writeText(text).catch(() => {}); setOk(true); setTimeout(() => setOk(false), 1300) }}
-      className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold px-2.5 py-1.5 rounded-full border border-line" style={{ background: 'var(--surface)', color: ok ? '#2f9c6b' : 'var(--muted)' }}>
-      <AnimatePresence mode="wait" initial={false}><motion.span key={ok ? 'y' : 'n'} initial={{ scale: 0.4, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.4, opacity: 0 }} transition={{ duration: 0.12 }}><Ico n={ok ? 'check' : 'copy'} s={13} w={2.2} /></motion.span></AnimatePresence>{ok ? 'Copied' : label}
+      className={`inline-flex items-center gap-1.5 text-[11.5px] font-semibold rounded-full border border-line ${small ? 'px-2 py-1' : 'px-2.5 py-1.5'}`} style={{ background: 'var(--surface)', color: ok ? '#2f9c6b' : 'var(--muted)' }}>
+      <AnimatePresence mode="wait" initial={false}><motion.span key={ok ? 'y' : 'n'} initial={{ scale: 0.4, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.4, opacity: 0 }} transition={{ duration: 0.12 }}><Ico n={ok ? 'check' : 'copy'} s={13} w={2.2} /></motion.span></AnimatePresence>{label ? (ok ? 'Copied' : label) : null}
     </motion.button>
   )
 }
@@ -385,4 +274,111 @@ export function usePersist(key, init) {
 }
 export function Stagger({ i = 0, children, className = '', style }) {
   return <motion.div className={className} style={style} initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ ...SPRING, delay: 0.06 + i * 0.07 }}>{children}</motion.div>
+}
+
+/* ------------------------------------------------ clean building blocks ------------------------------------------------ */
+export function Panel({ children, className = '', style, pad = true, delay = 0 }) {
+  return <motion.section initial={{ opacity: 0, y: 22 }} animate={{ opacity: 1, y: 0 }} transition={{ ...SPRING, delay }} className={`rounded-[26px] border border-line ${pad ? 'p-5 sm:p-7' : ''} ${className}`} style={{ background: 'var(--surface)', boxShadow: 'var(--shadow)', ...style }}>{children}</motion.section>
+}
+export function Label({ children, right }) {
+  return <div className="flex items-center justify-between mb-2.5"><span className="eyebrow">{children}</span>{right}</div>
+}
+
+/** equal-width segmented control with a springy thumb */
+export function Seg({ value, onChange, options, small, className = '' }) {
+  const i = Math.max(0, options.findIndex(([k]) => k === value)), n = options.length
+  return (
+    <div className={`relative grid rounded-full p-1 ${className}`} style={{ gridTemplateColumns: `repeat(${n}, minmax(0,1fr))`, background: 'var(--surface2)', border: '1px solid var(--border)' }}>
+      <motion.span className="absolute top-1 bottom-1 rounded-full" style={{ width: `calc((100% - 8px) / ${n})`, background: 'var(--ink)', boxShadow: '0 6px 14px -6px rgba(0,0,0,.5)' }} initial={false} animate={{ left: `calc(4px + ${i} * (100% - 8px) / ${n})` }} transition={SPRING} />
+      {options.map(([k, l]) => (
+        <button key={k} type="button" onClick={() => onChange(k)} className={`relative z-[1] rounded-full font-semibold whitespace-nowrap transition-colors ${small ? 'px-3 py-1 text-[11.5px]' : 'px-4 py-2 text-[13px]'}`} style={{ color: k === value ? 'var(--bg)' : 'var(--muted)' }}>{l}</button>
+      ))}
+    </div>
+  )
+}
+
+/** compact picker button: icon · CODE · name ▾ */
+export function SelectChip({ open, onClick, icon, title, sub, wide }) {
+  return (
+    <motion.button type="button" onClick={onClick} whileHover={{ y: -2 }} whileTap={{ scale: 0.96 }} aria-haspopup="listbox" aria-expanded={open}
+      className={`flex items-center gap-2.5 rounded-2xl pl-2.5 pr-3 py-2 text-left ${wide ? 'w-full' : 'shrink-0'}`} style={{ background: 'var(--surface)', border: `1.5px solid ${open ? 'var(--copper)' : 'var(--border)'}`, boxShadow: open ? '0 0 0 4px var(--glow)' : 'var(--shadow)', transition: 'border-color .15s, box-shadow .15s' }}>
+      <AnimatePresence mode="wait" initial={false}><motion.span key={title} initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.5, opacity: 0 }} transition={{ duration: 0.14 }} className="shrink-0">{icon}</motion.span></AnimatePresence>
+      <span className="min-w-0 leading-tight flex-1">
+        <span className="block font-bold text-[15px] truncate">{title}</span>
+        {sub && <span className="block text-[11px] truncate max-w-[150px]" style={{ color: 'var(--muted)' }}>{sub}</span>}
+      </span>
+      <motion.span animate={{ rotate: open ? 180 : 0 }} transition={SPRING} style={{ color: 'var(--muted)' }}><Ico n="chevron" s={16} /></motion.span>
+    </motion.button>
+  )
+}
+
+export function SwapButton({ onClick }) {
+  const [n, setN] = useState(0)
+  return (
+    <motion.button type="button" aria-label="Swap" onClick={() => { setN((x) => x + 1); onClick() }} whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.85 }} animate={{ rotate: n * 180 }} transition={{ type: 'spring', stiffness: 260, damping: 16 }}
+      className="relative z-10 w-11 h-11 rounded-full grid place-items-center" style={{ background: 'var(--ink)', color: 'var(--bg)', boxShadow: '0 8px 18px -8px rgba(0,0,0,.55), 0 0 0 4px var(--surface)' }}>
+      <Ico n="swap" s={18} style={{ transform: 'rotate(90deg)' }} />
+    </motion.button>
+  )
+}
+
+/** number that counts smoothly to its new value */
+export function CountText({ value, format, className = '', style }) {
+  const [shown, setShown] = useState(value)
+  const from = useRef(value)
+  useEffect(() => {
+    if (!Number.isFinite(value) || !Number.isFinite(from.current)) { from.current = value; setShown(value); return }
+    const c = animate(from.current, value, { duration: 0.55, ease: [0.22, 1, 0.36, 1], onUpdate: (v) => { from.current = v; setShown(v) } })
+    return () => c.stop()
+  }, [value])
+  return <span className={className} style={style}>{format(shown)}</span>
+}
+
+/** a short piece of text that slides in when it changes */
+export function SlideText({ text, className = '', style }) {
+  return <span className="relative inline-block overflow-hidden align-bottom"><AnimatePresence mode="popLayout" initial={false}><motion.span key={text} initial={{ y: '70%', opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: '-70%', opacity: 0 }} transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }} className={`inline-block ${className}`} style={style}>{text}</motion.span></AnimatePresence></span>
+}
+
+function WordLine({ label, text, mono }) {
+  const words = useMemo(() => String(text).split(' '), [text])
+  return (
+    <div className="group">
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-[10.5px] font-bold uppercase tracking-[0.14em]" style={{ color: 'var(--copper)' }}>{label}</span>
+        <CopyBtn text={text} label="" small />
+      </div>
+      <p key={text} className={`leading-snug ${mono ? 'mono text-[15px]' : 'display text-[19px] font-medium'}`}>
+        {words.slice(0, 40).map((w, i) => <motion.span key={i} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25, delay: Math.min(i, 16) * 0.018 }} className="inline-block mr-[0.28em]">{w}</motion.span>).reduce((a, x, i) => (i ? [...a, ' ', x] : [x]), [])}
+        {words.length > 40 && '…'}
+      </p>
+    </div>
+  )
+}
+
+/** the “say it out loud” panel: English words + lakh/hazar style (digits or Roman-Urdu words) */
+export function WordsPanel({ value, unit, delay = 0.1 }) {
+  const w = useMemo(() => numberWords(value), [value])
+  const [style, setStyle] = usePersist('wordstyle', 'digits')
+  return (
+    <Panel delay={delay} className="lg:sticky lg:top-4">
+      <Label right={unit ? <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md" style={{ background: 'var(--surface2)', color: 'var(--muted)' }}>{unit}</span> : null}>In words</Label>
+      <AnimatePresence mode="wait" initial={false}>
+        {w ? (
+          <motion.div key="ok" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-5">
+            <WordLine label="International" text={w.en} />
+            <div className="h-px" style={{ background: 'var(--border)' }} />
+            <div>
+              <div className="flex justify-end mb-2"><Seg small value={style} onChange={setStyle} options={[['digits', '10 lakh 20'], ['words', 'das lakh bees']]} /></div>
+              <WordLine label="Lakh · Hazar" text={style === 'digits' ? w.ur : w.urWords} />
+              <div className="mt-3 flex items-center gap-2 text-[12px]" style={{ color: 'var(--muted)' }}>
+                <span className="mono px-2 py-1 rounded-md tabular-nums" style={{ background: 'var(--surface2)' }}>{w.saGrouped}</span><span>South-Asian grouping</span>
+              </div>
+            </div>
+          </motion.div>
+        ) : (
+          <motion.p key="no" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="text-[13px]" style={{ color: 'var(--muted)' }}>This value is too large, too small or not a plain number to spell out.</motion.p>
+        )}
+      </AnimatePresence>
+    </Panel>
+  )
 }

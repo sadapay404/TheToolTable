@@ -43,8 +43,8 @@ export const TOOLS = [
   {
     id: 'imagestudio', n: 5, name: 'ImagePlayer Studio', icon: '🎨', color: '#E8A33D',
     tag: 'Image Edit',
-    desc: 'Real-time non-destructive color lab: hue, vibrance, temperature, LUTs & more.',
-    keywords: 'image edit color hue saturation brightness exposure temperature tint vibrance lut crop rotate resize',
+    desc: 'GPU photo & video colour studio: 30+ looks, per-colour HSL mixer, 3-way grading, crop, straighten and export.',
+    keywords: 'image photo video edit color colour grade hsl mixer hue saturation luminance brightness exposure temperature tint vibrance preset filter look lut crop rotate straighten flip resize vignette grain sharpen',
     comp: ImageStudio,
   },
   {

@@ -199,3 +199,7 @@ table.kv td:first-child { color: var(--muted); font-weight: 600; width: 40%; }
   content: ""; position: absolute; left: 24px; top: -1px; width: 48px; height: 3px;
   background: var(--copper); border-radius: 0 0 3px 3px;
 }
+
+/* Image Studio */
+.shimmer { background: linear-gradient(100deg, var(--surface2) 30%, color-mix(in srgb, var(--surface) 70%, var(--surface2)) 50%, var(--surface2) 70%); background-size: 220% 100%; animation: shimmer-run 1.4s linear infinite; }
+@keyframes shimmer-run { to { background-position: -220% 0; } }

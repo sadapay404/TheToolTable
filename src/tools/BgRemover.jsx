@@ -5,7 +5,8 @@ import { Dropzone, AnimatedNumber } from '../components/ui.jsx'
 import { Icon, SPRING } from './studio/controls.jsx'
 import { BackgroundPanel, RefinePanel } from './bg/Panels.jsx'
 import { DownloadPanel } from './bg/Dock.jsx'
-import { warmUp, subscribe, segment, retry, MODEL_BYTES } from '../lib/bg/engine.js'
+import { warmUp, subscribe, segment, retry, setEngine, TIERS } from '../lib/bg/engine.js'
+import { EngineChooser, EnginePill, engineLine } from './bg/EngineSwitch.jsx'
 import { compose, matteLUT, matteCanvas, netMaskToWork, paintStroke, fitSize, encode, MIME, DEFAULT_EDGE } from '../lib/bg/compose.js'
 import { clamp, download, baseName, recentAction, fmtBytes } from '../lib/utils.js'
 
@@ -109,7 +110,7 @@ export default function BgRemover() {
         const d = data.current.get(next.id)
         const r = await segment(d.work.canvas)
         d.M = netMaskToWork(r.mask, r.size, d.work.w, d.work.h); d.M0 = d.M.slice()
-        patch(next.id, { status: 'done', ms: r.ms })
+        patch(next.id, { status: 'done', ms: r.ms, via: r.mode === 'online' ? `BiRefNet ${TIERS[r.tier].name}` : 'IS-Net · offline' })
         setRev((n) => n + 1); setReveal(next.id)
         recentAction(`Removed background from ${next.name}`)
       } catch (e) { patch(next.id, { status: 'error', error: e.message }) }
@@ -273,7 +274,7 @@ export default function BgRemover() {
   const ctx = {
     bg, setBg, shadow, setShadow, edge, setEdge, tool, setTool, brush, setBrush, canUndo: !!selData?.undo.length, undoStroke, dirty, resetMask, thumb: sel?.thumb,
     fmt, setFmt, quality, setQuality, scale, setScale, fit, setFit, outDims, previewUrl, sizeBytes, computing, saving, justSaved, ready: done, bgType: bg.type,
-    stats: sel?.ms ? { ms: sel.ms } : null, onDownload, onCopy, onZip, doneCount: doneItems.length,
+    stats: sel?.ms ? { ms: sel.ms, via: sel.via } : null, onDownload, onCopy, onZip, doneCount: doneItems.length,
   }
   void undoN
 
@@ -285,7 +286,7 @@ export default function BgRemover() {
           <Dropzone onFiles={addFiles} multiple accept="image/*" label="" sub=""><Hero eng={eng} onRetry={retry} /></Dropzone>
         </motion.div>
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[[44, 'MB model, bundled', 'The neural net ships inside the app. No download, works offline.'], [0, 'bytes uploaded', 'Your photos are processed on this device and never sent anywhere.'], [4, 'ways to inspect', 'Result, original, matte and a draggable before / after split.'], [6, 'background types', 'Transparent, colour, gradient, blur, scenes or your own picture.']].map(([n, a, b], i) => (
+          {[[2, 'cut-out engines', 'Offline: a 44 MB model bundled in the site. Online: BiRefNet, one of the best open models.'], [0, 'bytes uploaded', 'Photos are processed on this device. Online mode only downloads model weights.'], [4, 'ways to inspect', 'Result, original, matte and a draggable before / after split.'], [6, 'background types', 'Transparent, colour, gradient, blur, scenes or your own picture.']].map(([n, a, b], i) => (
             <motion.div key={a} className="card p-5" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ ...SPRING, delay: 0.12 + i * 0.07 }} whileHover={{ y: -4 }}>
               <div className="display font-semibold text-[34px] leading-none"><AnimatedNumber value={n} /></div>
               <div className="eyebrow mt-2">{a}</div>
@@ -367,7 +368,7 @@ export default function BgRemover() {
             )}
             {eng.error && (
               <motion.div className="absolute inset-x-0 top-20 grid place-items-center z-20" initial={{ opacity: 0, y: -14 }} animate={{ opacity: 1, y: 0 }}>
-                <div className="card px-5 py-4 flex items-center gap-4 max-w-lg"><div className="text-[13px]"><b>The cut-out engine couldn’t start.</b><div style={{ color: 'var(--muted)' }} className="text-[12px] mt-0.5 break-words">{eng.error}</div></div><button className="btn btn-primary !py-2 text-[12px]" onClick={() => retry().catch(() => {})}>Retry</button></div>
+                <div className="card px-5 py-4 flex items-center gap-4 max-w-lg"><div className="text-[13px]"><b>The cut-out engine couldn’t start.</b><div style={{ color: 'var(--muted)' }} className="text-[12px] mt-0.5 break-words">{eng.error}</div></div><div className="flex flex-col gap-2 shrink-0"><button className="btn btn-primary !py-2 text-[12px]" onClick={() => retry().catch(() => {})}>Retry</button>{eng.mode === 'online' && <button className="btn !py-2 text-[12px]" onClick={() => setEngine('offline')}>Use Offline</button>}</div></div>
               </motion.div>
             )}
 
@@ -382,6 +383,7 @@ export default function BgRemover() {
                 ))}
               </div>
               <div className="pointer-events-auto flex items-center gap-1.5">
+                <EnginePill eng={eng} canRedo={sel?.status === 'done'} onRedo={() => requeue(sel.id)} />
                 <AnimatePresence>{zoomPct > 102 && <motion.button initial={{ opacity: 0, scale: 0.7 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.7 }} whileTap={{ scale: 0.9 }} onClick={resetZoom} className="btn !py-1.5 !px-3 text-[11.5px] mono">{zoomPct}% · fit</motion.button>}</AnimatePresence>
                 <motion.button whileHover={{ y: -2 }} whileTap={{ scale: 0.9 }} className="btn !py-2 !px-3.5 text-[12px]" onClick={() => fileRef.current?.click()}><Icon n="plus" s={14} w={2.2} /> Add photos</motion.button>
                 <motion.button whileHover={{ y: -2 }} whileTap={{ scale: 0.9 }} disabled={!done} className="btn btn-primary !py-2 !px-4 text-[12px]" onClick={() => setTab('download')}><Icon n="download" s={14} w={2.2} /> Download</motion.button>
@@ -456,7 +458,7 @@ export default function BgRemover() {
 function StatusCard({ eng, sel, elapsed, ahead }) {
   const loadingModel = !eng.ready && !eng.error
   const steps = [
-    { k: 'Engine', done: eng.ready, active: loadingModel, note: eng.phase === 'model' ? `Loading bundled model ${Math.round(eng.value * 100)}%` : eng.phase === 'compile' ? 'Warming up' : eng.ready ? 'Ready' : 'Starting' },
+    { k: 'Engine', done: eng.ready, active: loadingModel, note: eng.ready ? 'Ready' : (eng.mode === 'online' && eng.phase === 'model' && !eng.fromCache) ? `Downloading ${Math.round(eng.value * 100)}%` : eng.phase === 'model' ? `Loading model ${Math.round(eng.value * 100)}%` : eng.phase === 'compile' ? 'Warming up' : 'Starting' },
     { k: 'Photo', done: sel.status !== 'loading', active: sel.status === 'loading', note: sel.status === 'loading' ? 'Reading' : 'Ready' },
     { k: 'Cut-out', done: false, active: eng.ready && sel.status === 'working', note: sel.status === 'working' ? `${elapsed.toFixed(1)} s` : ahead > 0 ? `${ahead} ahead` : 'Waiting' },
   ]
@@ -482,12 +484,7 @@ function Hero({ eng, onRetry }) {
       <HeroArt />
       <div className="display font-semibold text-[22px] text-center mt-5">Drop photos to cut out the background</div>
       <div className="text-[13px] mt-1.5 text-center" style={{ color: 'var(--muted)' }}>One or many · paste with Ctrl+V · nothing leaves your device</div>
-      <div className="flex justify-center mt-5" onClick={(e) => e.stopPropagation()}>
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="inline-flex items-center gap-2.5 px-4 py-2 rounded-full text-[12px] font-semibold" style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: 'var(--shadow)' }}>
-          <motion.span className="w-2.5 h-2.5 rounded-full" animate={{ scale: eng.ready ? [1, 1.35, 1] : [1, 0.7, 1], opacity: [1, 0.6, 1] }} transition={{ repeat: Infinity, duration: 1.6 }} style={{ background: eng.error ? '#D04841' : eng.ready ? '#4E937A' : 'var(--accent)' }} />
-          {eng.error ? <>Engine failed to start · <button className="underline" onClick={onRetry}>retry</button></> : eng.ready ? `Model ready · bundled ${fmtBytes(MODEL_BYTES)} · runs offline` : eng.phase === 'model' ? `Loading bundled model… ${Math.round(eng.value * 100)}%` : 'Starting engine…'}
-        </motion.div>
-      </div>
+      <EngineChooser eng={eng} />
     </div>
   )
 }

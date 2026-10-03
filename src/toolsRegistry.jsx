@@ -50,8 +50,8 @@ export const TOOLS = [
   {
     id: 'bgremover', n: 6, name: 'AI Background Remover', icon: '🪄', color: '#2F9C95',
     tag: 'AI',
-    desc: 'Offline AI cutouts with a bundled model. Refine brush, backgrounds, shadow, batch ZIP.',
-    keywords: 'background remover ai cutout transparent png mask erase hair isnet batch shadow blur',
+    desc: 'Offline (bundled) or Online (BiRefNet) AI cutouts. Refine brush, backgrounds, shadow, batch ZIP.',
+    keywords: 'background remover birefnet online offline ai cutout transparent png mask erase hair isnet batch shadow blur',
     comp: BgRemover,
   },
   {

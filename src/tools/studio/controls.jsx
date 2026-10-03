@@ -43,7 +43,9 @@ const P = {
   lock: <><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></>,
   shadow: <><circle cx="10" cy="9" r="5" /><path d="M5 19c2 1.4 4.200 2 7 2s5-.6 7-2" /></>,
   grid: <><path d="M3 3h18v18H3z" /><path d="M3 9h18M3 15h18M9 3v18M15 3v18" /></>,
-  zoom: <><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5M11 8v6M8 11h6" /></>,
+  globe: <><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c2.6 2.6 4 5.700 4 9s-1.400 6.400-4 9c-2.600-2.600-4-5.700-4-9s1.400-6.400 4-9Z" /></>,
+  chip: <><rect x="6" y="6" width="12" height="12" rx="2" /><rect x="9.500" y="9.500" width="5" height="5" rx="1" /><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3" /></>,
+  zoom: <><circle cx="11" cy="11" cy="11" r="7" /><path d="m20 20-3.5-3.5M11 8v6M8 11h6" /></>,
 }
 export function Icon({ n, s = 18, w = 1.7, className = '' }) {
   return <svg width={s} height={s} viewBox="0 0 24 24" fill={['play', 'pause'].includes(n) ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={w} strokeLinecap="round" strokeLinejoin="round" className={className}>{P[n]}</svg>

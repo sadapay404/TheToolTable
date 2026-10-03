@@ -60,7 +60,7 @@ function Ticket({ c }) {
           </div>
           {stats && (
             <div className="mx-4 mb-4 rounded-xl px-3.5 py-2.5 flex items-center justify-between text-[11.5px]" style={{ background: 'var(--surface2)', border: '1px solid var(--border)' }}>
-              <span style={{ color: 'var(--muted)' }}>Cut-out time</span>
+              <span style={{ color: 'var(--muted)' }}>{stats.via || 'Cut-out'} · time</span>
               <span className="mono font-semibold tabular-nums">{(stats.ms / 1000).toFixed(1)} s</span>
             </div>
           )}

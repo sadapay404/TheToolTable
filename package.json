@@ -2,7 +2,7 @@
   "name": "thetooltable",
   "private": true,
   "version": "1.0.0",
-  "description": "TheToolTable \u2014 a growing set of desktop-grade tools in one ultra-slick 3D animated studio.",
+  "description": "TheToolTable — a growing set of desktop-grade tools in one ultra-slick 3D animated studio.",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
@@ -15,12 +15,12 @@
   "dependencies": {
     "@ffmpeg/ffmpeg": "^0.12.10",
     "@ffmpeg/util": "^0.12.1",
-    "@huggingface/transformers": "^3.8.1",
     "exifr": "^7.1.3",
     "fflate": "^0.8.3",
     "framer-motion": "^11.11.0",
     "gifenc": "^1.0.3",
     "jspdf": "^4.2.1",
+    "onnxruntime-web": "1.22.0-dev.20250409-89f8206ba4",
     "pdfjs-dist": "^6.3.289",
     "pptxgenjs": "^4.0.1",
     "qrcode": "^1.5.4",

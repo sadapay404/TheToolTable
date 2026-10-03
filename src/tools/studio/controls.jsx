@@ -35,6 +35,14 @@ const P = {
   film: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4" /></>,
   image: <><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="9" cy="10" r="2" /><path d="m21 16-5-5-9 9" /></>,
   copy: <><rect x="9" y="9" width="12" height="12" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h10" /></>,
+  brush: <><path d="M9.06 11.9 18.4 2.6a2.1 2.1 0 0 1 3 3l-9.3 9.3" /><path d="M7.1 13.4c-2 0-3.6 1.6-3.6 3.6 0 1.4-.8 2.6-2 3.3 1 .5 2.3.7 3.4.7 2.5 0 4.7-2 4.7-4.5 0-1-.7-3-2.5-3.1Z" /></>,
+  eraser: <><path d="m7 21-4.3-4.3a1.5 1.5 0 0 1 0-2.1l10-10a1.5 1.5 0 0 1 2.1 0l5.5 5.5a1.5 1.5 0 0 1 0 2.1L11 21H7Z" /><path d="M21 21H7M9 9l7 7" /></>,
+  download: <><path d="M12 3v12m0 0 4-4m-4 4-4-4" /><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4" /></>,
+  layers: <><path d="m12 3 9 5-9 5-9-5 9-5Z" /><path d="m3 13 9 5 9-5" /></>,
+  bolt: <path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z" />,
+  lock: <><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></>,
+  shadow: <><circle cx="10" cy="9" r="5" /><path d="M5 19c2 1.4 4.200 2 7 2s5-.6 7-2" /></>,
+  grid: <><path d="M3 3h18v18H3z" /><path d="M3 9h18M3 15h18M9 3v18M15 3v18" /></>,
   zoom: <><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5M11 8v6M8 11h6" /></>,
 }
 export function Icon({ n, s = 18, w = 1.7, className = '' }) {

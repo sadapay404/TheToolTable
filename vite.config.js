@@ -14,4 +14,5 @@ export default defineConfig({
   preview: { allowedHosts: true },
   optimizeDeps: { exclude: ['@ffmpeg/ffmpeg', '@ffmpeg/util'] },
   build: { chunkSizeWarningLimit: 3000 },
+  worker: { format: 'es' },
 })

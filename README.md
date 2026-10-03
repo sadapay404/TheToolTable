@@ -14,7 +14,7 @@ A growing set of desktop-grade tools in one ultra-slick, 3D-animated web studio.
 - **Tailwind CSS** + CSS-variable **theme engine** (5 themes, persisted in `localStorage`).
 - **Framer Motion** — spring physics (`stiffness 300 / damping 25`), 3D card tilt, press-depth, glow reflections.
 - **FFmpeg WASM** (`@ffmpeg/ffmpeg`) — convert / target-size compress / trim, single-threaded core loaded from CDN at runtime.
-- **Transformers.js** (`@huggingface/transformers`) — RMBG-1.4 background removal on WebGPU/WASM.
+- **onnxruntime-web** (WASM, in a module worker) — runs the bundled IS-Net model for background removal. No GPU or network needed.
 - **qrcode**, **gifenc**, **exifr** — QR vector studio, GIF export, metadata parsing.
 
 ## The 12 tools
@@ -26,7 +26,7 @@ A growing set of desktop-grade tools in one ultra-slick, 3D-animated web studio.
 | 03 | Target-Size Compressor (2-pass bitrate math, live size preview) | FFmpeg WASM |
 | 04 | Media Clipper & Downloader (waveform timeline, stream-copy clips) | WebAudio + FFmpeg WASM |
 | 05 | ImagePlayer Studio (12 color sliders, LUTs, crop/rotate/flip) | Canvas, lossless PNG |
-| 06 | AI Background Remover (RMBG-1.4, refine brush, bg swap) | Transformers.js WebGPU/WASM |
+| 06 | AI Background Remover (bundled IS-Net, refine brush, backgrounds, shadow, batch ZIP) | onnxruntime-web WASM worker |
 | 07 | Frame Extractor & Clipper (frame step, snapshots, GIF maker) | canvas + gifenc + FFmpeg WASM |
 | 08 | Audio Visualizer Video (bars/radial/wave/particles, social ratios) | WebAudio + MediaRecorder |
 | 09 | Unit & Currency Converter (daily live rates, offline cache banner) | open.er-api + coingecko |

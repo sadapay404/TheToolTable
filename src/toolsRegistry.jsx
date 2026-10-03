@@ -50,8 +50,8 @@ export const TOOLS = [
   {
     id: 'bgremover', n: 6, name: 'AI Background Remover', icon: '🪄', color: '#2F9C95',
     tag: 'AI',
-    desc: 'Ultra-precise RMBG-1.4 cutouts with refine brush & background swap.',
-    keywords: 'background remover ai cutout transparent png rmbg mask erase hair',
+    desc: 'Offline AI cutouts with a bundled model. Refine brush, backgrounds, shadow, batch ZIP.',
+    keywords: 'background remover ai cutout transparent png mask erase hair isnet batch shadow blur',
     comp: BgRemover,
   },
   {

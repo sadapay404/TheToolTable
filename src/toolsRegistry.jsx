@@ -57,7 +57,7 @@ export const TOOLS = [
   {
     id: 'frames', n: 7, name: 'Frame Extractor & Clipper', icon: '🎞️', color: '#B2675E',
     tag: 'Video',
-    desc: 'Frame-by-frame stepping, hi-res snapshots, lossless trims & GIF/WebP export.',
+    desc: 'Frame-by-frame stepping, hi-res snapshots, frame series, lossless trims & GIFs.',
     keywords: 'frame extractor snapshot gif webp video trim step fps clip',
     comp: FrameExtractor,
   },

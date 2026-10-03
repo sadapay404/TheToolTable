@@ -45,6 +45,17 @@ const P = {
   grid: <><path d="M3 3h18v18H3z" /><path d="M3 9h18M3 15h18M9 3v18M15 3v18" /></>,
   globe: <><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c2.6 2.6 4 5.700 4 9s-1.400 6.400-4 9c-2.600-2.600-4-5.700-4-9s1.400-6.400 4-9Z" /></>,
   chip: <><rect x="6" y="6" width="12" height="12" rx="2" /><rect x="9.500" y="9.500" width="5" height="5" rx="1" /><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3" /></>,
+  stepBack: <><path d="M6 5v14" /><path d="M19 5v14L9 12l10-7Z" /></>,
+  stepFwd: <><path d="M18 5v14" /><path d="M5 5v14l10-7L5 5Z" /></>,
+  back10: <><path d="M11 6v12l-8-6 8-6Z" /><path d="M21 6v12l-8-6 8-6Z" /></>,
+  fwd10: <><path d="M13 6v12l8-6-8-6Z" /><path d="M3 6v12l8-6-8-6Z" /></>,
+  camera: <><path d="M4 8h3l1.500-2.500h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z" /><circle cx="12" cy="13" r="3.500" /></>,
+  scissors: <><circle cx="6" cy="6" r="3" /><circle cx="6" cy="18" r="3" /><path d="M20 4 8.100 15.900M14.500 14.500 20 20M8.100 8.100 12 12" /></>,
+  gif: <><rect x="3" y="6" width="14" height="12" rx="2" /><path d="M20 8v8M7 3h12a2 2 0 0 1 2 2v1" /></>,
+  loop: <><path d="m17 2 4 4-4 4" /><path d="M3 11v-1a4 4 0 0 1 4-4h14M7 22l-4-4 4-4" /><path d="M21 13v1a4 4 0 0 1-4 4H3" /></>,
+  flagIn: <><path d="M5 3v18M5 4h11l-2.500 4L16 12H5" /></>,
+  film2: <><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M7 3v18M17 3v18M3 8h4M3 12h4M3 16h4M17 8h4M17 12h4M17 16h4" /></>,
+  zip: <><path d="M5 3h11l4 4v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" /><path d="M11 3v3M13 6v3M11 9v3M13 12v3" /></>,
   zoom: <><circle cx="11" cy="11" cy="11" r="7" /><path d="m20 20-3.5-3.5M11 8v6M8 11h6" /></>,
 }
 export function Icon({ n, s = 18, w = 1.7, className = '' }) {

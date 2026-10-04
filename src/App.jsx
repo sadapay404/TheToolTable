@@ -1,3 +1,4 @@
+import Footer from './components/Footer.jsx'
 import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import ReactDOM from 'react-dom'
 import { AnimatePresence, MotionConfig, motion, useMotionValue, useSpring, useTransform } from 'framer-motion'
@@ -307,10 +308,6 @@ export default function App() {
                 {TOOLS.map((t, i) => <TiltCard key={t.id} tool={t} i={i} onOpen={openTool} />)}
               </section>
 
-              <footer className="mt-24 pt-8 border-t border-line flex flex-wrap items-center justify-between gap-3 text-[12.5px]" style={{ color: 'var(--muted)' }}>
-                <span className="display text-[15px]" style={{ color: 'var(--ink)' }}>TheToolTable</span>
-                <span>Crafted by Mubashir · desktop &amp; Android editions forthcoming</span>
-              </footer>
             </motion.div>
           ) : (
             <motion.div key={active.id} initial={{ opacity: 0, y: 20, scale: 0.99 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -20, scale: 0.99 }} transition={SPRING}>
@@ -331,6 +328,7 @@ export default function App() {
         </AnimatePresence>
         </ErrorBoundary>
       </main>
+      <Footer />
 
       <CommandPalette
         open={paletteOpen}

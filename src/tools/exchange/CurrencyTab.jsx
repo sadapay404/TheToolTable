@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { loadRates, refreshAll, buildItems, convertMoney, fmtMoney, fiatSymbol, ago, FAVOURITES, PAIRS, SNAPSHOT_DATE } from '../../lib/units/money'
+import { loadRates, refreshAll, buildItems, convertMoney, fmtMoney, fiatSymbol, fiatCountries, ago, FAVOURITES, PAIRS, SNAPSHOT_DATE } from '../../lib/units/money'
 import { Ico, ItemIcon, Spark, SwapButton, Picker, SelectChip, CopyBtn, Panel, Label, Seg, CountText, WordsPanel, usePersist, SPRING } from './parts'
 
 const FILTERS = [['All', () => true], ['Fiat', (i) => i.kind === 'fiat'], ['Crypto', (i) => i.kind === 'crypto'], ['Top 25', (i) => i.kind === 'crypto' && i.rank && i.rank <= 25], ['Stablecoins', (i) => ['USDT', 'USDC', 'DAI', 'USDE', 'FDUSD', 'PYUSD', 'USDS', 'TUSD'].includes(i.code)]]
@@ -68,9 +68,9 @@ export default function CurrencyTab() {
   const sid = useId().replace(/:/g, '')
 
   const pickItems = useMemo(() => items.map((i) => ({
-    key: i.key, title: i.code, sub: i.name, group: i.kind === 'fiat' ? 'Fiat currencies' : 'Crypto', icon: <ItemIcon item={i} size={34} />,
+    key: i.key, title: i.code, sub: i.name + (i.kind === 'fiat' && fiatCountries(i.code).label ? ' · ' + fiatCountries(i.code).label : ''), group: i.kind === 'fiat' ? 'Fiat currencies' : 'Crypto', icon: <ItemIcon item={i} size={34} />,
     meta: i.kind === 'crypto' ? '$' + fmtMoney(i.usd, 'crypto') : '', kind: i.kind, code: i.code, rank: i.rank,
-    hay: (i.code + ' ' + i.name + ' ' + (i.kind === 'crypto' ? 'crypto coin token' : 'fiat currency money') + ' ' + i.key).toLowerCase(),
+    hay: (i.code + ' ' + i.name + ' ' + (i.kind === 'crypto' ? 'crypto coin token' : 'fiat currency money ' + fiatCountries(i.code).hay) + ' ' + i.key).toLowerCase(),
   })), [items])
   const filters = useMemo(() => FILTERS.map(([l, f]) => [l, (p) => f(p)]), [])
   const sparkData = useMemo(() => pairSpark(a, b), [a, b])

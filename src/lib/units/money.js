@@ -53,6 +53,31 @@ const NAME_FIX = { CNH: 'Chinese Yuan (offshore)', FOK: 'Faroese Króna', KID: '
 let dn = null
 try { dn = new Intl.DisplayNames(['en'], { type: 'currency' }) } catch {}
 export const fiatName = (code) => NAME_FIX[code] || (dn && dn.of(code)) || code
+
+/* ---- which countries use each currency (so "Italy", "Germany", "UAE" all find their money) ---- */
+const SHARED = {
+  EUR: 'DE FR IT ES NL AT BE HR CY EE FI GR IE LV LT LU MT PT SK SI AD MC SM VA ME XK',
+  USD: 'US EC SV PA PR GU VI AS MP TL PW FM MH BQ TC VG',
+  XOF: 'BJ BF CI GW ML NE SN TG', XAF: 'CM CF TD CG GQ GA', XCD: 'AG AI DM GD KN LC VC MS', XPF: 'PF NC WF',
+  XCG: 'CW SX', ANG: 'CW SX', AUD: 'AU CX CC NF KI NR TV', NZD: 'NZ CK NU TK PN', CHF: 'CH LI', DKK: 'DK GL FO',
+  GBP: 'GB GG JE IM GS', ILS: 'IL PS', MAD: 'MA EH', ZAR: 'ZA LS NA SZ', INR: 'IN BT', CNH: 'HK MO', FOK: 'FO',
+}
+const ALIAS = { US: 'usa america american united states', GB: 'uk u.k. england britain british scotland wales', AE: 'uae emirates dubai abu dhabi',
+  SA: 'ksa saudi arabia', KR: 'south korea korean', KP: 'north korea', CZ: 'czechia czech republic', MM: 'burma', CI: 'ivory coast', TR: 'turkey turkiye',
+  NL: 'holland dutch', DE: 'deutschland', CH: 'swiss', ES: 'spain', PK: 'pak', IN: 'bharat', RU: 'russian', CN: 'china chinese', EU: 'europe european union eurozone' }
+let rn = null
+try { rn = new Intl.DisplayNames(['en'], { type: 'region' }) } catch {}
+const regionName = (r) => { try { return (rn && rn.of(r)) || r } catch { return r } }
+const _cc = {}
+export function fiatCountries(code) {
+  if (_cc[code]) return _cc[code]
+  const set = new Set((SHARED[code] || '').split(' ').filter(Boolean))
+  const f = (FIAT_FLAG[code] || '').toUpperCase()
+  if (f.length === 2 && f !== 'EU') set.add(f)
+  const list = [...set].map((r) => ({ r, name: regionName(r) })).filter((c) => c.name && c.name.length > 2)
+  const hay = list.map((c) => c.name + ' ' + (ALIAS[c.r] || '')).join(' ').toLowerCase() + (code === 'EUR' ? ' ' + ALIAS.EU : '')
+  return (_cc[code] = { list, hay, label: list.length === 0 ? '' : list.length <= 2 ? list.map((c) => c.name).join(', ') : list.slice(0, 3).map((c) => c.name).join(', ') + ` +${list.length - 3}` })
+}
 let symFmt = {}
 export function fiatSymbol(code) {
   if (symFmt[code] !== undefined) return symFmt[code]

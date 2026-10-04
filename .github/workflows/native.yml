@@ -1,7 +1,7 @@
 # Builds the installable apps in the cloud (no local Rust / Android SDK needed):
 #   • Windows installer  (.exe via NSIS + .msi)   — Tauri 2
 #   • Android APK        (arm64 + armv7, signed)  — Tauri 2 mobile
-# Run it from GitHub → Actions → "Build apps" → Run workflow, or push a tag like v1.0.0.
+# Run it from GitHub → Actions → "Build apps" → Run workflow, or push a version tag (v*).
 # Artifacts appear at the bottom of the run page (and as a Release when triggered by a tag).
 name: Build apps
 on:

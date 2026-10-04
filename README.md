@@ -17,7 +17,7 @@ A growing set of desktop-grade tools in one ultra-slick, 3D-animated web studio.
 - **onnxruntime-web** (WASM, in a module worker) — runs the bundled IS-Net model for background removal. No GPU or network needed.
 - **qrcode**, **gifenc**, **exifr** — QR vector studio, GIF export, metadata parsing.
 
-## The 12 tools
+## The 20 tools
 
 | # | Tool | Engine |
 |---|------|--------|
@@ -33,6 +33,14 @@ A growing set of desktop-grade tools in one ultra-slick, 3D-animated web studio.
 | 10 | Decision Hub (3D coin, bottle spin 2–12, loaded dice, wheel) | Framer Motion 3D |
 | 11 | QR Code Studio (gradients, eye/module shapes, logos, SVG/PNG) | qrcode |
 | 12 | Background Canvas Studio (mesh/linear/radial gradients, grain, 4K) | Canvas |
+| 13 | PDF Studio (merge, split, reorder, images ⇄ PDF, watermark, page numbers, sign, redact) | pdf-lib, pdf.js |
+| 14 | Scan & OCR (auto-crop, perspective fix, clean-up filters, English + Urdu OCR, searchable PDF) | tesseract.js, canvas |
+| 15 | Voice & Subtitle Studio (Whisper subtitles, subtitle editor, soft-sub muxing, recorder, audio trimmer, dictation) | transformers.js, FFmpeg WASM, WebAudio |
+| 16 | Invoice & Receipt Studio (live preview, real vector PDF, Urdu text, templates, saved library) | pdf-lib, canvas |
+| 17 | Beam (peer-to-peer files and chat, code or QR pairing, no server) | WebRTC |
+| 18 | App Icon & Asset Forge (favicon, PWA, Android, iOS, Windows, macOS, Tauri packs) | canvas, fflate |
+| 19 | Pakistan Money Kit (zakat, salary tax slabs, loan/EMI, savings profit, tola-masha-ratti) | pure maths, editable tables |
+| 20 | Text & Writing Lab (counts, case, clean-up, find/replace, diff, Urdu ⇄ Roman Urdu) | pure JS |
 
 ## Zero-compression policy
 
@@ -71,3 +79,10 @@ Shipped apps never need them. Full native plan: [docs/NATIVE-ENGINE.md](docs/NAT
 - Self-host: `npm run engine` → `http://127.0.0.1:8787/api/ytdlp` (env: `PORT`, `HOST`, `YTDLP_PATH`, `FFMPEG_PATH`, `YTDLP_CORS`, `YTDLP_ALLOW_PRIVATE=1`).
 - Windows installer prep: `node scripts/fetch-sidecars.mjs`.
 - Input is never passed to a shell; options are whitelisted; web engine only accepts public http(s) URLs.
+
+## Notes on the newer tools
+
+- **Voice & Subtitle Studio** downloads a Whisper model once (39 MB to 800 MB depending on the size you pick), then works offline. WebGPU is used when available.
+- **Scan & OCR** bundles English and Urdu; other languages are fetched on first use.
+- **Pakistan Money Kit** ships the published tax slabs for the last two tax years and lets you edit every rate. Gold and silver prices are examples — type today's rate. Tax rules change every budget; confirm on fbr.gov.pk.
+- **Beam** needs no server. Pick "Same Wi-Fi only" to avoid contacting any outside STUN server.

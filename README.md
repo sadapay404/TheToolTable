@@ -17,7 +17,7 @@ A growing set of desktop-grade tools in one ultra-slick, 3D-animated web studio.
 - **onnxruntime-web** (WASM, in a module worker) — runs the bundled IS-Net model for background removal. No GPU or network needed.
 - **qrcode**, **gifenc**, **exifr** — QR vector studio, GIF export, metadata parsing.
 
-## The 12 tools
+## The 20 tools
 
 | # | Tool | Engine |
 |---|------|--------|
@@ -33,6 +33,14 @@ A growing set of desktop-grade tools in one ultra-slick, 3D-animated web studio.
 | 10 | Decision Hub (3D coin, bottle spin 2–12, loaded dice, wheel) | Framer Motion 3D |
 | 11 | QR Code Studio (gradients, eye/module shapes, logos, SVG/PNG) | qrcode |
 | 12 | Background Canvas Studio (mesh/linear/radial gradients, grain, 4K) | Canvas |
+| 13 | PDF Studio (merge, split, rotate, reorder, cull pages, strip metadata, photos → A4) | pdf-lib + pdf.js |
+| 14 | OCR Studio (photos, screenshots and scanned PDFs read offline) | Tesseract LSTM, bundled in `public/ocr/` |
+| 15 | Voice & Subtitle Studio (SRT/VTT/ASS import, re-timing, split/merge, speech detection on the waveform) | WebAudio + cue engine |
+| 16 | Invoice Studio (line items, tax, discount, logo, 4 templates → real PDF, JSON/CSV) | jsPDF |
+| 17 | Audio Studio (waveform editing: trim, cut, fade, normalise, reverse, speed, join → WAV/.m4a) | WebAudio + FFmpeg WASM |
+| 18 | Archive Studio (.zip/.gz: list, filter, extract, build, repack) | fflate |
+| 19 | Hash & Verify (SHA-256/384/512, SHA-1, MD5, CRC-32 · batch, compare, verify a published hash) | WebCrypto + pure-JS MD5/CRC |
+| 20 | Chart & Data Studio (CSV/JSON/XLSX → animated bar/line/area/pie/donut/scatter → SVG/PNG) | own SVG chart engine |
 
 ## Zero-compression policy
 
@@ -55,16 +63,22 @@ npm run build                  # production build → dist/
 Nothing here is taken on trust — three layers of checks ship with the repo:
 
 ```bash
-npm test            # node:test unit suite (pure logic: yt-dlp core, sanitizer, units, planner, QR, registry)
+npm test            # node:test unit suite (38 cases: yt-dlp core, sanitizer, units, planner, QR, registry,
+                    # subtitles, audio maths, MD5/CRC against OpenSSL vectors, chart geometry, invoices, zip)
 npm run build       # production build must be clean
-npm run smoke       # real browser: opens all 12 tools, screenshots each, fails on crashes/console errors
+npm run smoke       # real browser: opens all 20 tools, screenshots each, fails on crashes/console errors
 npm run e2e         # deep flows: ffmpeg.wasm webm→MP4, frame grab, GIF encode, EXIF/SMS scrub round-trip,
                     # zxing encode→decode→safety, compressor two-pass with a target budget, QR self-verify
 ```
 
+`public/ocr/` holds the OCR runtime (worker, three LSTM cores, English traineddata — 14 MB); it is committed,
+and `npm run ocr:assets` refreshes it from `node_modules` after a dependency bump.
+
 `smoke`/`e2e` drive a headless Chromium through puppeteer (not a runtime dependency of the app). Point
 them at any running server with `TTT_URL=http://localhost:5173`, and to an existing puppeteer install
 with `TTT_HARNESS_MODULES=/path/to/node_modules` (default: `/home/user/browsertest/node_modules`).
+If that folder is empty, `npm run harness:setup` installs puppeteer + Chromium there and unpacks the
+shared libraries the headless build needs.
 Against a production build (`TTT_URL=http://localhost:4173`, i.e. `vite preview`) the logic section is
 skipped and reported as such — a build has no `/src/**` modules to import — while the UI and real-media
 sections still run. `npm test` resolves the test files itself (`scripts/run-tests.mjs`) so it behaves

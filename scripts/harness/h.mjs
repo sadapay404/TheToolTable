@@ -1,5 +1,5 @@
 /* Small helpers shared by smoke.mjs and e2e.mjs. */
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { URL_BASE, sleep, until } from './lib.mjs'
 
 export const SHOTS = process.env.TTT_SHOTS || '/tmp/shots'
@@ -36,6 +36,13 @@ export async function openTool(p, name) {
   if (!ok) throw new Error(`no tool card matching “${name}”`)
   await sleep(1200)
   await until(p, () => !document.querySelector('.card3d') || !!document.querySelector('main'), { timeout: 10000, label: 'tool view' }).catch(() => {})
+  // Wait for the lazy chunk AND its Suspense fallback to give way: a big tool (onnxruntime, ffmpeg)
+  // can still be a bare spinner here, which used to look like "0 controls" to the smoke test.
+  await until(p, () => {
+    if (document.querySelector('.py-24.grid')) return false // the tool loader
+    const main = document.querySelector('main')
+    return !!main && main.querySelectorAll('button, input, canvas, select').length >= 2
+  }, { timeout: 60000, step: 200, label: 'tool controls' }).catch(() => {})
   await sleep(600)
 }
 
@@ -63,6 +70,23 @@ export async function upload(p, path) {
   if (!input) throw new Error('no file input in this view')
   await input.uploadFile(path)
   await sleep(400)
+}
+
+/** Upload several files into the first file input (tools accept batches). */
+export async function uploadMany(p, paths, index = 0) {
+  const inputs = await p.$$('input[type=file]')
+  if (!inputs.length) throw new Error('no file input in this view')
+  await (inputs[index] || inputs[0]).uploadFile(...paths)
+  await sleep(500)
+}
+
+/** Send every download of this page into `dir` (cleared first) via CDP. */
+export async function downloadDir(p, dir, { clear = true } = {}) {
+  if (clear) rmSync(dir, { recursive: true, force: true })
+  mkdirSync(dir, { recursive: true })
+  const client = await p.createCDPSession()
+  await client.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: dir, eventsEnabled: true }).catch(() => {})
+  return client
 }
 
 /** Copy a Blob out of the page and write it to disk (used to build real sample media). */

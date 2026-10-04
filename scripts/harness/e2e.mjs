@@ -6,13 +6,14 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { launch, newPage, sleep, until } from './lib.mjs'
-import { shot, openTool, goHome, clickText, upload, makeSampleVideo } from './h.mjs'
+import { shot, openTool, goHome, clickText, upload, uploadMany, downloadDir, makeSampleVideo } from './h.mjs'
 
 const QUICK = process.argv.includes('--quick')
 const VIDEO = '/tmp/ttt-sample.webm'
 const PNG = '/tmp/ttt-sample.png'
 const EXIF_JPG = '/tmp/ttt-gps.jpg'
 const AUDIO = '/tmp/ttt-tone.wav'
+const TEXT_PNG = '/tmp/ttt-text.png'
 const DL = '/tmp/ttt-dl'
 const results = []
 const check = async (name, fn) => {
@@ -25,7 +26,8 @@ const eq = (a, b, msg) => { if (a !== b) throw new Error(`${msg || 'mismatch'}: 
 async function waitForFile(dir, re, timeout = 30000, step = 250) {
   const t0 = Date.now()
   for (;;) {
-    const hit = (existsSync(dir) ? readdirSync(dir) : []).filter((n) => re.test(n))
+    // Chromium writes `name.crdownload` first; reading that races the rename and throws ENOENT.
+    const hit = (existsSync(dir) ? readdirSync(dir) : []).filter((n) => re.test(n) && !/\.(crdownload|part|tmp)$/i.test(n))
     if (hit.length) return join(dir, hit[0])
     if (Date.now() - t0 > timeout) throw new Error(`no file matching ${re} in ${dir} after ${timeout}ms`)
     await sleep(step)
@@ -102,7 +104,22 @@ await check('fixtures: a real WebM clip, a PNG and an EXIF/GPS JPEG', async () =
     return btoa(s)
   })
   writeFileSync(AUDIO, Buffer.from(wav, 'base64'))
-  ok(existsSync(VIDEO) && existsSync(PNG) && existsSync(EXIF_JPG) && existsSync(AUDIO), 'a fixture is missing')
+  // an image with big black text on white — the OCR check reads this one for real
+  const textPng = await page.evaluate(async () => {
+    const c = document.createElement('canvas'); c.width = 880; c.height = 240
+    const g = c.getContext('2d')
+    g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height)
+    g.fillStyle = '#000'; g.font = 'bold 92px sans-serif'; g.textBaseline = 'middle'
+    g.fillText('HELLO 12345', 28, 78)
+    g.font = 'bold 60px sans-serif'
+    g.fillText('OFFLINE OCR', 28, 178)
+    const b = await new Promise((r) => c.toBlob(r, 'image/png'))
+    const u = new Uint8Array(await b.arrayBuffer())
+    let str = ''; for (let i = 0; i < u.length; i += 0x8000) str += String.fromCharCode(...u.subarray(i, i + 0x8000))
+    return btoa(str)
+  })
+  writeFileSync(TEXT_PNG, Buffer.from(textPng, 'base64'))
+  ok(existsSync(VIDEO) && existsSync(PNG) && existsSync(EXIF_JPG) && existsSync(AUDIO) && existsSync(TEXT_PNG), 'a fixture is missing')
   return `webm ${(rec.size / 1024).toFixed(0)} KB · png ${readFileSync(PNG).length} B · jpeg ${readFileSync(EXIF_JPG).length} B · wav ${(readFileSync(AUDIO).length / 1024).toFixed(0)} KB`
 })
 
@@ -261,8 +278,8 @@ const A = hasSources ? await page.evaluate(async () => {
 
   await step('tool registry + engine matrix are internally consistent', async () => {
     const mod = await import('/src/toolsRegistry.jsx')
-    if (mod.TOOLS.length !== 12) throw new Error(`${mod.TOOLS.length} tools`)
-    if (new Set(mod.TOOLS.map((t) => t.id)).size !== 12) throw new Error('duplicate ids')
+    if (mod.TOOLS.length !== 20) throw new Error(`${mod.TOOLS.length} tools`)
+    if (new Set(mod.TOOLS.map((t) => t.id)).size !== 20) throw new Error('duplicate ids')
     const { KIND_TARGETS, kindOf } = await import('/src/lib/engines.js')
     for (const [kind, list] of Object.entries(KIND_TARGETS)) {
       if (!list.length) throw new Error(`kind ${kind} has no targets`)
@@ -359,7 +376,7 @@ const ui = async (name, fn) => check(name, async () => {
   }
 })
 const noErrors = () => {
-  const errs = page.logs.filter((l) => !/favicon|manifest|sw\.js|ERR_CONNECTION_CLOSED|open\.er-api|coingecko|nominatim/i.test(l))
+  const errs = page.logs.filter((l) => !/favicon|manifest|sw\.js|ERR_CONNECTION_CLOSED|open\.er-api|coingecko|nominatim|Estimating resolution/i.test(l))
   if (errs.length) throw new Error('console errors: ' + errs.slice(0, 3).join(' | '))
 }
 
@@ -453,11 +470,232 @@ await ui('downloader UI: without an engine it explains itself instead of hanging
   return /engine|offline|companion|npm run/i.test(txt) ? 'offline card shown' : 'engine card shown'
 })
 
+
+/* ─────────────────────── D. the newer tools, driven for real ─────────────────────── */
+console.log('\n# newer tools')
+
+/* Fixtures built on the Node side with the app's own dependencies. */
+const PDF3 = '/tmp/ttt-3page.pdf'
+const SUBS_FILE = '/tmp/ttt-subs.srt'
+const CSV_FILE = '/tmp/ttt-sales.csv'
+const HASH_FILE = '/tmp/ttt-hashme.txt'
+const ZIP_A = '/tmp/ttt-zip-a.txt'
+const ZIP_B = '/tmp/ttt-zip-b.bin'
+const ZIP_OUT = '/tmp/ttt-archive-out'
+const { createHash } = await import('node:crypto')
+{
+  const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib')
+  const doc = await PDFDocument.create()
+  const font = await doc.embedFont(StandardFonts.Helvetica)
+  for (const label of ['PAGE ONE', 'PAGE TWO', 'PAGE THREE']) {
+    const page = doc.addPage([420, 595])
+    page.drawText(label, { x: 40, y: 500, size: 28, font, color: rgb(0.1, 0.1, 0.1) })
+  }
+  writeFileSync(PDF3, Buffer.from(await doc.save()))
+  writeFileSync(SUBS_FILE, '1\n00:00:01,000 --> 00:00:04,000\nHello there\n\n2\n00:00:05,500 --> 00:00:07,250\nSecond line\n')
+  writeFileSync(CSV_FILE, 'Month,Sales,Costs\nJan,1200,800\nFeb,1500,900\nMar,900,700\n')
+  writeFileSync(HASH_FILE, 'the quick brown fox jumps over the lazy dog\n')
+  writeFileSync(ZIP_A, 'archive file A\n')
+  writeFileSync(ZIP_B, Buffer.from([0, 1, 2, 3, 4, 5, 250, 251]))
+}
+const EXPECT_SHA = createHash('sha256').update(readFileSync(HASH_FILE)).digest('hex')
+
+await ui('PDF Studio: three pages → remove one → save → the PDF on disk really has two', async () => {
+  const client = await downloadDir(page, DL)
+  await openTool(page, 'PDF Studio')
+  await upload(page, PDF3)
+  await until(page, () => document.querySelectorAll('img[alt^="Page"]').length === 3, { timeout: 60000, label: 'three page thumbnails' })
+  await shot(page, 'e2e-pdf-loaded')
+  await page.evaluate(() => document.querySelectorAll('img[alt^="Page"]')[1].closest('button').click())
+  await clickText(page, 'Remove')
+  await until(page, () => document.querySelectorAll('img[alt^="Page"]').length === 2, { label: 'two pages left' })
+  await clickText(page, 'Save PDF')
+  const file = await waitForFile(DL, /\.pdf$/, 30000)
+  const { PDFDocument } = await import('pdf-lib')
+  const out = await PDFDocument.load(readFileSync(file))
+  eq(out.getPageCount(), 2, 'saved page count')
+  await client.send('Browser.setDownloadBehavior', { behavior: 'deny' }).catch(() => {})
+  noErrors()
+  return `${readFileSync(file).length} B PDF · ${out.getPageCount()} pages`
+})
+
+await ui('Voice & Subtitle: import an SRT, shift it by 500 ms, export it back', async () => {
+  const client = await downloadDir(page, DL)
+  await openTool(page, 'Voice & Subtitle Studio')
+  await upload(page, SUBS_FILE)
+  // cue bodies live in <textarea>s, whose values are not part of innerText
+  await until(page, () => [...document.querySelectorAll('textarea')].some((t) => t.value.includes('Hello there')), { timeout: 30000, label: 'two cues listed' })
+  const before = await page.evaluate(() => [...document.querySelectorAll('input')].map((i) => i.value).filter((v) => /^\d\d:\d\d:\d\d,\d\d\d$/.test(v)).slice(0, 2))
+  eq(before[0], '00:00:01,000', 'cue 1 start read from the file')
+  await clickText(page, 'Later')
+  const after = await until(page, () => {
+    const v = [...document.querySelectorAll('input')].map((i) => i.value).filter((x) => /^\d\d:\d\d:\d\d,\d\d\d$/.test(x))
+    return v[0] === '00:00:01,500' ? v.slice(0, 2) : null
+  }, { timeout: 15000, label: 'shifted cue times' })
+  await clickText(page, 'SRT')
+  const file = await waitForFile(DL, /\.srt$/, 20000)
+  const text = readFileSync(file, 'utf8')
+  ok(text.includes('00:00:01,500 --> 00:00:04,500'), `exported SRT not shifted:\n${text}`)
+  ok(text.includes('Hello there') && text.includes('Second line'), 'both cues survived the round trip')
+  await client.send('Browser.setDownloadBehavior', { behavior: 'deny' }).catch(() => {})
+  noErrors()
+  return `${before[0]} → ${after[0]} · ${readFileSync(file).length} B srt`
+})
+
+await ui('Hash & Verify: SHA-256 matches Node for the same bytes, and a wrong hash is caught', async () => {
+  await openTool(page, 'Hash & Verify')
+  await upload(page, HASH_FILE)
+  await clickText(page, 'Hash')
+  const shown = await until(page, () => (document.body.innerText.includes('SHA-256') && document.body.innerText.match(/[a-f0-9]{64}/)?.[0]) || null, { timeout: 30000, label: 'sha-256 in the list' })
+  eq(shown, EXPECT_SHA, 'browser SHA-256 vs node crypto')
+  await page.evaluate(() => { const t = document.querySelector('textarea'); t.focus() })
+  await page.type('textarea', 'deadbeef'.repeat(8))
+  await until(page, () => document.body.innerText.includes('These do not match'), { timeout: 8000, label: 'mismatch verdict' })
+  await page.evaluate(() => { const t = document.querySelector('textarea'); t.focus(); t.select() })
+  await page.type('textarea', EXPECT_SHA, { delay: 1 })
+  await until(page, () => document.body.innerText.includes('A perfect match'), { timeout: 8000, label: 'match verdict' })
+  noErrors()
+  return `sha256 ${shown.slice(0, 16)}… · mismatch and match both detected`
+})
+
+await ui('Archive Studio: zip two files, then open that zip and see them listed', async () => {
+  const client = await downloadDir(page, ZIP_OUT)
+  await openTool(page, 'Archive Studio')
+  await clickText(page, 'Create')
+  await uploadMany(page, [ZIP_A, ZIP_B])
+  await until(page, () => document.body.innerText.includes('ttt-zip-a.txt') && document.body.innerText.includes('ttt-zip-b.bin'), { label: 'both files queued' })
+  await clickText(page, 'Create zip')
+  const file = await waitForFile(ZIP_OUT, /\.zip$/, 30000)
+  const { unzipSync } = await import('fflate')
+  const entries = unzipSync(new Uint8Array(readFileSync(file)))
+  const names = Object.keys(entries).sort()
+  ok(names.includes('ttt-zip-a.txt') && names.includes('ttt-zip-b.bin'), `zip contents: ${names.join(', ')}`)
+  eq(new TextDecoder().decode(entries['ttt-zip-a.txt']), 'archive file A\n', 'file A round-tripped')
+  eq([...entries['ttt-zip-b.bin']].join(','), '0,1,2,3,4,5,250,251', 'binary file round-tripped intact')
+
+  await goHome(page)
+  await openTool(page, 'Archive Studio')
+  await upload(page, file)
+  await until(page, () => /ttt-zip-a\.txt/.test(document.body.innerText) && /ttt-zip-b\.bin/.test(document.body.innerText), { timeout: 20000, label: 'archive listing' })
+  await client.send('Browser.setDownloadBehavior', { behavior: 'deny' }).catch(() => {})
+  noErrors()
+  return `${readFileSync(file).length} B zip · ${names.length} entries read back`
+})
+
+await ui('Invoice Studio: a filled invoice becomes a real PDF with the number inside it', async () => {
+  const client = await downloadDir(page, DL)
+  await openTool(page, 'Invoice Studio')
+  await page.type('input[placeholder="Client / company"]', 'Bannu Traders')
+  await page.type('input[placeholder="What did you do?"]', 'Consulting')
+  await until(page, () => document.body.innerText.includes('Bannu Traders'), { label: 'preview updated' })
+  await clickText(page, 'PDF')
+  const file = await waitForFile(DL, /\.pdf$/, 30000)
+  const bytes = readFileSync(file)
+  ok(bytes[0] === 0x25 && bytes[1] === 0x50, 'PDF magic')
+  ok(bytes.includes(Buffer.from('INV-0001')), 'the invoice number is inside the file')
+  ok(bytes.includes(Buffer.from('Bannu Traders')), 'the client name is inside the file')
+  const { PDFDocument } = await import('pdf-lib')
+  eq((await PDFDocument.load(bytes)).getPageCount(), 1, 'one A4 page')
+  await client.send('Browser.setDownloadBehavior', { behavior: 'deny' }).catch(() => {})
+  noErrors()
+  return `${(bytes.length / 1024).toFixed(0)} KB PDF · ${new Date().getFullYear()}`
+})
+
+await ui('Chart & Data Studio: a CSV becomes an SVG chart, and the SVG exports', async () => {
+  const client = await downloadDir(page, DL)
+  await openTool(page, 'Chart & Data Studio')
+  await upload(page, CSV_FILE)
+  const bars = await until(page, () => {
+    const n = document.querySelectorAll('svg rect').length
+    return n >= 5 ? n : null
+  }, { timeout: 30000, label: 'bars drawn' })
+  const labels = await page.evaluate(() => [...document.querySelectorAll('svg text')].map((t) => t.textContent).join(' '))
+  ok(/Sales/.test(labels) && /Jan/.test(labels), `axis labels missing: ${labels.slice(0, 80)}`)
+  await shot(page, 'e2e-chart')
+  await clickText(page, 'SVG')
+  const file = await waitForFile(DL, /\.svg$/, 20000)
+  const svg = readFileSync(file, 'utf8')
+  ok(svg.startsWith('<?xml') && svg.includes('<svg'), 'svg header')
+  ok((svg.match(/<rect/g) || []).length >= 5, 'bars survived the export')
+  await client.send('Browser.setDownloadBehavior', { behavior: 'deny' }).catch(() => {})
+  noErrors()
+  return `${bars} shapes · ${(svg.length / 1024).toFixed(0)} KB svg`
+})
+
+await ui('Audio Studio: load a WAV, normalise it, export a working file', async () => {
+  const client = await downloadDir(page, DL)
+  await openTool(page, 'Audio Studio')
+  await upload(page, AUDIO)
+  await until(page, () => !!document.querySelector('canvas') && /3\.0 s|3\.0/.test(document.body.innerText.replace(/\s+/g, ' ')), { timeout: 30000, label: 'waveform loaded' })
+  await sleep(400)
+  await clickText(page, 'Normalise')
+  await clickText(page, 'Save WAV')
+  const file = await waitForFile(DL, /\.wav$/, 30000)
+  const wav = readFileSync(file)
+  const dv = new DataView(wav.buffer, wav.byteOffset, wav.byteLength)
+  const fmt = String.fromCharCode(...wav.subarray(8, 12))
+  eq(fmt, 'WAVE', 'wav container')
+  eq(dv.getUint32(24, true), 44100, 'sample rate preserved')
+  eq(dv.getUint16(22, true), 1, 'mono preserved')
+  const samples = dv.getUint32(40, true) / 2
+  const seconds = samples / dv.getUint32(24, true)
+  ok(Math.abs(seconds - 3) < 0.15, `about three seconds, got ${seconds.toFixed(2)}`)
+  let peak = 0
+  for (let i = 0; i < samples; i += 17) peak = Math.max(peak, Math.abs(dv.getInt16(44 + i * 2, true)))
+  ok(peak > 31000, `normalise should reach full scale, peak was ${peak}`)
+  await client.send('Browser.setDownloadBehavior', { behavior: 'deny' }).catch(() => {})
+  noErrors()
+  return `${seconds.toFixed(1)} s · peak ${peak}/32767 · ${(wav.length / 1024).toFixed(0)} KB`
+})
+
+await ui('OCR Studio UI: drop a picture, press Read text, the words appear', async () => {
+  await openTool(page, 'OCR Studio')
+  await upload(page, TEXT_PNG)
+  const started = Date.now()
+  await clickText(page, 'Read text')
+  const text = await until(page, () => {
+    const t = [...document.querySelectorAll('textarea')].map((x) => x.value).join('\n')
+    return /HELLO/.test(t) ? t : null
+  }, { timeout: 180000, label: 'recognised text' })
+  ok(/12345/.test(text), `digits missing from: ${JSON.stringify(text.slice(0, 120))}`)
+  ok(/OFFLINE/.test(text.toUpperCase()), 'second line missing')
+  const conf = await page.evaluate(() => document.body.innerText.match(/confidence[\s\S]{0,40}?(\d+)%/i)?.[1] || '?')
+  noErrors()
+  return `“${text.replace(/\s+/g, ' ').trim().slice(0, 26)}” · ${conf}% in the UI · ${((Date.now() - started) / 1000).toFixed(1)} s`
+})
+
+if (hasSources) {
+  await check('OCR Studio: the bundled engine reads a rendered image with no network', async () => {
+    const r = await page.evaluate(async () => {
+      const { recognize, preload } = await import('/src/lib/ocr.js')
+      await preload()
+      const c = document.createElement('canvas')
+      c.width = 900; c.height = 260
+      const g = c.getContext('2d')
+      g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height)
+      g.fillStyle = '#000'; g.font = 'bold 96px sans-serif'; g.textBaseline = 'middle'
+      g.fillText('HELLO 12345', 30, 100)
+      g.font = 'bold 64px sans-serif'
+      g.fillText('OFFLINE OCR', 30, 195)
+      const blob = await new Promise((res) => c.toBlob(res, 'image/png'))
+      const t0 = Date.now()
+      const out = await recognize(blob)
+      return { text: out.text, confidence: out.confidence, ms: Date.now() - t0, lines: out.lines.length }
+    })
+    ok(/HELLO/.test(r.text), `did not read HELLO: ${JSON.stringify(r.text).slice(0, 160)}`)
+    ok(/12345/.test(r.text), `did not read the digits: ${JSON.stringify(r.text).slice(0, 160)}`)
+    ok(/OFFLINE|OCR/.test(r.text.toUpperCase()), 'second line missing')
+    ok(r.confidence > 55, `confidence too low: ${r.confidence}`)
+    ok(r.lines >= 2, `expected two lines, got ${r.lines}`)
+    return `“${r.text.replace(/\s+/g, ' ').trim().slice(0, 28)}” · ${Math.round(r.confidence)}% · ${(r.ms / 1000).toFixed(1)} s · ${r.lines} lines`
+  })
+}
+
 /* ─────────────────────── summary ─────────────────────── */
 const failed = results.filter((r) => !r.ok)
 console.log(`\n# ${results.length - failed.length}/${results.length} checks passed`)
 if (failed.length) { console.log('# failed:'); failed.forEach((f) => console.log(`#   ✗ ${f.name} — ${f.note}`)) }
-const pageErrs = page.logs.filter((l) => !/favicon|manifest|sw\.js|ERR_CONNECTION_CLOSED/i.test(l))
+const pageErrs = page.logs.filter((l) => !/favicon|manifest|sw\.js|ERR_CONNECTION_CLOSED|Estimating resolution/i.test(l))
 if (pageErrs.length) { console.log('# page log leftovers:'); pageErrs.slice(0, 6).forEach((l) => console.log('#   ' + l)) }
 await browser.close()
 process.exit(failed.length ? 1 : 0)

@@ -2,10 +2,21 @@
    Puppeteer is intentionally NOT a dependency of the app (it would bloat the shipped bundle), so it is
    resolved from the app's own node_modules when present and otherwise from TTT_HARNESS_MODULES
    (default: /home/user/browsertest/node_modules, the sandbox test rig). */
+import { existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
 
 const FALLBACK = process.env.TTT_HARNESS_MODULES || '/home/user/browsertest/node_modules'
+
+/* The headless Chromium build targets Amazon Linux; scripts/harness/setup.mjs unpacks the handful of
+   shared libraries it needs next to the harness deps. Hand them to the browser process explicitly so
+   no shell setup is required. */
+const libDir = [
+  process.env.TTT_CHROMIUM_LIBS,
+  join(FALLBACK, '..', 'lib'),
+  '/home/user/browsertest/lib',
+  '/tmp/al2023x/lib',
+].filter(Boolean).find((d) => existsSync(join(d, 'libnss3.so')))
 
 function loadOne(name) {
   const tries = [createRequire(import.meta.url), createRequire(join(FALLBACK, 'noop.js'))]
@@ -39,6 +50,7 @@ export async function launch() {
   return puppeteer.launch({
     executablePath,
     headless: 'shell',
+    env: libDir ? { ...process.env, LD_LIBRARY_PATH: [libDir, process.env.LD_LIBRARY_PATH].filter(Boolean).join(':') } : process.env,
     args: [...chromium.args, '--no-sandbox', '--disable-accelerated-2d-canvas', '--autoplay-policy=no-user-gesture-required'],
     defaultViewport: { width: 1280, height: 900 },
     protocolTimeout: 240000, // animated tools (WebGL/canvas loops) can stall a screenshot

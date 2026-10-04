@@ -1,15 +1,15 @@
 # TheToolTable — Full Repository Analysis
 
 **Analysed:** 4 Oct 2026 · branch `arena/01a10643-thetooltable` @ `3d43ee8`
-**Method:** full source read (100% of `src/`, `server/`, `scripts/`, `src-tauri/`, CI, docs), production build executed, dev server + headless-Chrome smoke test of all 12 tools, dependency audit, asset/bundle measurement. Nothing was modified.
+**Method:** full source read (100% of `src/`, `server/`, `scripts/`, `src-tauri/`, CI, docs), production build executed, dev server + headless-Chrome smoke test of all tools (12 at the time; 20 today), dependency audit, asset/bundle measurement. Nothing was modified.
 
 ---
 
 ## 0. Resolution status (updated after the fix pass)
 
-Everything below was fixed, and the app was re-verified with the shipped harness (`npm test` 29/29,
-`npm run smoke` 12/12 tools on both the dev server and the production build, `npm run e2e` 18/18 —
-including real ffmpeg.wasm encodes and a real EXIF scrub round-trip).
+Everything below was fixed, and the app was re-verified with the shipped harness (`npm test` 38/38,
+`npm run smoke` 20 tools with 0 broken, `npm run e2e` 27/27 — including real ffmpeg.wasm encodes, a real
+EXIF scrub round-trip and a real OCR read of a rendered image with the network cut).
 
 | # | Finding | Status |
 |---|---|---|
@@ -52,7 +52,7 @@ This is an unusually complete, genuinely local-first product. 13.6k lines of app
 |---|---|
 | `npm install --ignore-scripts` | ✅ 251 packages, clean |
 | `npm run build` | ✅ 13.8 s → `dist/` (no warnings other than chunk sizes) |
-| Dev server + all 12 tools opened in headless Chrome | ✅ **zero** React errors, zero page errors, zero failed same-origin requests |
+| Dev server + all tools opened in headless Chrome | ✅ **zero** React errors, zero page errors, zero failed same-origin requests |
 | Offline behaviour without internet | ✅ Tools 1, 2, 5, 6(offline), 7, 10, 11, 12 fully functional; Tool 9 falls back to its bundled snapshot; Tool 4 reports "engine offline" gracefully |
 | `npm ci --dry-run` (what CI runs) | ✅ lockfile consistent |
 | `npm audit --omit=dev` | ⚠️ 3 high advisories (`xlsx`, `image-size` via `pptxgenjs`) — see F5 |
@@ -130,7 +130,7 @@ Adding a tool = one lazy import + one registry object. That is a genuinely good 
 
 ---
 
-## 4. The 12 tools — engine map & notable internals
+## 4. The tools — engine map & notable internals
 
 | # | Tool | File(s) | Engine / core | Notable internals |
 |---|---|---|---|---|
@@ -147,20 +147,46 @@ Adding a tool = one lazy import + one registry object. That is a genuinely good 
 | 11 | QR Code Studio | `QRStudio.jsx` + 12 sub-files + `lib/qr/*` | `qrcode`, `zxing-wasm`, jsPDF | 33 templates, 40 logos, gradients, dot/eye shapes, frames, ECC tuning, **real decoder self-check with a scanability score**, camera scanner, barcode writer, bulk CSV/grid sheets, print cards (PDF), history/library, payload-safety heuristics |
 | 12 | Background Canvas Studio | `BackgroundStudio.jsx` + `lib/wall/*` | **WebGL2 uber-shader** (237 ln) | 12 generative styles, symmetry, pixelate, OKLab mixing, finishing stack (grain/vignette/glow/shade), 35 palettes, 38 gallery looks, text layer, 4K PNG/WebM/GIF export, saved looks, full-screen, keyboard shortcuts, undo/redo |
 
+### 4.1 Tools 13–20 (the second batch)
+
+Added after the v1 audit, built to the same shape as the table above: a tool is a single `.jsx`
+component in `src/tools/`, heavy logic lives in `src/lib/*`, and every engine is bundled so the
+tool still works with the network off.
+
+| # | Tool | File(s) | Engine / core | Notable internals |
+|---|---|---|---|---|
+| 13 | PDF Studio | `PdfStudio.jsx` + `lib/pdf/ops.js` | pdf-lib + pdf.js | Thumbnail grid (pdf.js render, own loading-task teardown), per-page rotate/delete/reorder, merge several documents, split to ranges, strip metadata, photos→A4 pages, →PDF/JPEG,ZIP output |
+| 14 | OCR Studio | `OcrStudio.jsx` + `lib/ocr.js` | Tesseract LSTM **in `public/ocr/`** (14 MB) | Word/line boxes drawn over the image, per-word confidence, languages from the bundled traineddata, PDF page import through pdf.js, output to text/copy/searchable-PDF |
+| 15 | Voice & Subtitle Studio | `VoiceStudio.jsx` + `lib/subs.js` | WebAudio + cue engine | SRT/VTT/ASS parse→edit→export round-trip, shift/speed cues, split/merge, per-cue timing stamped against the waveform, silence-based speech detection, transcript text kept in `textarea.value` |
+| 16 | Invoice Studio | `InvoiceStudio.jsx` + `lib/invoice.js` | jsPDF | Line items/discount/tax, 4 templates, logo + signature raster, running totals, `INV-0001` numbering with persisted counter, PDF preview, JSON/CSV export |
+| 17 | Audio Studio | `AudioStudio.jsx` + `lib/audio.js` | WebAudio + ffmpeg.wasm | Waveform editor, selection scrubbing, trim/cut/fade/normalise/reverse/speed, join with crossfade, WAV export plus `.m4a` through FFmpeg |
+| 18 | Archive Studio | `ArchiveStudio.jsx` + `lib/zip.js` | fflate | Open a zip/gz and browse entries, filter, extract selected, build a new archive, repack streams, size/CRC column view |
+| 19 | Hash & Verify | `HashVerify.jsx` + `lib/hash.js` | WebCrypto + pure-JS MD5/CRC | SHA-256/384/512 + SHA-1 via WebCrypto, MD5 and CRC-32 implemented in JS (checked against OpenSSL vectors in `tests/tools.test.mjs`), batch hashing by drop, side-by-side compare, pasted-hash verify |
+| 20 | Chart & Data Studio | `ChartStudio.jsx` + `lib/chart.js` | own SVG chart engine | CSV/JSON/XLSX import with type sniffing, bar/line/area/pie/donut/scatter, animated entry, legend + axis formatting, SVG/PNG export |
+
+In the same pass `README.md` and this document were refreshed from "12 tools" to 20, and the
+harness grew a section that exercises every new app end-to-end in a real browser.
+
 ---
 
 ## 5. Verification detail (what I actually ran)
 
 ```
-npm install --ignore-scripts      → 251 packages in 9 s
-npm run build                     → ✓ built in 13.8 s (dist/ 114 MB, first-load 293 KB + 46 KB CSS)
-npm run dev (0.0.0.0:5173)        → Vite ready in 192 ms
-headless Chrome @1280×900         → home renders 12 cards; each tool opened in turn:
-                                    12/12 no crash, no console errors, no page errors
-Tool 09 without internet          → "Offline snapshot 3 Oct 2026 · approximate" shown correctly
+npm test                          → 38/38 (node:test; includes MD5/CRC vs OpenSSL vectors)
+npm run build                     → ✓ built in 13.6 s (dist/ 129 MB — 14 MB of that is the OCR runtime)
+npm run dev (0.0.0.0:5173)        → Vite ready in ~200 ms
+npm run smoke                     → 20 tools · 19 clean · 1 warning · 0 broken
+npm run e2e                       → 27/27 real checks, 0 page errors
+                                     · section D drives the eight new apps through their own UI:
+                                       remove a page → save → the file on disk has 2 pages (1527 B)
+                                       SRT import → +500 ms → the exported file says 00:00:01,500
+                                       hashes equal Node's, archive round-trips, invoice PDF, chart SVG
+                                       OCR reads a rendered image offline: "HELLO 12345 OFFLINE OCR", 96%
+Tool 09 without internet          → "Offline snapshot · approximate" shown correctly
 ```
 
-Only network-dependent behaviour flagged in the smoke run: Tool 09's three rate APIs are unreachable in the sandbox → graceful offline fallback (by design, and the visible label is honest).
+The single smoke warning is Tool 09's three rate APIs being unreachable in this sandbox →
+graceful offline fallback (by design, and the visible label is honest).
 
 ---
 

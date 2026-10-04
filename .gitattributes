@@ -18,3 +18,7 @@
 *.onnx binary
 *.ico  binary
 *.ttf  binary
+
+# OCR runtime: keep the traineddata byte-exact (it is gzip, not text).
+*.gz   binary
+*.br   binary

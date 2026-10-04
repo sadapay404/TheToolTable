@@ -450,12 +450,16 @@ test('the tool registry stays complete and lazily loadable (parsed as text — .
   // and `$` in a multiline regex does not match before \r\n — a real cross-platform failure.
   const src = readFileSync(new URL('../src/toolsRegistry.jsx', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
   const loaders = [...src.matchAll(/^\s{2}([A-Za-z]+): \(\) => import\('\.\/tools\/([A-Za-z]+)\.jsx'\),$/gm)]
-  assert.equal(loaders.length, 12, 'one lazy loader per tool')
+  assert.equal(loaders.length, 20, 'one lazy loader per tool')
   const ids = [...src.matchAll(/id: '([a-z]+)', n: (\d+), name: '([^']+)'/g)].map((m) => ({ id: m[1], n: Number(m[2]), name: m[3] }))
-  assert.equal(ids.length, 12, 'every tool declares id + number + name on its descriptor line')
-  assert.equal(new Set(ids.map((x) => x.id)).size, 12, 'ids are unique')
-  assert.deepEqual(ids.map((x) => x.n), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], 'numbered 1..12 in order')
-  assert.equal((src.match(/lz\('[A-Za-z]+'\)/g) || []).length, 12, 'every tool is wired through lz()')
-  assert.equal((src.match(/keywords: '[^']+'/g) || []).length, 12, 'every tool has search keywords')
-  assert.ok(/id: 'metadata'/.test(src) && /id: 'backgrounds'/.test(src), 'first and last tools present')
+  assert.equal(ids.length, 20, 'every tool declares id + number + name on its descriptor line')
+  assert.equal(new Set(ids.map((x) => x.id)).size, 20, 'ids are unique')
+  assert.deepEqual(ids.map((x) => x.n), Array.from({ length: 20 }, (_, i) => i + 1), 'numbered 1..20 in order')
+  assert.equal((src.match(/lz\('[A-Za-z]+'\)/g) || []).length, 20, 'every tool is wired through lz()')
+  assert.equal((src.match(/keywords: '[^']+'/g) || []).length, 20, 'every tool has search keywords')
+  assert.ok(/id: 'metadata'/.test(src) && /id: 'chart'/.test(src), 'first and last tools present')
+  // every loader key must be a file that exists
+  for (const [, , file] of loaders) {
+    assert.ok(readFileSync(new URL(`../src/tools/${file}.jsx`, import.meta.url), 'utf8').length > 500, `${file}.jsx exists and is not a stub`)
+  }
 })

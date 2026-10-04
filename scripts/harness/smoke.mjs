@@ -1,4 +1,4 @@
-/* Smoke: open all 12 tools in a real browser, screenshot each, and fail on crashes / console errors.
+/* Smoke: open every tool in a real browser, screenshot each, and fail on crashes / console errors.
    Run with a dev or preview server up:  TTT_URL=http://localhost:5173 npm run smoke            */
 import { launch, newPage, sleep, until, URL_BASE } from './lib.mjs'
 import { openTool, goHome, shot, crashed } from './h.mjs'
@@ -16,6 +16,14 @@ const TOOLS = [
   ['Decision & Randomizer', 'decision'],
   ['QR Code Studio', 'qr'],
   ['Background Canvas Studio', 'wall'],
+  ['PDF Studio', 'pdf'],
+  ['OCR Studio', 'ocr'],
+  ['Voice & Subtitle Studio', 'voice'],
+  ['Invoice Studio', 'invoice'],
+  ['Audio Studio', 'audio'],
+  ['Archive Studio', 'archive'],
+  ['Hash & Verify', 'hash'],
+  ['Chart & Data Studio', 'chart'],
 ]
 
 const b = await launch()

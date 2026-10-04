@@ -14,6 +14,7 @@ const loaders = {
   DecisionHub: () => import('./tools/DecisionHub.jsx'),
   QRStudio: () => import('./tools/QRStudio.jsx'),
   BackgroundStudio: () => import('./tools/BackgroundStudio.jsx'),
+  PdfStudio: () => import('./tools/PdfStudio.jsx'),
 }
 const lz = (k) => { const C = lazy(loaders[k]); C.preload = loaders[k]; return C }
 
@@ -101,5 +102,12 @@ export const TOOLS = [
     desc: 'Wallpapers: mesh gradients, grain, presets & lossless 4K PNG export.',
     keywords: 'background wallpaper gradient mesh noise grain solid 4k avatar story canvas',
     comp: lz('BackgroundStudio'),
+  },
+  {
+    id: 'pdf', n: 13, name: 'PDF Studio', icon: '📑', color: '#C0392B',
+    tag: 'Documents',
+    desc: 'Merge, split, reorder, rotate, watermark, number, sign and redact PDFs — pages are copied, never recompressed.',
+    keywords: 'pdf merge split reorder rotate extract watermark page numbers sign signature redact images jpg convert metadata',
+    comp: lz('PdfStudio'),
   },
 ]

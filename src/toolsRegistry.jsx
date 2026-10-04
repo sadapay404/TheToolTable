@@ -19,6 +19,7 @@ const loaders = {
   VoiceStudio: () => import('./tools/VoiceStudio.jsx'),
   InvoiceStudio: () => import('./tools/InvoiceStudio.jsx'),
   Beam: () => import('./tools/Beam.jsx'),
+  IconForge: () => import('./tools/IconForge.jsx'),
 }
 const lz = (k) => { const C = lazy(loaders[k]); C.preload = loaders[k]; return C }
 
@@ -141,5 +142,12 @@ export const TOOLS = [
     desc: 'Send files and messages straight between two devices — no upload, no account, no server. Encrypted peer to peer.',
     keywords: 'beam share send transfer file p2p webrtc airdrop nearby wifi qr chat',
     comp: lz('Beam'),
+  },
+  {
+    id: 'icons', n: 18, name: 'App Icon & Asset Forge', icon: '🧩', color: '#C2566B',
+    tag: 'Design · Developers',
+    desc: 'Turn one logo into every icon you need: favicon, PWA, Android, iPhone, Windows, macOS and Tauri packs in one ZIP.',
+    keywords: 'icon favicon ico icns app icon android ios pwa manifest tauri maskable adaptive logo asset generator',
+    comp: lz('IconForge'),
   },
 ]

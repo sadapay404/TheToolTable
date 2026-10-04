@@ -6,7 +6,7 @@ import { logoById, logoMarkup } from './logos.js'
 
 export const DEFAULT_STYLE = {
   ecc: 'auto', margin: 2,
-  dots: { shape: 'liquid', scale: 1, fill: 'solid', color: '#1A1411', c2: '#B4715A', c3: '#3E8ED0', stops: 2, angle: 45, grad: 'linear', duo: 'random', seed: 7, image: null, dark: 0.5 },
+  dots: { shape: 'soft', scale: 1, fill: 'solid', color: '#1A1411', c2: '#B4715A', c3: '#3E8ED0', stops: 2, angle: 45, grad: 'linear', duo: 'random', seed: 7, image: null, dark: 0.5 },
   eyes: { frame: 'rounded', ball: 'rounded', sync: false, frameColor: '#1A1411', ballColor: '#B4715A', per: false, p: [{ f: '#1A1411', b: '#B4715A' }, { f: '#1A1411', b: '#B4715A' }, { f: '#1A1411', b: '#B4715A' }] },
   bg: { type: 'solid', color: '#FFFFFF', c2: '#F3E6D8', angle: 90, image: null, fade: 0.72, radius: 0.04 },
   logo: { id: null, upload: null, size: 0.22, badge: 'circle', badgeColor: '#FFFFFF', color: '#1A1411', clear: true, border: false },

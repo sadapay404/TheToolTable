@@ -63,7 +63,7 @@ export default function Bulk() {
   const csvCols = csv ? Math.max(...csv.rows.slice(0, 50).map((r) => r.length)) : 0
   const colName = (i) => (csv && header && csv.rows[0][i] ? csv.rows[0][i] : `Column ${i + 1}`)
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,430px)] items-start">
+    <div className="grid gap-6 grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_minmax(0,430px)] items-start">
       <div className="space-y-6 min-w-0">
         <Panel delay={0.02}>
           <Label right={<motion.span key={items.length} initial={{ scale: 1.25 }} animate={{ scale: 1 }} className="mono text-[11px] font-bold px-2.5 py-1 rounded-full" style={{ background: 'var(--surface2)', color: 'var(--copper)' }}><CountText value={items.length} format={(v) => Math.round(v)} /> codes</motion.span>}>1 · Your list</Label>

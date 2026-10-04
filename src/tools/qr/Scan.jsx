@@ -148,7 +148,7 @@ export default function Scan() {
   const toggleFav = () => { if (!rec) return; setScans((l) => l.map((x) => (x.id === rec.id ? { ...x, fav: !x.fav } : x))) }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,430px)] items-start">
+    <div className="grid gap-6 grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_minmax(0,430px)] items-start">
       <Panel delay={0.02}>
         <Label right={<span className="mono text-[11px]" style={{ color: 'var(--muted)' }}>{scans.length} in history</span>}>Scanner</Label>
         <Seg value={mode} onChange={setMode} options={[['image', 'Image'], ['camera', 'Live camera'], ['screen', 'Screen']]} />

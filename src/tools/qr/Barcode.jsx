@@ -61,7 +61,7 @@ export default function Barcode() {
     } catch (e) { toast(e.message || 'Export failed', true) }
   }
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,430px)] items-start">
+    <div className="grid gap-6 grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_minmax(0,430px)] items-start">
       <div className="space-y-4 lg:sticky lg:top-24 order-2 lg:order-1">
         <Panel pad={false} className="overflow-hidden" delay={0.02}>
           <div className="relative p-6 sm:p-10 grid place-items-center" style={{ minHeight: 380, background: 'radial-gradient(ellipse at 50% 30%, color-mix(in srgb, var(--copper) 11%, var(--surface)) 0%, var(--surface) 70%)' }}>

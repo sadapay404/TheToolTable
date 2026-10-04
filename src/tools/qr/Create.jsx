@@ -47,7 +47,7 @@ export default function Create() {
   }
   const svgHtml = built.r ? built.r.svg.replace('__W__', '100%').replace('__H__', '100%') : ''
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)] items-start">
+    <div className="grid gap-6 grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)] items-start">
       {/* preview column */}
       <div className="lg:sticky lg:top-24 space-y-4">
         <Panel pad={false} className="overflow-hidden" delay={0.02}>

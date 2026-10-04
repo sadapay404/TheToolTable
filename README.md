@@ -65,6 +65,10 @@ npm run e2e         # deep flows: ffmpeg.wasm webm→MP4, frame grab, GIF encode
 `smoke`/`e2e` drive a headless Chromium through puppeteer (not a runtime dependency of the app). Point
 them at any running server with `TTT_URL=http://localhost:5173`, and to an existing puppeteer install
 with `TTT_HARNESS_MODULES=/path/to/node_modules` (default: `/home/user/browsertest/node_modules`).
+Against a production build (`TTT_URL=http://localhost:4173`, i.e. `vite preview`) the logic section is
+skipped and reported as such — a build has no `/src/**` modules to import — while the UI and real-media
+sections still run. `npm test` resolves the test files itself (`scripts/run-tests.mjs`) so it behaves
+identically in bash and in cmd.exe — the shell no longer has to expand `tests/*.test.mjs`.
 
 ## Native apps (Windows + Android)
 

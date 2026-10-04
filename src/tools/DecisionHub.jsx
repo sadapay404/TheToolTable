@@ -32,8 +32,8 @@ export default function DecisionHub() {
   return (
     <LogCtx.Provider value={log}>
       <div className="space-y-6">
-        <div className="flex items-stretch gap-3">
-          <div className="flex-1 grid grid-cols-4 sm:grid-cols-7 gap-2">
+        <div className="grid grid-cols-4 sm:grid-cols-[repeat(7,minmax(0,1fr))_56px] gap-2">
+          <>
             {GAMES.map((g, i) => {
               const on = g.id === tab
               return (
@@ -45,8 +45,8 @@ export default function DecisionHub() {
                 </motion.button>
               )
             })}
-          </div>
-          <motion.button type="button" onClick={() => setSnd(!sound)} whileHover={{ y: -3 }} whileTap={{ scale: 0.88 }} aria-label={sound ? 'Mute sounds' : 'Unmute sounds'} title={sound ? 'Sound on' : 'Sound off'} className="shrink-0 w-14 rounded-2xl border border-line grid place-items-center" style={{ background: 'var(--surface)', boxShadow: 'var(--shadow)', color: sound ? 'var(--copper)' : 'var(--muted)' }}>
+          </>
+          <motion.button type="button" onClick={() => setSnd(!sound)} whileHover={{ y: -3 }} whileTap={{ scale: 0.88 }} aria-label={sound ? 'Mute sounds' : 'Unmute sounds'} title={sound ? 'Sound on' : 'Sound off'} className="rounded-2xl min-h-[64px] border border-line grid place-items-center" style={{ background: 'var(--surface)', boxShadow: 'var(--shadow)', color: sound ? 'var(--copper)' : 'var(--muted)' }}>
             <AnimatePresence mode="wait" initial={false}><motion.span key={sound ? 'on' : 'off'} initial={{ scale: 0.4, rotate: -40, opacity: 0 }} animate={{ scale: 1, rotate: 0, opacity: 1 }} exit={{ scale: 0.4, opacity: 0 }} transition={{ duration: 0.18 }}><DIco n={sound ? 'sound' : 'mute'} s={22} /></motion.span></AnimatePresence>
           </motion.button>
         </div>

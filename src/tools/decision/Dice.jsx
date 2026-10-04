@@ -39,7 +39,7 @@ export default function Dice() {
   const log = useLog()
   const [o, setO] = usePersist('dice', { n: 2, faces: 6, mod: 0, loaded: false, fav: 6, power: 3 })
   const upd = (p) => setO((s) => ({ ...s, ...p }))
-  const [dice, setDice] = useState([{ v: 5, rot: { x: 0, y: 0 } }, { v: 3, rot: { x: 0, y: 0 } }])
+  const [dice, setDice] = useState([{ v: 5, rot: { x: 0, y: 90 } }, { v: 3, rot: { x: -90, y: 0 } }])
   const [busy, setBusy] = useState(false)
   const [burst, setBurst] = useState(0)
   const [hist, setHist] = useState([])
@@ -69,9 +69,9 @@ export default function Dice() {
 
   return (
     <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px] items-start">
-      <Stage h={470} glow="#C3423F">
+      <Stage h={540} glow="#C3423F">
         <Burst k={burst} />
-        <div className="flex flex-col items-center justify-between h-full py-8 px-4" style={{ minHeight: 470 }}>
+        <div className="flex flex-col items-center justify-between h-full py-8 px-4" style={{ minHeight: 540 }}>
           <div className="flex-1 flex items-center justify-center gap-7 flex-wrap" style={{ perspective: 900 }}>
             {shown.map((d, i) => (
               <div key={i} className="flex flex-col items-center">
@@ -80,7 +80,7 @@ export default function Dice() {
               </div>
             ))}
           </div>
-          <div className="h-16 flex flex-col items-center justify-center">
+          <div className="h-16 mb-3 flex flex-col items-center justify-center">
             <div className="display font-semibold text-[40px] leading-none" style={{ color: 'var(--copper)' }}><CountText value={total} format={(v) => Math.round(v)} /></div>
             <div className="text-[12px] mt-1.5" style={{ color: 'var(--muted)' }}>{o.n > 1 || o.mod ? shown.map((d) => d.v).join(' + ') + (o.mod ? ` ${o.mod > 0 ? '+' : '−'} ${Math.abs(o.mod)}` : '') : 'total'}</div>
           </div>

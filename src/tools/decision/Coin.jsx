@@ -59,9 +59,9 @@ export default function Coin() {
 
   return (
     <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px] items-start">
-      <Stage h={470} glow={METALS[o.metal].b}>
+      <Stage h={540} glow={METALS[o.metal].b}>
         <Burst k={burst} />
-        <div className="flex flex-col items-center justify-between h-full py-8 px-4" style={{ minHeight: 470 }}>
+        <div className="flex flex-col items-center justify-between h-full py-8 px-4" style={{ minHeight: 540 }}>
           <div className="flex-1 flex items-center justify-center gap-5 flex-wrap" style={{ perspective: 1100 }}>
             {shown.map((c, i) => (
               <div key={i} className="relative flex flex-col items-center">
@@ -70,7 +70,7 @@ export default function Coin() {
               </div>
             ))}
           </div>
-          <div className="h-14 grid place-items-center">
+          <div className="h-14 grid place-items-center mb-3">
             <AnimatePresence mode="wait">{out && <motion.div key={out.k} initial={{ opacity: 0, y: 14, scale: 0.7 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0 }} transition={SPRING} className="display font-semibold text-[34px]" style={{ color: 'var(--copper)' }}>{out.txt}</motion.div>}</AnimatePresence>
           </div>
           <PrimaryBtn icon="coin" onClick={flip} busy={busy} disabled={busy}>{busy ? 'Flipping…' : o.n > 1 ? `Flip ${o.n} coins` : 'Flip the coin'}</PrimaryBtn>

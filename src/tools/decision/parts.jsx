@@ -127,7 +127,7 @@ export function Stepper({ value, onChange, min = 1, max = 10, label }) {
 export function PrimaryBtn({ children, onClick, disabled, busy, icon, className = '' }) {
   return (
     <motion.button type="button" onClick={onClick} disabled={disabled} whileHover={disabled ? {} : { y: -3, scale: 1.02 }} whileTap={disabled ? {} : { scale: 0.93 }}
-      className={`btn-sheen relative inline-flex items-center justify-center gap-2.5 rounded-full px-9 py-3.5 text-[15px] font-bold ${className}`} style={{ background: 'var(--ink)', color: 'var(--bg)', opacity: disabled ? 0.55 : 1, boxShadow: '0 14px 26px -12px rgba(0,0,0,.6)' }}>
+      className={`relative inline-flex items-center justify-center gap-2.5 rounded-full px-9 py-3.5 text-[15px] font-bold ${className}`} style={{ background: 'var(--ink)', color: 'var(--bg)', opacity: disabled ? 0.55 : 1, boxShadow: '0 14px 26px -12px rgba(0,0,0,.6)' }}>
       {icon && <motion.span animate={busy ? { rotate: 360 } : { rotate: 0 }} transition={busy ? { repeat: Infinity, duration: 0.9, ease: 'linear' } : SPRING}><DIco n={icon} s={18} /></motion.span>}{children}
     </motion.button>
   )

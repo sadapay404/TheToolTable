@@ -37,9 +37,9 @@ export default function Numbers() {
 
   return (
     <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px] items-start">
-      <Stage h={470} glow="#2F9C95">
+      <Stage h={540} glow="#2F9C95">
         <Burst k={burst} />
-        <div className="flex flex-col items-center justify-between h-full py-8 px-5 gap-5" style={{ minHeight: 470 }}>
+        <div className="flex flex-col items-center justify-between h-full py-8 px-5 gap-5" style={{ minHeight: 540 }}>
           <div className="flex-1 w-full flex items-center justify-center">
             <AnimatePresence mode="wait">
               {busy ? <motion.div key="b" className="flex gap-2" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>{Array.from({ length: Math.min(o.count, 6) }, (_, i) => <motion.span key={i} className="w-3.5 h-3.5 rounded-full" style={{ background: 'var(--copper)' }} animate={{ y: [0, -18, 0], scale: [1, 1.3, 1] }} transition={{ duration: 0.45, repeat: Infinity, delay: i * 0.07 }} />)}</motion.div>

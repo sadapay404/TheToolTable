@@ -18,7 +18,7 @@ including real ffmpeg.wasm encodes and a real EXIF scrub round-trip).
 | F3 | Engine shipped with `Access-Control-Allow-Origin: *` | **Fixed** — origin allowlist by default (local dev + thetooltable.app), `YTDLP_CORS` to widen, `*` only on request |
 | F4 | Undisclosed third-party calls (geocode, coin logos) | **Labelled** — the dropzone and the tool copy now name OpenStreetMap; privacy hardening was explicitly waived by the owner (personal software) |
 | F5 | `xlsx` advisories, `image-size` DoS | **Fixed** — `xlsx` → `npm:@e965/xlsx@^0.20.3`, `image-size` overridden to ^2.0.4 → `npm audit --omit=dev` clean |
-| F6 | Silent GIF frame cap | **Already surfaced** — the panel shows "capped at N frames" (the audit missed it; verified in `qr/…/Panels.jsx`) |
+| F6 | Silent GIF frame cap | **Already surfaced** — `src/tools/frames/Panels.jsx:199` shows "GIFs are capped at 300 frames — only the first N s is used"; `encodeGif()` also returns `capped`/`wanted` so any future caller can react |
 | F7 | Stale README / NATIVE-ENGINE | **Fixed** — bundled (not CDN) ffmpeg core, real slider/look counts, the native build section, a verification section, honest Android engine status |
 | F8 | No automated gate; harness unbound | **Fixed** — `npm test` suite, `npm run smoke` / `npm run e2e`, new `web.yml` CI (build + tests + dist assertions), `native.yml` runs the tests, `sandbox-recover.sh` no longer hardcodes paths |
 | F9 | `Dropzone` not keyboard-accessible | **Fixed** — `role="button"`, focus ring, Enter/Space, `aria-label`; icon-only buttons labelled |

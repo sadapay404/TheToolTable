@@ -107,8 +107,11 @@ await check('fixtures: a real WebM clip, a PNG and an EXIF/GPS JPEG', async () =
 })
 
 /* ─────────────────────── A. pure logic, running on the real page ─────────────────────── */
-console.log('\n# logic')
-const A = await page.evaluate(async () => {
+// The logic checks import source modules, which only a Vite *dev* server serves. Against a production
+// build (vite preview) they are skipped on purpose — the UI/media sections below still run for real.
+const hasSources = await page.evaluate(async () => { try { const r = await fetch('/src/lib/utils.js'); return r.ok && /javascript/.test(r.headers.get('content-type') || '') } catch { return false } })
+console.log('\n# logic' + (hasSources ? '' : ' (skipped — this target has no source modules; UI + media still run)'))
+const A = hasSources ? await page.evaluate(async () => {
   const out = []
   const step = async (n, fn) => { try { const v = await fn(); out.push({ n, ok: true, note: String(v ?? '') }) } catch (e) { out.push({ n, ok: false, note: e.message }) } }
 
@@ -286,7 +289,7 @@ const A = await page.evaluate(async () => {
   })
 
   return out
-})
+}) : []
 for (const r of A) { results.push({ name: r.n, ok: r.ok, note: r.note }); console.log(`${r.ok ? '✓' : '✗'} ${r.n}${r.note ? ` — ${r.note}` : ''}`) }
 
 /* ─────────────────────── B. real media: ffmpeg.wasm + frames + GIF ─────────────────────── */

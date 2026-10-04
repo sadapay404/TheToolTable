@@ -41,8 +41,9 @@ export function QIco({ n, s = 18, w = 1.8, className = '', style }) {
   return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={w} strokeLinecap="round" strokeLinejoin="round" className={className} style={style} aria-hidden="true">{g}</svg>
 }
 
-export function Btn({ children, onClick, icon, solid, copper, small, disabled, busy, className = '', title, full }) {
-  const bg = solid ? 'var(--ink)' : copper ? 'var(--copper)' : 'var(--surface)'
+export function Btn({ children, onClick, icon, solid, copper, small, disabled, busy, className = '', title, full, tone }) {
+  if (tone) { solid = false; copper = true }
+  const bg = tone || (solid ? 'var(--ink)' : copper ? 'var(--copper)' : 'var(--surface)')
   const fg = solid || copper ? (copper ? '#fff' : 'var(--bg)') : 'var(--ink)'
   return (
     <motion.button type="button" onClick={onClick} disabled={disabled || busy} title={title} whileHover={disabled ? {} : { y: -2 }} whileTap={disabled ? {} : { scale: 0.94 }}
@@ -118,9 +119,9 @@ export function Color({ label, value, onChange, quick = false }) {
 }
 
 /** pill tabs with per-item animated background; scrolls on small screens */
-export function Tabs({ value, onChange, tabs, small, className = '' }) {
+export function Tabs({ value, onChange, tabs, small, wrap, className = '' }) {
   return (
-    <div className={`flex gap-1.5 overflow-x-auto no-scrollbar -mx-1 px-1 py-1 ${className}`} role="tablist" style={{ scrollbarWidth: 'none' }}>
+    <div className={`flex gap-1.5 ${wrap ? 'flex-wrap' : 'overflow-x-auto no-scrollbar -mx-1 px-1 py-1'} ${className}`} role="tablist" style={{ scrollbarWidth: 'none' }}>
       {tabs.map(([k, l, ic, badge]) => {
         const on = k === value
         return (

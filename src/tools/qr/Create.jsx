@@ -74,7 +74,7 @@ export default function Create() {
       </div>
       {/* controls column */}
       <Panel delay={0.06} className="min-w-0">
-        <Tabs value={sub} onChange={setSub} tabs={SUB} small className="mb-5" />
+        <Tabs value={sub} onChange={setSub} tabs={SUB} small wrap className="mb-5" />
         <AnimatePresence mode="wait" initial={false}>
           <motion.div key={sub} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}>
             {sub === 'content' && <Content />}

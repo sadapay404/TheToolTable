@@ -20,9 +20,9 @@ export async function pdfBlob(r, { mm = 80, margin = 10, title = '', dpi = 300, 
   const px = Math.min(8192, Math.max(600, mmToPx(mm, dpi)))
   const c = await toCanvas(r, px, { bg: transparent ? null : '#FFFFFF' })
   const h = (mm * r.H) / r.W, W = mm + margin * 2, H = h + margin * 2 + (title ? 8 : 0)
-  const doc = new jsPDF({ unit: 'mm', format: [W, H], orientation: W > H ? 'l' : 'p', compress: false })
+  const doc = new jsPDF({ unit: 'mm', format: [W, H], orientation: W > H ? 'l' : 'p', compress: true })
   doc.setProperties({ title: title || 'QR code', creator: 'TheToolTable QR Studio' })
-  doc.addImage(c.toDataURL('image/png'), 'PNG', margin, margin, mm, h, undefined, 'NONE')
+  doc.addImage(c.toDataURL('image/png'), 'PNG', margin, margin, mm, h, undefined, 'FAST')
   if (title) { doc.setFontSize(9); doc.setTextColor(90); doc.text(title.slice(0, 80), W / 2, H - 5, { align: 'center' }) }
   return doc.output('blob')
 }
@@ -66,7 +66,7 @@ export async function bulkZip(items, style, { format = 'png', px = 1024, labels 
 export async function bulkPdf(items, style, { page = 'a4', cols = 3, rows = 4, labels = true, guides = true, mm = null, title = '' }, onProgress) {
   const { jsPDF } = await import('jspdf')
   const [PW, PH] = page === 'letter' ? [215.9, 279.4] : [210, 297]
-  const doc = new jsPDF({ unit: 'mm', format: [PW, PH], compress: false })
+  const doc = new jsPDF({ unit: 'mm', format: [PW, PH], compress: true })
   const mx = 10, my = 12, cw = (PW - mx * 2) / cols, ch = (PH - my * 2) / rows
   const per = cols * rows
   for (let i = 0; i < items.length; i++) {
@@ -79,7 +79,7 @@ export async function bulkPdf(items, style, { page = 'a4', cols = 3, rows = 4, l
     const w = mm ? Math.min(mm, box) : box, h = (w * r.H) / r.W
     const c = await toCanvas(r, 900, { bg: '#FFFFFF' })
     const x = x0 + (cw - w) / 2, y = y0 + 3 + (box - h) / 2
-    doc.addImage(c.toDataURL('image/png'), 'PNG', x, y, w, h, undefined, 'NONE')
+    doc.addImage(c.toDataURL('image/png'), 'PNG', x, y, w, h, undefined, 'FAST')
     if (lab) { doc.setFontSize(8); doc.setTextColor(40); doc.text(String(items[i].label).slice(0, 36), x0 + cw / 2, y0 + 3 + box + 4.2, { align: 'center' }) }
     if (guides) { doc.setDrawColor(210); doc.setLineWidth(0.15); doc.setLineDashPattern([1.2, 1.2], 0); doc.rect(x0 + 1, y0 + 1, cw - 2, ch - 2); doc.setLineDashPattern([], 0) }
     onProgress?.(i + 1, items.length)

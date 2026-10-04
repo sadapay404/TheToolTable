@@ -82,7 +82,7 @@ export function Btn({ children, icon, onClick, primary, disabled, busy, classNam
 
 export function Chips({ value, onChange, options, small = true }) {
   return (
-    <div className="flex flex-wrap gap-1.5">
+    <div className="flex flex-wrap gap-1.5 rail">
       {options.map(([k, l]) => (
         <motion.button key={String(k)} type="button" whileHover={{ y: -2 }} whileTap={{ scale: 0.93 }} onClick={() => onChange(k)}
           className={`rounded-full border font-semibold ${small ? 'px-3 py-1 text-[11.5px]' : 'px-4 py-1.5 text-[12.5px]'}`}

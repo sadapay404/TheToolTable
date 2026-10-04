@@ -23,7 +23,114 @@
   --shadow-lg: 0 2px 4px rgba(26,24,23,0.06), 0 24px 48px -16px rgba(26,24,23,0.22);
   --hero-a: #F7EFE2;
   --hero-b: #FDE8D7;
+  --appbar-h: 56px;
 }
+
+/* --- themes: generated from src/themes.js by `npm run themes:css` --- */
+html[data-theme="material"] {
+  --bg: #FEF7FF;
+  --surface: #FFFFFF;
+  --surface2: #F3EDF7;
+  --border: #CAC4D0;
+  --ink: #1D1B20;
+  --muted: #49454F;
+  --accent: #6750A4;
+  --accent2: #7D5260;
+  --copper: #6750A4;
+  --glow: rgba(103, 80, 164, 0.24);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.10), 0 1px 3px 1px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 1px 3px rgba(0, 0, 0, 0.10), 0 4px 8px 3px rgba(0, 0, 0, 0.08);
+  --hero-a: #EADDFF;
+  --hero-b: #FFD8E4;
+}
+
+html[data-theme="creamy"] {
+  --bg: #FDFBF7;
+  --surface: #FFFFFF;
+  --surface2: #F7F3EA;
+  --border: #E6E1D6;
+  --ink: #1A1817;
+  --muted: #7A7267;
+  --accent: #C87941;
+  --accent2: #8A6D3B;
+  --copper: #B4715A;
+  --glow: rgba(200,121,65,0.25);
+  --shadow: 0 10px 30px -12px rgba(26,24,23,0.18), 0 2px 8px -2px rgba(26,24,23,0.08);
+  --shadow-lg: 0 30px 60px -20px rgba(26,24,23,0.25), 0 8px 20px -8px rgba(26,24,23,0.12);
+  --hero-a: #F7EFE2;
+  --hero-b: #FDE8D7;
+}
+
+html[data-theme="oled"] {
+  --bg: #000000;
+  --surface: #0A0A0A;
+  --surface2: #121212;
+  --border: #1F1F1F;
+  --ink: #FFFFFF;
+  --muted: #8B8B8B;
+  --accent: #FFFFFF;
+  --accent2: #9E9E9E;
+  --copper: #D0D0D0;
+  --glow: rgba(255,255,255,0.18);
+  --shadow: 0 10px 30px -12px rgba(0,0,0,0.9);
+  --shadow-lg: 0 30px 60px -20px rgba(0,0,0,0.95);
+  --hero-a: #0A0A0A;
+  --hero-b: #111111;
+}
+
+html[data-theme="cyberpunk"] {
+  --bg: #0A0E17;
+  --surface: #0E1420;
+  --surface2: #131B2B;
+  --border: #1E2A44;
+  --ink: #E8F6FF;
+  --muted: #6E7FA0;
+  --accent: #FF0055;
+  --accent2: #00F0FF;
+  --copper: #00F0FF;
+  --glow: rgba(0,240,255,0.35);
+  --shadow: 0 10px 30px -12px rgba(0,240,255,0.25), 0 0 0 1px rgba(255,0,85,0.15);
+  --shadow-lg: 0 30px 60px -20px rgba(255,0,85,0.35), 0 0 30px -5px rgba(0,240,255,0.25);
+  --hero-a: #12101F;
+  --hero-b: #071A22;
+}
+
+html[data-theme="pastel"] {
+  --bg: #F3F0F8;
+  --surface: #FBFAFE;
+  --surface2: #ECE7F4;
+  --border: #E0DAEA;
+  --ink: #4A4458;
+  --muted: #9A93A8;
+  --accent: #B4A7D6;
+  --accent2: #A8D5BA;
+  --copper: #B4A7D6;
+  --glow: rgba(180,167,214,0.30);
+  --shadow: 0 10px 28px -12px rgba(74,68,88,0.15);
+  --shadow-lg: 0 28px 55px -20px rgba(74,68,88,0.20);
+  --hero-a: #EFE8F5;
+  --hero-b: #E7F2EC;
+}
+
+html[data-theme="midnight"] {
+  --bg: #0B132B;
+  --surface: #131C38;
+  --surface2: #1C2541;
+  --border: #27335A;
+  --ink: #EAF2FF;
+  --muted: #7C89B0;
+  --accent: #5BC0BE;
+  --accent2: #6FFFE0;
+  --copper: #5BC0BE;
+  --glow: rgba(91,192,190,0.35);
+  --shadow: 0 10px 30px -12px rgba(0,0,0,0.5);
+  --shadow-lg: 0 30px 60px -20px rgba(0,0,0,0.6), 0 0 30px -8px rgba(91,192,190,0.30);
+  --hero-a: #101A3C;
+  --hero-b: #0A2233;
+}
+/* --- end themes --- */
+
+@media (min-width: 768px) { :root { --appbar-h: 64px; } }
 
 * { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
 ::-webkit-scrollbar { width: 9px; height: 9px; }
@@ -116,6 +223,23 @@ html[data-theme="oled"] body::after, html[data-theme="cyberpunk"] body::after, h
 .btn-primary:hover { box-shadow: var(--shadow-lg); border-color: var(--ink); }
 .btn-ghost { background: transparent; border-color: transparent; }
 .btn-ghost:hover { background: var(--surface2); box-shadow: none; }
+/* square-ish icon button used by the header, sheets and the mobile dock */
+.btn-icon { padding-inline: 12px; }
+.btn-icon svg { flex-shrink: 0; }
+
+/* ---------- Material You theme: shape & state layers (colours come from the theme block) ---------- */
+html[data-theme="material"] .btn { border-radius: 999px; border-color: color-mix(in srgb, var(--border) 75%, transparent); }
+html[data-theme="material"] .btn:hover { background: color-mix(in srgb, var(--accent) 7%, var(--surface)); border-color: color-mix(in srgb, var(--border) 75%, transparent); }
+html[data-theme="material"] .btn-primary, html[data-theme="material"] .btn-primary:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+html[data-theme="material"] .card, html[data-theme="material"] .card3d, html[data-theme="material"] .card-raised { border-radius: 22px; }
+html[data-theme="material"] .card3d:hover { border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); }
+html[data-theme="material"] .input { border-radius: 14px; }
+html[data-theme="material"] .input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--glow); }
+html[data-theme="material"] .chip { border-color: color-mix(in srgb, var(--border) 80%, transparent); }
+html[data-theme="material"] .chip[data-on="true"], html[data-theme="material"] .chip:hover { border-color: var(--accent); }
+html[data-theme="material"] .progress-fill, html[data-theme="material"] .rule { background: var(--accent); }
+html[data-theme="material"] .card-raised::before { background: var(--accent); }
+html[data-theme="material"] .dropdown-item:hover { background: var(--surface2) }
 
 .input {
   width: 100%; border-radius: 10px; padding: 10px 14px; font-size: 14px;
@@ -235,3 +359,96 @@ html[data-perf="lite"] .dropzone[data-hot="true"] { animation: none !important; 
 html[data-perf="lite"] .card3d { transform-style: flat; }
 html[data-perf="lite"] .card3d .inner { transform: none; transform-style: flat; }
 html[data-perf="balanced"] .hero-tint { display: none; }
+
+/* Responsive visibility that beats component classes (`hidden` loses to `.btn { display:inline-flex }`
+   purely on source order, so these are explicit and blunt). */
+@media (max-width: 767.98px) { .md-only { display: none !important; } }
+@media (min-width: 768px) { .phone-only { display: none !important; } }
+
+/* ---------- phones: a layout that expects a thumb (see src/lib/useMedia.js) ---------- */
+.dock {
+  position: fixed;
+  left: max(12px, env(safe-area-inset-left));
+  right: max(12px, env(safe-area-inset-right));
+  bottom: max(12px, env(safe-area-inset-bottom));
+  z-index: 45;
+  display: flex; align-items: center; gap: 2px;
+  padding: 5px; border-radius: 999px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
+  backdrop-filter: blur(18px) saturate(1.3);
+  -webkit-backdrop-filter: blur(18px) saturate(1.3);
+  box-shadow: var(--shadow-lg);
+}
+html[data-perf="lite"] .dock { background: var(--surface); backdrop-filter: none; -webkit-backdrop-filter: none; }
+.tool-bar { display: flex; }
+@media (min-width: 768px) { .dock, .tool-bar { display: none !important; } }
+
+/* A phone is not only narrow: rotated, an Android phone is ~850px wide and ~390px tall. Both shapes
+   get the touch layer; `pointer: coarse` keeps a short desktop window out of it.
+   Keep this query in step with MOBILE_QUERY in src/lib/useMedia.js. */
+@media (max-width: 720px), (pointer: coarse) and (max-height: 500px) {
+  /* fingers, not cursors: nothing interactive below 44px */
+  .btn { min-height: 44px; padding: 11px 18px; font-size: 14px; }
+  .btn-icon { min-width: 44px; min-height: 44px; padding-inline: 0; }
+  .input, select.input, textarea.input { min-height: 46px; font-size: 16px; }
+  .chip { min-height: 38px; padding: 8px 14px; font-size: 12.5px; }
+  button, [role="button"], label { touch-action: manipulation; }
+  input[type="range"] { height: 6px; }
+  input[type="range"]::-webkit-slider-thumb { width: 22px; height: 22px; }
+  .icon-min { width: 44px; height: 44px; }
+  /* compact controls that stay compact on purpose — give them a fingertip, not a pixel */
+  .tap, .copybtn { min-height: 40px; padding-inline: 12px; }
+  .tap-min { min-width: 40px; min-height: 40px; }
+  .seg-scroll button { min-height: 38px; }
+
+  /* no unreadably small text anywhere in a tool body */
+  main [class*="text-[9"], main [class*="text-[10"] { font-size: 12px !important; }
+  main [class*="text-[11px]"] { font-size: 12.5px !important; }
+  main .eyebrow, footer .eyebrow { font-size: 11.5px; letter-spacing: 0.2em; }
+
+  /* editor-sized padding becomes phone-sized padding */
+  main .p-10 { padding: 1.25rem; }
+  main .p-9 { padding: 1.15rem; }
+  main .p-8 { padding: 1.1rem; }
+  main .p-7 { padding: 1.05rem; }
+  main .p-6 { padding: 1rem; }
+  main .px-6 { padding-left: 1rem; padding-right: 1rem; }
+  main .py-6 { padding-top: 1rem; padding-bottom: 1rem; }
+  main .gap-6 { gap: 1rem; }
+  main .gap-5 { gap: 0.85rem; }
+  main .space-y-6 > * + * { margin-top: 1rem; }
+  main .space-y-5 > * + * { margin-top: 0.85rem; }
+  main .rounded-3xl { border-radius: 1.25rem; }
+
+  /* anything genuinely too wide scrolls inside itself instead of pushing the page sideways */
+  main canvas, main img, main video, main svg { max-width: 100%; }
+  .card, .card3d, .card-raised { border-radius: 18px; }
+  .dropzone { border-radius: 18px; }
+  h1, h2, h3 { overflow-wrap: anywhere; }
+
+  /* Horizontal rails: a row of tabs or chips scrolls under the thumb instead of wrapping into a
+     ragged block. They must be able to shrink inside a flex row, or the page itself goes sideways. */
+  .seg-scroll { scroll-snap-type: x proximity; }
+  .seg-scroll > * { min-width: max-content; }
+  .seg-scroll > * > * { scroll-snap-align: center; }
+  .rail {
+    flex-wrap: nowrap !important;
+    min-width: 0; max-width: 100%;
+    overflow-x: auto; overflow-y: hidden;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none; -ms-overflow-style: none;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 2px;
+  }
+  .rail::-webkit-scrollbar { display: none; }
+  .rail > * { scroll-snap-align: center; min-height: 38px; }
+
+  /* the dock floats over the footer, so leave it room */
+  footer { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
+}
+
+/* iOS: keep the notched safe areas clear when a sheet is open */
+@supports (padding: max(0px)) {
+  .sheet-safe { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+}

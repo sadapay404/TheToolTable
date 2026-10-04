@@ -98,15 +98,29 @@ export default function InvoiceStudio() {
                 <div className="space-y-2">
                   <AnimatePresence initial={false}>
                     {inv.lines.map((l, i) => (
-                      <motion.div key={i} layout initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, x: -20 }} transition={SPRING} className="grid grid-cols-[minmax(0,1fr)_64px_88px_64px_auto] gap-2 items-center">
+                      /* Phone: description on its own line, then the numbers and the actions as one
+                         comfortable row. Desktop keeps the single-line grid it always had. */
+                      <motion.div key={i} layout initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, x: -20 }} transition={SPRING}
+                        className="flex flex-col gap-2 sm:grid sm:grid-cols-[minmax(0,1fr)_64px_88px_64px_auto] sm:gap-2 sm:items-center">
                         <input className="input" placeholder="What did you do?" value={l.desc} onChange={(e) => setLine(i, { desc: e.target.value })} />
-                        <input className="input mono text-[12px] text-center" type="number" min="0" step="any" value={l.qty} onChange={(e) => setLine(i, { qty: e.target.value })} />
-                        <input className="input mono text-[12px] text-right" type="number" min="0" step="any" value={l.rate} onChange={(e) => setLine(i, { rate: e.target.value })} />
-                        <input className="input mono text-[12px] text-center" type="number" min="0" step="any" value={l.taxPct} onChange={(e) => setLine(i, { taxPct: e.target.value })} title="Tax %" />
-                        <div className="flex items-center gap-0.5">
-                          <button className="opacity-50 hover:opacity-100" onClick={() => moveLine(i, -1)} title="Up"><Ico n="arrowu" s={13} /></button>
-                          <button className="opacity-50 hover:opacity-100" onClick={() => moveLine(i, 1)} title="Down"><Ico n="arrowd" s={13} /></button>
-                          <button className="opacity-50 hover:opacity-100" onClick={() => delLine(i)} title="Remove"><Ico n="trash" s={13} /></button>
+                        <div className="flex items-center gap-2 sm:contents">
+                          <label className="flex-1 sm:flex-none min-w-0">
+                            <span className="label mb-1 block sm:hidden">Qty</span>
+                            <input className="input mono text-[12px] text-center w-full" type="number" min="0" step="any" value={l.qty} onChange={(e) => setLine(i, { qty: e.target.value })} />
+                          </label>
+                          <label className="flex-1 sm:flex-none min-w-0">
+                            <span className="label mb-1 block sm:hidden">Rate</span>
+                            <input className="input mono text-[12px] text-right w-full" type="number" min="0" step="any" value={l.rate} onChange={(e) => setLine(i, { rate: e.target.value })} />
+                          </label>
+                          <label className="flex-1 sm:flex-none min-w-0">
+                            <span className="label mb-1 block sm:hidden">Tax %</span>
+                            <input className="input mono text-[12px] text-center w-full" type="number" min="0" step="any" value={l.taxPct} onChange={(e) => setLine(i, { taxPct: e.target.value })} title="Tax %" />
+                          </label>
+                          <div className="flex items-center gap-0.5 shrink-0">
+                            <button className="icon-min" onClick={() => moveLine(i, -1)} title="Move up" aria-label="Move up"><Ico n="arrowu" s={15} /></button>
+                            <button className="icon-min" onClick={() => moveLine(i, 1)} title="Move down" aria-label="Move down"><Ico n="arrowd" s={15} /></button>
+                            <button className="icon-min danger" onClick={() => delLine(i)} title="Remove" aria-label="Remove line"><Ico n="trash" s={15} /></button>
+                          </div>
                         </div>
                       </motion.div>
                     ))}
@@ -242,7 +256,7 @@ export default function InvoiceStudio() {
               </div>
             </div>
             <div className="p-4" style={{ background: 'var(--surface2)' }}>
-              <div className="mx-auto shadow-lg" style={{ width: '100%', maxWidth: 460, aspectRatio: '210 / 297', background: '#fff', borderRadius: 4, overflow: 'hidden', position: 'relative' }}>
+              <div data-doc className="mx-auto shadow-lg" style={{ width: '100%', maxWidth: 460, aspectRatio: '210 / 297', background: '#fff', borderRadius: 4, overflow: 'hidden', position: 'relative' }}>
                 <div style={{ position: 'absolute', inset: 0, padding: '7% 7%', fontSize: 11, color: '#1e1e1e', display: 'flex', flexDirection: 'column' }}>
                   {inv.template === 'bold' && <div style={{ margin: '-7% -7% 4%', padding: '5% 7%', background: accent, color: '#fff' }}>
                     <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: -0.4 }}>{inv.title}</div>

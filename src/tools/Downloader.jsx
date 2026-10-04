@@ -51,7 +51,7 @@ const Card = ({ children, delay = 0, className = '' }) => (
 function EnginePill({ engine: st, onRetry }) {
   const on = st.status === 'online'
   return (
-    <button onClick={onRetry} className="flex items-center gap-2.5 rounded-full border border-line px-3.5 py-1.5 text-[11.5px] font-semibold" style={{ background: 'var(--surface)' }} title="Re-check engine">
+    <button onClick={onRetry} className="tap flex items-center gap-2.5 rounded-full border border-line px-3.5 py-1.5 text-[11.5px] font-semibold" style={{ background: 'var(--surface)' }} title="Re-check engine">
       <span className="relative flex w-2.5 h-2.5">
         {st.status !== 'offline' && <motion.span className="absolute inset-0 rounded-full" style={{ background: on ? '#4E937A' : 'var(--copper)' }} animate={{ scale: [1, 2.3], opacity: [0.5, 0] }} transition={{ repeat: Infinity, duration: 1.8, ease: 'easeOut' }} />}
         <span className="relative w-2.5 h-2.5 rounded-full" style={{ background: on ? '#4E937A' : st.status === 'offline' ? '#D04841' : 'var(--copper)' }} />

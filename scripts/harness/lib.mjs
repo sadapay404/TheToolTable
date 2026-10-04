@@ -58,9 +58,11 @@ export async function launch() {
 }
 
 /** A page wired to collect console errors / page errors / failed requests. */
-export async function newPage(browser, { url = URL_BASE, clearStorage = true, vw = 1280, vh = 900 } = {}) {
+export async function newPage(browser, { url = URL_BASE, clearStorage = true, vw = 1280, vh = 900, touch = false } = {}) {
   const p = await browser.newPage()
-  await p.setViewport({ width: vw, height: vh })
+  // `touch` emulates a phone: it makes @media (pointer: coarse) / (hover: none) match, which is how
+  // the touch layer in styles.css and the tilt shortcut in App.jsx decide what to do.
+  await p.setViewport(touch ? { width: vw, height: vh, hasTouch: true, isMobile: true, deviceScaleFactor: 2 } : { width: vw, height: vh })
   p.logs = []
   const push = (s) => p.logs.push(s.slice(0, 400))
   p.on('console', (m) => { if (m.type() === 'error') push('[console.error] ' + m.text()) })

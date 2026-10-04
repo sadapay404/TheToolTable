@@ -54,7 +54,7 @@ export function Ico({ n, s = 18, w = 1.8, fill = false, className = '', style })
 const hueOf = (s) => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) % 360; return h }
 export function Mono({ text, size = 32 }) {
   const h = hueOf(text)
-  return <span className="grid place-items-center rounded-full shrink-0 font-bold" style={{ width: size, height: size, fontSize: Math.max(8, size * (text.length > 3 ? 0.27 : 0.34)), background: `linear-gradient(135deg, hsl(${h} 55% 52%), hsl(${(h + 40) % 360} 60% 38%))`, color: '#fff', letterSpacing: '-0.02em' }}>{text.slice(0, 4)}</span>
+  return <span data-badge className="grid place-items-center rounded-full shrink-0 font-bold" style={{ width: size, height: size, fontSize: Math.max(8, size * (text.length > 3 ? 0.27 : 0.34)), background: `linear-gradient(135deg, hsl(${h} 55% 52%), hsl(${(h + 40) % 360} 60% 38%))`, color: '#fff', letterSpacing: '-0.02em' }}>{text.slice(0, 4)}</span>
 }
 export const Flag = memo(function Flag({ cc, size = 32, label = '' }) {
   const [bad, setBad] = useState(false)
@@ -97,7 +97,7 @@ export function Spark({ data, up = true, w = 120, h = 36, id = 'sp' }) {
 /* ------------------------------------------------ chips / tabs ------------------------------------------------ */
 export function Chips({ value, onChange, options, small }) {
   return (
-    <div className="flex flex-wrap gap-1.5">
+    <div className="flex flex-wrap gap-1.5 rail">
       {options.map(([k, l]) => (
         <motion.button key={k} type="button" whileHover={{ y: -2 }} whileTap={{ scale: 0.92 }} onClick={() => onChange(k)} className={`relative rounded-full border border-line font-semibold whitespace-nowrap ${small ? 'px-2.5 py-1 text-[11px]' : 'px-3.5 py-1.5 text-[12px]'}`} style={{ color: value === k ? 'var(--bg)' : 'var(--ink)', background: 'var(--surface)' }}>
           <motion.span className="absolute inset-0 rounded-full" style={{ background: 'var(--ink)' }} initial={false} animate={{ opacity: value === k ? 1 : 0, scale: value === k ? 1 : 0.6 }} transition={SPRING} />
@@ -252,7 +252,7 @@ export function Picker({ items, value, onChange, storeId, filters, defaultPins =
   )
   return (
     <>
-      <span ref={btn} className="block">{trigger({ open, selected, onClick: () => (open ? setOpen(false) : openIt()) })}</span>
+      <span ref={btn} className="block min-w-0">{trigger({ open, selected, onClick: () => (open ? setOpen(false) : openIt()) })}</span>
       {createPortal(panel, document.body)}
     </>
   )
@@ -262,7 +262,7 @@ export function CopyBtn({ text, label = 'Copy', small }) {
   const [ok, setOk] = useState(false)
   return (
     <motion.button type="button" whileHover={{ y: -2 }} whileTap={{ scale: 0.9 }} onClick={() => { navigator.clipboard?.writeText(text).catch(() => {}); setOk(true); setTimeout(() => setOk(false), 1300) }}
-      className={`inline-flex items-center gap-1.5 text-[11.5px] font-semibold rounded-full border border-line ${small ? 'px-2 py-1' : 'px-2.5 py-1.5'}`} style={{ background: 'var(--surface)', color: ok ? '#2f9c6b' : 'var(--muted)' }}>
+      className={`copybtn inline-flex items-center gap-1.5 text-[11.5px] font-semibold rounded-full border border-line ${small ? 'px-2 py-1' : 'px-2.5 py-1.5'}`} style={{ background: 'var(--surface)', color: ok ? '#2f9c6b' : 'var(--muted)' }}>
       <AnimatePresence mode="wait" initial={false}><motion.span key={ok ? 'y' : 'n'} initial={{ scale: 0.4, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.4, opacity: 0 }} transition={{ duration: 0.12 }}><Ico n={ok ? 'check' : 'copy'} s={13} w={2.2} /></motion.span></AnimatePresence>{label ? (ok ? 'Copied' : label) : null}
     </motion.button>
   )
@@ -288,12 +288,16 @@ export function Label({ children, right }) {
 /** equal-width segmented control with a springy thumb */
 export function Seg({ value, onChange, options, small, className = '' }) {
   const i = Math.max(0, options.findIndex(([k]) => k === value)), n = options.length
+  /* Narrow screens: the control keeps its labels readable and slides sideways instead of squeezing
+     the text into three 40px columns. Wide screens: exactly as before. */
   return (
-    <div className={`relative grid rounded-full p-1 ${className}`} style={{ gridTemplateColumns: `repeat(${n}, minmax(0,1fr))`, background: 'var(--surface2)', border: '1px solid var(--border)' }}>
+    <div className={`seg-scroll ${className}`}>
+    <div className="relative grid rounded-full p-1" style={{ gridTemplateColumns: `repeat(${n}, minmax(0,1fr))`, background: 'var(--surface2)', border: '1px solid var(--border)' }}>
       <motion.span className="absolute top-1 bottom-1 rounded-full" style={{ width: `calc((100% - 8px) / ${n})`, background: 'var(--ink)', boxShadow: '0 6px 14px -6px rgba(0,0,0,.5)' }} initial={false} animate={{ left: `calc(4px + ${i} * (100% - 8px) / ${n})` }} transition={SPRING} />
       {options.map(([k, l]) => (
         <button key={k} type="button" onClick={() => onChange(k)} className={`relative z-[1] rounded-full font-semibold whitespace-nowrap transition-colors ${small ? 'px-3 py-1 text-[11.5px]' : 'px-4 py-2 text-[13px]'}`} style={{ color: k === value ? 'var(--bg)' : 'var(--muted)' }}>{l}</button>
       ))}
+    </div>
     </div>
   )
 }
@@ -302,7 +306,7 @@ export function Seg({ value, onChange, options, small, className = '' }) {
 export function SelectChip({ open, onClick, icon, title, sub, wide }) {
   return (
     <motion.button type="button" onClick={onClick} whileHover={{ y: -2 }} whileTap={{ scale: 0.96 }} aria-haspopup="listbox" aria-expanded={open}
-      className={`flex items-center gap-2.5 rounded-2xl pl-2.5 pr-3 py-2 text-left ${wide ? 'w-full' : 'shrink-0'}`} style={{ background: 'var(--surface)', border: `1.5px solid ${open ? 'var(--copper)' : 'var(--border)'}`, boxShadow: open ? '0 0 0 4px var(--glow)' : 'var(--shadow)', transition: 'border-color .15s, box-shadow .15s' }}>
+      className={`flex items-center gap-2.5 rounded-2xl pl-2.5 pr-3 py-2 text-left max-w-full ${wide ? 'w-full' : 'min-w-0'}`} style={{ background: 'var(--surface)', border: `1.5px solid ${open ? 'var(--copper)' : 'var(--border)'}`, boxShadow: open ? '0 0 0 4px var(--glow)' : 'var(--shadow)', transition: 'border-color .15s, box-shadow .15s' }}>
       <AnimatePresence mode="wait" initial={false}><motion.span key={title} initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.5, opacity: 0 }} transition={{ duration: 0.14 }} className="shrink-0">{icon}</motion.span></AnimatePresence>
       <span className="min-w-0 leading-tight flex-1">
         <span className="block font-bold text-[15px] truncate">{title}</span>

@@ -442,6 +442,56 @@ test('target-size bitrate maths stays inside the budget (video and audio)', () =
   assert.equal(planSuggestion(audio, { duration: 180, targetMB: 25, audioOnly: true }).targetMB, null, 'a workable plan needs no suggestion')
 })
 
+/* ============================ themes & the rememberer ============================ */
+
+test('the theme table stays in sync with the CSS blocks that paint the first frame', async () => {
+  const { readFileSync } = await import('node:fs')
+  const { THEMES, THEME_ORDER, DEFAULT_THEME } = await import('../src/themes.js')
+  const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
+
+  assert.equal(DEFAULT_THEME, 'material', 'Material You is the default theme')
+  assert.equal(THEME_ORDER[0], 'material', 'and it is offered first')
+  assert.equal(THEME_ORDER.length, Object.keys(THEMES).length, 'no theme is missing from the order')
+  assert.ok(!THEMES.material.dark, 'Material You is a light theme')
+  assert.ok(THEMES.material.vars['--copper'], 'the classics read --copper, so every theme must define it')
+
+  for (const [id, t] of Object.entries(THEMES)) {
+    const block = css.match(new RegExp(`html\\[data-theme="${id}"\\]\\s*\\{([^}]*)\\}`))
+    assert.ok(block, `styles.css has no block for theme "${id}" — run npm run themes:css`)
+    for (const [k, v] of Object.entries(t.vars)) {
+      assert.ok(block[1].includes(`${k}: ${v};`), `theme "${id}": ${k} drifted from themes.js (${v}) — run npm run themes:css`)
+    }
+    for (const need of ['--bg', '--surface', '--surface2', '--border', '--ink', '--muted', '--accent', '--accent2', '--copper', '--shadow', '--shadow-lg']) {
+      assert.ok(t.vars[need], `theme "${id}" is missing ${need}`)
+    }
+  }
+})
+
+test('index.html paints in the remembered theme before any JavaScript runs', async () => {
+  const { readFileSync } = await import('node:fs')
+  const { THEME_ORDER, DEFAULT_THEME } = await import('../src/themes.js')
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8')
+  assert.match(html, new RegExp(`data-theme="${DEFAULT_THEME}"`), 'html boots on the default theme')
+  assert.match(html, /ttt-theme-fav/, 'the inline script honours the starred theme')
+  assert.match(html, /ttt-theme\b/, 'and the last-used theme')
+  for (const id of THEME_ORDER) assert.ok(html.includes(`'${id}'`), `the inline script does not know "${id}" — a remembered theme would not paint`)
+})
+
+/* ============================ phones ============================ */
+
+test('the mobile layer exists and beats component classes', async () => {
+  const { readFileSync } = await import('node:fs')
+  const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
+  // `hidden` loses to `.btn { display:inline-flex }` on source order, so the shell uses these.
+  assert.match(css, /\.md-only\s*\{\s*display: none !important/, 'md-only must hard-hide below 768px')
+  assert.match(css, /\.phone-only\s*\{\s*display: none !important/, 'phone-only must hard-hide above 768px')
+  assert.match(css, /\.dock\s*\{/, 'the thumb dock is styled')
+  assert.match(css, /env\(safe-area-inset-bottom\)/, 'safe areas are respected')
+  assert.match(css, /@media \(max-width: 720px\)/, 'a phone breakpoint exists')
+})
+
+/* ============================ summary ============================ */
+
 /* ============================ registry contract ============================ */
 
 test('the tool registry stays complete and lazily loadable (parsed as text — .jsx cannot load in Node)', async () => {

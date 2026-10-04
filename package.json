@@ -2,7 +2,7 @@
   "name": "thetooltable",
   "private": true,
   "version": "1.1.0",
-  "description": "TheToolTable — a growing set of desktop-grade tools in one ultra-slick 3D animated studio.",
+  "description": "TheToolTable \u2014 a growing set of desktop-grade tools in one ultra-slick 3D animated studio.",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
@@ -19,7 +19,8 @@
     "test": "node scripts/run-tests.mjs",
     "smoke": "node scripts/harness/smoke.mjs",
     "e2e": "node scripts/harness/e2e.mjs",
-    "harness:setup": "node scripts/harness/setup.mjs"
+    "harness:setup": "node scripts/harness/setup.mjs",
+    "themes:css": "node scripts/theme-css.mjs"
   },
   "dependencies": {
     "@ffmpeg/core": "^0.12.6",

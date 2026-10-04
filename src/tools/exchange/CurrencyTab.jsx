@@ -46,7 +46,7 @@ function Status({ r, busy, run }) {
     <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={SPRING} className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px]">
       <span className="inline-flex items-center gap-2 font-semibold"><span className={`w-2 h-2 rounded-full ${busy ? '' : 'ex-live-dot'}`} style={{ background: col }} /><span style={{ color: col }}>{label}</span></span>
       <span style={{ color: 'var(--muted)' }}>{sub}</span>
-      <motion.button type="button" onClick={run} disabled={busy} whileHover={{ y: -1 }} whileTap={{ scale: 0.9 }} className="inline-flex items-center gap-1.5 font-semibold" style={{ color: 'var(--ink)' }}><Ico n="refresh" s={13} className={busy ? 'ex-spin' : ''} />Refresh</motion.button>
+      <motion.button type="button" onClick={run} disabled={busy} whileHover={{ y: -1 }} whileTap={{ scale: 0.9 }} className="tap inline-flex items-center gap-1.5 font-semibold" style={{ color: 'var(--ink)' }}><Ico n="refresh" s={13} className={busy ? 'ex-spin' : ''} />Refresh</motion.button>
       <AnimatePresence>{!busy && r.error && <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{ color: '#c98a1c' }}>{r.error === 'offline' ? 'Couldn’t reach the rate servers — showing saved rates.' : r.error === 'fiat' ? 'Fiat feed unreachable.' : 'Crypto feed unreachable.'}</motion.span>}</AnimatePresence>
     </motion.div>
   )
@@ -101,8 +101,9 @@ export default function CurrencyTab() {
 
           <Label>You get</Label>
           <div className="flex items-center gap-3">
-            <div className="flex-1 min-w-0 overflow-hidden">
-              <CountText value={val} format={(v) => fmtMoney(v, b.kind)} className="display font-semibold block leading-tight tabular-nums" style={{ fontSize: `max(18px, min(${size}px, ${(100 / Math.max(text.length, 4)).toFixed(2)}vw))`, letterSpacing: '-0.03em', color: 'var(--copper)', whiteSpace: 'nowrap' }} />
+            <div className="flex-1 min-w-0 overflow-hidden" style={{ containerType: 'inline-size' }}>
+              {/* the size follows the box it is actually in (cqw), so a long number shrinks instead of clipping */}
+              <CountText value={val} format={(v) => fmtMoney(v, b.kind)} className="display font-semibold block leading-tight tabular-nums" style={{ fontSize: `max(20px, min(${size}px, ${(200 / Math.max(text.length, 4)).toFixed(1)}cqw))`, letterSpacing: '-0.03em', color: 'var(--copper)', whiteSpace: 'nowrap' }} />
             </div>
             <Picker items={pickItems} value={st.to} onChange={(k) => upd({ to: k })} storeId="cur" filters={filters} defaultPins={FAVOURITES} placeholder="Search currencies & coins…" trigger={trig(st.to)} />
           </div>

@@ -86,7 +86,8 @@ export default function HashVerify() {
       <input ref={pickerRef} type="file" hidden multiple onChange={(e) => { add([...e.target.files]); e.target.value = '' }} />
       <div className="flex flex-wrap items-center gap-2">
         <Seg value={tab} onChange={setTab} options={[['files', 'Files'], ['verify', 'Verify a hash'], ['compare', 'Two files']]} />
-        <div className="ml-auto flex items-center gap-2">
+        {/* on a phone the algorithm chips get their own line under the tabs */}
+        <div className="ml-auto w-full sm:w-auto flex items-center gap-2">
           <Chips value={null} onChange={(a) => setAlgos((s) => (s.includes(a) ? (s.length > 1 ? s.filter((x) => x !== a) : s) : [...s, a]))} options={ALGOS.map(([id, , label]) => [id, label])} />
         </div>
       </div>

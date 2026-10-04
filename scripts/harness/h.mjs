@@ -52,7 +52,8 @@ export async function goHome(p) {
   await p.keyboard.press('Escape').catch(() => {})
   await sleep(250)
   const clicked = await p.evaluate(() => {
-    const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === 'The table')
+    // Desktop shows a text button; on phones the same control is the icon-only “Back to the table”.
+    const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === 'The table' || x.getAttribute('aria-label') === 'Back to the table')
     if (!b) return false
     b.scrollIntoView({ block: 'center' }); b.click(); return true
   })

@@ -691,6 +691,65 @@ if (hasSources) {
   })
 }
 
+/* ─────────────────────── the theme rememberer ─────────────────────── */
+await ui('theme: the picker remembers what you choose, and the star pins it for every restart', async () => {
+  const read = () => page.evaluate(() => ({
+    attr: document.documentElement.dataset.theme,
+    vars: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(),
+    stored: localStorage.getItem('ttt-theme'),
+    fav: localStorage.getItem('ttt-theme-fav'),
+  }))
+  // start clean: the default must be Material You
+  await page.evaluate(() => { localStorage.removeItem('ttt-theme'); localStorage.removeItem('ttt-theme-fav') })
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await until(page, () => document.querySelectorAll('.card3d').length > 0, { label: 'home' })
+  let st = await read()
+  ok(st.attr === 'material', `default theme should be material, got ${st.attr}`)
+
+  // pick Deep Midnight from the picker, reload → it must come back
+  const opened = await page.evaluate(() => {
+    const b = [...document.querySelectorAll('header button')].find((x) => (x.getAttribute('aria-label') || '').startsWith('Theme'))
+    if (!b) return false
+    b.click(); return true
+  })
+  ok(opened, 'no theme button in the header')
+  await sleep(400)
+  await clickText(page, 'Deep Midnight')
+  await sleep(500)
+  st = await read()
+  ok(st.stored === 'midnight', `choice not stored, got ${st.stored}`)
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await until(page, () => document.querySelectorAll('.card3d').length > 0, { label: 'home' })
+  st = await read()
+  ok(st.attr === 'midnight', `the app forgot the theme: ${st.attr}`)
+
+  // star it, preview another theme, reload → the starred one must win
+  await page.evaluate(() => {
+    const b = [...document.querySelectorAll('header button')].find((x) => (x.getAttribute('aria-label') || '').startsWith('Theme'))
+    b.click()
+  })
+  await sleep(400)
+  const starred = await page.evaluate(() => {
+    // the star belongs to a specific theme, so find the Deep Midnight row first
+    const rows = [...document.querySelectorAll('[role="menu"] > div')]
+    const row = rows.find((r) => r.textContent.includes('Deep Midnight'))
+    const star = row?.querySelector('button[aria-label="Always open with this theme"]')
+    if (!star) return false
+    star.click(); return true
+  })
+  ok(starred, 'no star control next to the theme rows')
+  await clickText(page, 'Creamy White')
+  await sleep(500)
+  st = await read()
+  ok(st.fav === 'midnight' && st.stored === 'creamy', `preview should not overwrite the star (fav=${st.fav}, last=${st.stored})`)
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await until(page, () => document.querySelectorAll('.card3d').length > 0, { label: 'home' })
+  st = await read()
+  ok(st.attr === 'midnight', `the star did not survive a restart: ${st.attr}`)
+  noErrors()
+  return `default material · remembered midnight · star beat the creamy preview`
+})
+
 /* ─────────────────────── summary ─────────────────────── */
 const failed = results.filter((r) => !r.ok)
 console.log(`\n# ${results.length - failed.length}/${results.length} checks passed`)

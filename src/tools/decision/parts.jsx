@@ -116,9 +116,9 @@ export function Stepper({ value, onChange, min = 1, max = 10, label }) {
     <div className="flex items-center justify-between gap-3">
       <span className="text-[13.5px] font-semibold">{label}</span>
       <div className="flex items-center gap-1 rounded-full border border-line p-1" style={{ background: 'var(--surface2)' }}>
-        <motion.button type="button" whileTap={{ scale: 0.8 }} onClick={() => { sfx('click'); onChange(Math.max(min, value - 1)) }} className="w-7 h-7 grid place-items-center rounded-full" style={{ background: 'var(--surface)' }} aria-label={'Fewer ' + label}><DIco n="minus" s={14} w={2.4} /></motion.button>
+        <motion.button type="button" whileTap={{ scale: 0.8 }} onClick={() => { sfx('click'); onChange(Math.max(min, value - 1)) }} className="w-7 h-7 grid place-items-center rounded-full tap-min" style={{ background: 'var(--surface)' }} aria-label={'Fewer ' + label}><DIco n="minus" s={14} w={2.4} /></motion.button>
         <span className="w-8 text-center font-bold tabular-nums"><AnimatePresence mode="popLayout" initial={false}><motion.span key={value} initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -10, opacity: 0 }} transition={{ duration: 0.14 }} className="inline-block">{value}</motion.span></AnimatePresence></span>
-        <motion.button type="button" whileTap={{ scale: 0.8 }} onClick={() => { sfx('click'); onChange(Math.min(max, value + 1)) }} className="w-7 h-7 grid place-items-center rounded-full" style={{ background: 'var(--surface)' }} aria-label={'More ' + label}><DIco n="plus" s={14} w={2.4} /></motion.button>
+        <motion.button type="button" whileTap={{ scale: 0.8 }} onClick={() => { sfx('click'); onChange(Math.min(max, value + 1)) }} className="w-7 h-7 grid place-items-center rounded-full tap-min" style={{ background: 'var(--surface)' }} aria-label={'More ' + label}><DIco n="plus" s={14} w={2.4} /></motion.button>
       </div>
     </div>
   )
@@ -158,7 +158,7 @@ export function Result({ k, children, className = '' }) {
 
 export function ChipRow({ value, onChange, options, small }) {
   return (
-    <div className="flex flex-wrap gap-1.5">
+    <div className="flex flex-wrap gap-1.5 rail">
       {options.map(([k, l]) => (
         <motion.button key={k} type="button" whileHover={{ y: -2 }} whileTap={{ scale: 0.92 }} onClick={() => { sfx('click'); onChange(k) }} className={`relative rounded-full border font-semibold ${small ? 'px-2.5 py-1 text-[11.5px]' : 'px-3.5 py-1.5 text-[12.5px]'}`} style={{ borderColor: value === k ? 'var(--ink)' : 'var(--border)', background: value === k ? 'var(--ink)' : 'var(--surface)', color: value === k ? 'var(--bg)' : 'var(--ink)', transition: 'background .15s, color .15s' }}>{l}</motion.button>
       ))}

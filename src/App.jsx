@@ -1,13 +1,14 @@
 import Footer from './components/Footer.jsx'
 import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react'
-import ReactDOM from 'react-dom'
 import { MotionConfig, motion, useMotionValue, useSpring, useTransform } from 'framer-motion'
-import { usePerf, setPerfMode, runBenchmark } from './lib/perf.js'
+import { usePerf, runBenchmark } from './lib/perf.js'
+import { useMobile, useCanHover } from './lib/useMedia.js'
 import { TOOLS } from './toolsRegistry.jsx'
-import { THEMES, THEME_ORDER, applyTheme } from './themes.js'
+import { applyTheme, savedTheme, THEMES } from './themes.js'
 import CommandPalette from './components/CommandPalette.jsx'
 import SaveToast from './components/SaveToast.jsx'
 import { Logo } from './components/Logo.jsx'
+import { ThemeButton, ThemeSheet, PerfButton, PerfSheet } from './components/Pickers.jsx'
 
 const SPRING = { type: 'spring', stiffness: 300, damping: 25 }
 
@@ -18,7 +19,7 @@ class ErrorBoundary extends React.Component {
   render() {
     if (this.state.err) {
       return (
-        <div className="card p-8 my-10 text-center">
+        <div className="card p-6 sm:p-8 my-10 text-center">
           <div className="display font-semibold text-[18px]">Something crashed here.</div>
           <pre className="mono text-[11px] mt-4 text-left overflow-auto max-h-48 card p-4" style={{ color: 'var(--muted)' }}>
             {String(this.state.err?.stack || this.state.err).slice(0, 800)}
@@ -31,15 +32,23 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-function SearchIcon() {
+function SearchIcon({ s = 16 }) {
   return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
       <circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" />
     </svg>
   )
 }
 
-function TiltCard({ tool, onOpen, i }) {
+const HomeIcon = ({ s = 17 }) => (
+  <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-4.5v-6h-5v6H5a1 1 0 0 1-1-1Z" />
+  </svg>
+)
+
+/** The one card in the table. Tilts under a real mouse; on a touch screen it presses in and
+    springs back instead (tilting on touch is janky and fights the scroll). */
+function TiltCard({ tool, onOpen, i, hover }) {
   const ref = useRef(null)
   const px = useMotionValue(0)
   const py = useMotionValue(0)
@@ -50,35 +59,35 @@ function TiltCard({ tool, onOpen, i }) {
     <motion.div
       initial={{ opacity: 0, y: 22 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ ...SPRING, delay: 0.05 * i }}
+      transition={{ ...SPRING, delay: Math.min(0.05 * i, 0.35) }}
       className="tilt-stage h-full"
     >
       <motion.div
         ref={ref}
         className="card3d"
-        style={{ rotateX: rx, rotateY: ry }}
+        style={hover ? { rotateX: rx, rotateY: ry } : undefined}
+        whileTap={{ scale: 0.975 }}
         onPointerEnter={() => tool.comp.preload?.()}
         onFocus={() => tool.comp.preload?.()}
-        onMouseMove={(e) => {
+        onMouseMove={hover ? (e) => {
           const r = ref.current.getBoundingClientRect()
           const x = (e.clientX - r.left) / r.width
           const y = (e.clientY - r.top) / r.height
-          px.set(x - 0.5)
-          py.set(y - 0.5)
+          px.set(x - 0.5); py.set(y - 0.5)
           ref.current.style.setProperty('--mx', `${x * 100}%`)
           ref.current.style.setProperty('--my', `${y * 100}%`)
-        }}
-        onMouseLeave={() => { px.set(0); py.set(0) }}
+        } : undefined}
+        onMouseLeave={hover ? () => { px.set(0); py.set(0) } : undefined}
         onClick={() => onOpen(tool)}
       >
         <div className="sheen" />
-        <div className="inner relative p-7 flex flex-col gap-5">
-          <div className="flex items-start justify-between">
+        <div className="inner relative p-5 sm:p-7 flex flex-col gap-4 sm:gap-5">
+          <div className="flex items-start justify-between gap-3">
             <span className="eyebrow">{tool.tag}</span>
             <span className="ghost-num">{String(tool.n).padStart(2, '0')}</span>
           </div>
           <div>
-            <h3 className="display font-semibold text-[21px] leading-snug">{tool.name}</h3>
+            <h3 className="display font-semibold text-[19px] sm:text-[21px] leading-snug">{tool.name}</h3>
             <p className="text-[13.5px] leading-relaxed mt-2" style={{ color: 'var(--muted)' }}>{tool.desc}</p>
           </div>
           <div className="mt-auto">
@@ -91,121 +100,6 @@ function TiltCard({ tool, onOpen, i }) {
   )
 }
 
-function ThemePicker({ theme, setTheme }) {
-  const [open, setOpen] = useState(false)
-  const [pos, setPos] = useState({ top: 0, right: 0 })
-  const ref = useRef(null)
-
-  useEffect(() => {
-    if (!open) return
-    const onDown = (e) => { if (ref.current && !ref.current.contains(e.target) && !e.target.closest('[data-theme-menu]')) setOpen(false) }
-    const onKey = (e) => { if (e.key === 'Escape') setOpen(false) }
-    const onScroll = () => setOpen(false)
-    window.addEventListener('mousedown', onDown)
-    window.addEventListener('keydown', onKey)
-    window.addEventListener('scroll', onScroll, true)
-    window.addEventListener('resize', onScroll)
-    return () => {
-      window.removeEventListener('mousedown', onDown)
-      window.removeEventListener('keydown', onKey)
-      window.removeEventListener('scroll', onScroll, true)
-      window.removeEventListener('resize', onScroll)
-    }
-  }, [open])
-
-  function toggle() {
-    if (!open && ref.current) {
-      const r = ref.current.getBoundingClientRect()
-      setPos({ top: r.bottom + 8, right: Math.max(8, window.innerWidth - r.right) })
-    }
-    setOpen((o) => !o)
-  }
-
-  return (
-    <>
-      <button ref={ref} className="btn" onClick={toggle} aria-haspopup="menu" aria-expanded={open}>
-        <span className="w-3 h-3 rounded-full border border-[var(--border)]" style={{ background: THEMES[theme].vars['--bg'] }} />
-        {THEMES[theme].name}
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }}><path d="m6 9 6 6 6-6" /></svg>
-      </button>
-      {open && ReactDOM.createPortal(
-        <div
-          data-theme-menu
-          className="card fixed w-56 p-2 z-[60]"
-          style={{ top: pos.top, right: pos.right, boxShadow: 'var(--shadow-lg)' }}
-        >
-          {THEME_ORDER.map((id) => (
-            <button
-              key={id}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-[10px] text-sm font-medium hover:bg-[var(--surface2)] transition-colors"
-              style={id === theme ? { background: 'var(--surface2)' } : undefined}
-              onClick={() => { setTheme(id); setOpen(false) }}
-            >
-              <span className="w-4 h-4 rounded-[5px] border border-[var(--border)]" style={{ background: THEMES[id].vars['--bg'] }} />
-              <span className="w-3 h-3 rounded-full" style={{ background: THEMES[id].vars['--accent'] }} />
-              {THEMES[id].name}
-              {id === theme && <span className="ml-auto" style={{ color: 'var(--accent)' }}>—</span>}
-            </button>
-          ))}
-        </div>,
-        document.body,
-      )}
-    </>
-  )
-}
-
-const PERF_OPTS = [
-  ['auto', 'Auto', 'Picks the best profile for this device'],
-  ['lite', 'Lite', 'Low-end laptops & phones: no blur or grain, lighter previews'],
-  ['balanced', 'Balanced', 'Mid-range phones & laptops'],
-  ['full', 'Full', 'High-end machines: every effect at full resolution'],
-]
-const LEVEL_NAME = { lite: 'Lite', balanced: 'Balanced', full: 'Full' }
-
-function PerfPicker() {
-  const p = usePerf()
-  const [open, setOpen] = useState(false)
-  const [pos, setPos] = useState({ top: 0, right: 0 })
-  const ref = useRef(null)
-  useEffect(() => {
-    if (!open) return
-    const onDown = (e) => { if (ref.current && !ref.current.contains(e.target) && !e.target.closest('[data-perf-menu]')) setOpen(false) }
-    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); setOpen(false) } }
-    const close = () => setOpen(false)
-    window.addEventListener('mousedown', onDown); window.addEventListener('keydown', onKey, true)
-    window.addEventListener('scroll', close, true); window.addEventListener('resize', close)
-    return () => { window.removeEventListener('mousedown', onDown); window.removeEventListener('keydown', onKey, true); window.removeEventListener('scroll', close, true); window.removeEventListener('resize', close) }
-  }, [open])
-  const toggle = () => {
-    if (!open && ref.current) { const r = ref.current.getBoundingClientRect(); setPos({ top: r.bottom + 8, right: Math.max(8, window.innerWidth - r.right) }) }
-    setOpen((o) => !o)
-  }
-  const bars = p.level === 'lite' ? 1 : p.level === 'balanced' ? 2 : 3
-  return (
-    <>
-      <button ref={ref} className="btn !px-3" onClick={toggle} aria-haspopup="menu" aria-expanded={open} title={`Performance: ${LEVEL_NAME[p.level]}${p.mode === 'auto' ? ' (auto)' : ''}`} aria-label="Performance profile">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
-          {[0, 1, 2].map((i) => <path key={i} d={`M${6 + i * 6} 19V${15 - i * 4}`} opacity={i < bars ? 1 : 0.28} />)}
-        </svg>
-        <span className="hidden lg:inline">{LEVEL_NAME[p.level]}</span>
-      </button>
-      {open && ReactDOM.createPortal(
-        <div data-perf-menu className="card fixed w-72 p-2 z-[60]" style={{ top: pos.top, right: pos.right, boxShadow: 'var(--shadow-lg)' }}>
-          <div className="eyebrow px-3 pt-2 pb-2">Performance</div>
-          {PERF_OPTS.map(([id, name, hint]) => (
-            <button key={id} className="w-full text-left px-3 py-2.5 rounded-[10px] hover:bg-[var(--surface2)] transition-colors" style={p.mode === id ? { background: 'var(--surface2)' } : undefined} onClick={() => { setPerfMode(id); setOpen(false) }}>
-              <span className="flex items-center gap-2 text-sm font-semibold">{name}{id === 'auto' && <span className="text-[11px] font-medium px-2 py-0.5 rounded-full" style={{ background: 'var(--surface)', color: 'var(--muted)' }}>now {LEVEL_NAME[p.level]}</span>}{p.mode === id && <span className="ml-auto" style={{ color: 'var(--accent)' }}>—</span>}</span>
-              <span className="block text-[12px] mt-0.5" style={{ color: 'var(--muted)' }}>{hint}</span>
-            </button>
-          ))}
-          <div className="px-3 pt-2 pb-2 text-[11.5px] leading-snug" style={{ color: 'var(--muted)' }}>
-            This device: {p.hw.cores} CPU threads{p.hw.mem ? ` · ${p.hw.mem}+ GB RAM` : ''}{p.hw.phone ? ' · phone' : ''}. Exports are never lowered — only previews and effects.
-          </div>
-        </div>, document.body)}
-    </>
-  )
-}
-
 function ToolLoading() {
   return (
     <div className="py-24 grid place-items-center">
@@ -214,12 +108,41 @@ function ToolLoading() {
   )
 }
 
+/** Fixed bottom dock, phones only: back to the table, search, theme — all inside thumb reach. */
+function MobileDock({ onHome, onSearch, onTheme, theme }) {
+  const Btn = ({ onClick, label, children }) => (
+    <button type="button" onClick={onClick} aria-label={label} title={label}
+      className="flex-1 h-12 rounded-full flex items-center justify-center gap-2 font-semibold text-[12.5px] transition-transform active:scale-95"
+      style={{ color: 'var(--ink)' }}>
+      {children}
+    </button>
+  )
+  return (
+    <div data-mobile-bar className="dock" role="toolbar" aria-label="Tool actions">
+      <Btn onClick={onHome} label="Back to the table"><HomeIcon /><span>Table</span></Btn>
+      <span className="w-px h-6 self-center shrink-0" style={{ background: 'var(--border)' }} />
+      <Btn onClick={onSearch} label="Search the table"><SearchIcon s={17} /><span>Search</span></Btn>
+      <span className="w-px h-6 self-center shrink-0" style={{ background: 'var(--border)' }} />
+      <Btn onClick={onTheme} label="Change theme">
+        <span className="w-4 h-4 rounded-full grid place-items-center" style={{ background: THEMES[theme].vars['--bg'], boxShadow: '0 0 0 1.5px var(--border)' }}>
+          <span className="w-2 h-2 rounded-full" style={{ background: THEMES[theme].vars['--accent'] }} />
+        </span>
+        <span>Theme</span>
+      </Btn>
+    </div>
+  )
+}
+
 export default function App() {
-  const [theme, setThemeState] = useState(() => { try { return localStorage.getItem('ttt-theme') || 'creamy' } catch { return 'creamy' } })
+  const [theme, setThemeState] = useState(() => savedTheme())
   const [active, setActive] = useState(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const [themeAnchor, setThemeAnchor] = useState(null)   // element the sheet should hang from (desktop)
+  const [perfAnchor, setPerfAnchor] = useState(null)
+  const mobile = useMobile()
+  const hover = useCanHover()
 
-  const setTheme = (id) => { setThemeState(id); applyTheme(id) }
+  const setTheme = (id) => { setThemeState(applyTheme(id)) }
 
   useEffect(() => {
     const h = (e) => {
@@ -231,6 +154,7 @@ export default function App() {
   }, [])
 
   const openTool = (t) => { setActive(t); window.scrollTo({ top: 0 }) }
+  const closeSheets = () => { setThemeAnchor(null); setPerfAnchor(null) }
   const ActiveComp = useMemo(() => active?.comp, [active])
 
   const perfNow = usePerf()
@@ -240,19 +164,19 @@ export default function App() {
     <div className="min-h-screen relative overflow-x-clip">
       <div className="hero-tint" />
 
-      {/* Top bar */}
-      <header className="sticky top-0 z-40 backdrop-blur-xl border-b border-line" style={{ background: 'color-mix(in srgb, var(--bg) 82%, transparent)' }}>
-        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center gap-5">
-          <motion.button className="flex items-center gap-3.5 shrink-0" whileTap={{ scale: 0.96 }} onClick={() => setActive(null)}>
-            <Logo className="w-9 h-9 rounded-[10px]" shadow />
-            <span className="text-left leading-none">
-              <span className="display block font-semibold text-[19px] tracking-tight">TheToolTable</span>
-              <span className="eyebrow block mt-1" style={{ letterSpacing: '0.24em' }}>By Mubashir</span>
+      {/* Top bar — icon-only on phones, the full row from md up. */}
+      <header className="app-bar sticky top-0 z-40 backdrop-blur-xl border-b border-line" style={{ background: 'color-mix(in srgb, var(--bg) 82%, transparent)' }}>
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 md:h-16 flex items-center gap-2.5 md:gap-5">
+          <motion.button className="flex items-center gap-2.5 md:gap-3.5 shrink-0 min-w-0" whileTap={{ scale: 0.96 }} onClick={() => setActive(null)} aria-label="TheToolTable — home">
+            <Logo className="w-8 h-8 md:w-9 md:h-9 rounded-[10px]" shadow />
+            <span className="text-left leading-none min-w-0">
+              <span className="display block font-semibold text-[17px] md:text-[19px] tracking-tight truncate">TheToolTable</span>
+              <span className="eyebrow hidden sm:block mt-1" style={{ letterSpacing: '0.24em' }}>By Mubashir</span>
             </span>
           </motion.button>
 
           <motion.button
-            className="btn btn-ghost flex-1 max-w-xs ml-auto justify-start gap-2.5 text-[13px] font-medium"
+            className="btn btn-ghost md-only flex-1 max-w-xs ml-auto justify-start gap-2.5 text-[13px] font-medium"
             style={{ color: 'var(--muted)', background: 'var(--surface)', border: '1px solid var(--border)' }}
             whileTap={{ scale: 0.97 }}
             onClick={() => setPaletteOpen(true)}
@@ -261,12 +185,15 @@ export default function App() {
             <span className="ml-auto flex gap-1"><span className="kbd">Ctrl</span><span className="kbd">K</span></span>
           </motion.button>
 
-          <PerfPicker />
-          <ThemePicker theme={theme} setTheme={setTheme} />
+          <div className="flex items-center gap-2 ml-auto md:ml-0">
+            <button className="btn btn-icon phone-only" onClick={() => setPaletteOpen(true)} aria-label="Search the table"><SearchIcon s={18} /></button>
+            <PerfButton onOpen={setPerfAnchor} />
+            <ThemeButton onOpen={setThemeAnchor} theme={theme} />
+          </div>
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-6 pb-28 relative">
+      <main className={`max-w-6xl mx-auto px-4 sm:px-6 relative ${active ? 'pb-[104px] md:pb-28' : 'pb-20 md:pb-28'}`}>
         <ErrorBoundary>
         {/*
           The home ⇄ tool switch is deliberately a plain keyed mount animation, NOT <AnimatePresence>.
@@ -279,18 +206,18 @@ export default function App() {
           {!active ? (
             <motion.div key="home" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={SPRING}>
               {/* Masthead */}
-              <section className="pt-20 pb-16 text-center relative">
+              <section className="pt-10 pb-8 sm:pt-20 sm:pb-16 text-center relative">
                 <motion.div
-                  className="inline-block mb-8"
+                  className="inline-block mb-6 sm:mb-8"
                   initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ ...SPRING, delay: 0.05 }}
                 >
-                  <Logo className="w-[104px] h-[104px] rounded-[22px]" shadow big />
+                  <Logo className="w-[84px] h-[84px] sm:w-[104px] sm:h-[104px] rounded-[20px] sm:rounded-[22px]" shadow big />
                 </motion.div>
-                <motion.div className="eyebrow mb-5" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.12 }}>
+                <motion.div className="eyebrow mb-4 sm:mb-5" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.12 }}>
                   By Mubashir
                 </motion.div>
                 <motion.h1
-                  className="display font-semibold text-[42px] md:text-[60px] leading-[1.04] tracking-tight"
+                  className="display font-semibold text-[31px] sm:text-[42px] md:text-[60px] leading-[1.06] sm:leading-[1.04] tracking-tight px-1"
                   initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ ...SPRING, delay: 0.16 }}
                 >
                   Every tool you need,
@@ -298,7 +225,7 @@ export default function App() {
                   <em className="font-medium" style={{ color: 'var(--accent2)' }}>on one quiet table.</em>
                 </motion.h1>
                 <motion.p
-                  className="mt-6 text-[15px] leading-relaxed max-w-lg mx-auto"
+                  className="mt-5 sm:mt-6 text-[14px] sm:text-[15px] leading-relaxed max-w-lg mx-auto px-2"
                   style={{ color: 'var(--muted)' }}
                   initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.28 }}
                 >
@@ -307,19 +234,29 @@ export default function App() {
               </section>
 
               {/* The table */}
-              <motion.div className="flex items-end justify-between mb-7" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}>
-                <h2 className="display font-semibold text-[26px]">The table</h2>
-                <span className="text-[12px] font-medium" style={{ color: 'var(--muted)' }}>{TOOLS.length} tools · the collection grows</span>
+              <motion.div className="flex items-end justify-between gap-3 mb-5 sm:mb-7" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}>
+                <h2 className="display font-semibold text-[23px] sm:text-[26px]">The table</h2>
+                <span className="text-[12px] font-medium text-right" style={{ color: 'var(--muted)' }}>{TOOLS.length} tools · the collection grows</span>
               </motion.div>
 
-              <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                {TOOLS.map((t, i) => <TiltCard key={t.id} tool={t} i={i} onOpen={openTool} />)}
+              <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+                {TOOLS.map((t, i) => <TiltCard key={t.id} tool={t} i={i} onOpen={openTool} hover={hover} />)}
               </section>
 
             </motion.div>
           ) : (
             <motion.div key={active.id} initial={{ opacity: 0, y: 16, scale: 0.99 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={SPRING}>
-              <div className="pt-10 pb-8 flex items-center gap-5">
+              {/* Phone: one sticky bar with the way back and the tool's name. Desktop: the original row. */}
+              <div className="tool-bar sticky z-30 -mx-4 px-4 py-2.5 flex items-center gap-3 border-b border-line backdrop-blur-xl" style={{ top: 56, background: 'color-mix(in srgb, var(--bg) 88%, transparent)' }}>
+                <motion.button className="btn btn-icon shrink-0" whileTap={{ scale: 0.92 }} onClick={() => setActive(null)} aria-label="Back to the table">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M19 12H5m7-7-7 7 7 7" /></svg>
+                </motion.button>
+                <div className="min-w-0">
+                  <div className="eyebrow mb-0.5 truncate">Tool {String(active.n).padStart(2, '0')} · {active.tag}</div>
+                  <h2 className="display font-semibold text-[18px] leading-tight truncate">{active.name}</h2>
+                </div>
+              </div>
+              <div className="md-only pt-10 pb-8 items-center gap-5">
                 <motion.button className="btn btn-ghost" whileTap={{ scale: 0.92 }} onClick={() => setActive(null)}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M19 12H5m7-7-7 7 7 7" /></svg>
                   The table
@@ -338,6 +275,10 @@ export default function App() {
       <Footer />
       <SaveToast />
 
+      {active && <MobileDock theme={theme} onHome={() => setActive(null)} onSearch={() => setPaletteOpen(true)} onTheme={() => setThemeAnchor(true)} />}
+
+      <ThemeSheet open={!!themeAnchor} onClose={() => setThemeAnchor(null)} anchorEl={themeAnchor} theme={theme} setTheme={setTheme} />
+      <PerfSheet open={!!perfAnchor} onClose={() => setPerfAnchor(null)} anchorEl={perfAnchor} />
       <CommandPalette
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}

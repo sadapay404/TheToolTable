@@ -1,0 +1,19 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Main window permissions. yt-dlp arguments are produced only by the app's own audited buildArgs().",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "fs:default",
+    "opener:default",
+    "shell:default",
+    { "identifier": "shell:allow-spawn", "allow": [{ "name": "binaries/yt-dlp", "sidecar": true, "args": true }] },
+    { "identifier": "shell:allow-execute", "allow": [
+      { "name": "binaries/yt-dlp", "sidecar": true, "args": true },
+      { "name": "binaries/ffmpeg", "sidecar": true, "args": ["-version"] }
+    ] },
+    { "identifier": "fs:allow-mkdir", "allow": [{ "path": "$DOWNLOAD/TheToolTable" }] },
+    { "identifier": "fs:allow-stat", "allow": [{ "path": "$DOWNLOAD/TheToolTable/**" }] }
+  ]
+}

@@ -2,7 +2,7 @@
   "name": "thetooltable",
   "private": true,
   "version": "1.0.0",
-  "description": "TheToolTable — a growing set of desktop-grade tools in one ultra-slick 3D animated studio.",
+  "description": "TheToolTable \u2014 a growing set of desktop-grade tools in one ultra-slick 3D animated studio.",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
@@ -10,7 +10,11 @@
     "preview": "vite preview --host 0.0.0.0",
     "engine": "node server/standalone.js",
     "setup:engine": "bash scripts/setup-engine.sh",
-    "sidecars": "node scripts/fetch-sidecars.mjs"
+    "sidecars": "node scripts/fetch-sidecars.mjs",
+    "tauri": "tauri",
+    "app:win": "tauri build",
+    "app:win:sidecars": "node scripts/fetch-sidecars.mjs && tauri build --config src-tauri/tauri.sidecars.conf.json",
+    "app:android": "tauri android build --apk --target aarch64 --target armv7"
   },
   "dependencies": {
     "@ffmpeg/ffmpeg": "^0.12.10",
@@ -33,6 +37,7 @@
     "zxing-wasm": "^3.1.4"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.12.1",
     "@vitejs/plugin-react": "^4.3.1",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.45",

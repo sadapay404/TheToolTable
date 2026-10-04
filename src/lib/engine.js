@@ -102,7 +102,14 @@ export function nativeEngine(runner, kind) {
 /* ---------- Windows / macOS / Linux desktop: Tauri 2 sidecars (yt-dlp + ffmpeg inside the installer) ---------- */
 
 // Specifiers are variables so Vite doesn't try to resolve Tauri packages in the plain-web build.
-const tauriImport = (m) => import(/* @vite-ignore */ m)
+// Inside the shipped app there is no bundler for bare imports, so use the globals Tauri injects
+// (`app.withGlobalTauri: true` in tauri.conf.json): __TAURI__.shell / .fs / .path / .opener.
+const TAURI_GLOBAL = { '@tauri-apps/plugin-shell': 'shell', '@tauri-apps/plugin-fs': 'fs', '@tauri-apps/api/path': 'path', '@tauri-apps/plugin-opener': 'opener' }
+const tauriImport = async (m) => {
+  const g = window.__TAURI__?.[TAURI_GLOBAL[m]]
+  if (g) return g
+  return import(/* @vite-ignore */ m)
+}
 
 function tauriRunner() {
   const sidecar = async (name, args) => {

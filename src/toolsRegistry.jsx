@@ -85,8 +85,8 @@ export const TOOLS = [
   {
     id: 'qr', n: 11, name: 'QR Code Studio', icon: '🔳', color: '#1F7A8C',
     tag: 'Generate',
-    desc: 'Vector-grade QR with gradients, custom eyes, logos & high-DPI export.',
-    keywords: 'qr code wifi vcard link gradient logo svg png generator studio',
+    desc: 'Design QR codes with 33 templates, 40 logos and a live scan check — plus a scanner, barcodes, bulk sheets and print cards.',
+    keywords: 'qr code scanner reader decoder barcode ean upc code128 datamatrix wifi vcard upi link gradient logo svg png pdf bulk csv batch generator studio table tent business card poster',
     comp: QRStudio,
   },
   {

@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import ReactDOM from 'react-dom'
-import { AnimatePresence, motion, useMotionValue, useSpring, useTransform } from 'framer-motion'
+import { AnimatePresence, MotionConfig, motion, useMotionValue, useSpring, useTransform } from 'framer-motion'
+import { usePerf, setPerfMode, runBenchmark } from './lib/perf.js'
 import { TOOLS } from './toolsRegistry.jsx'
 import { THEMES, THEME_ORDER, applyTheme } from './themes.js'
 import CommandPalette from './components/CommandPalette.jsx'
@@ -54,6 +55,8 @@ function TiltCard({ tool, onOpen, i }) {
         ref={ref}
         className="card3d"
         style={{ rotateX: rx, rotateY: ry }}
+        onPointerEnter={() => tool.comp.preload?.()}
+        onFocus={() => tool.comp.preload?.()}
         onMouseMove={(e) => {
           const r = ref.current.getBoundingClientRect()
           const x = (e.clientX - r.left) / r.width
@@ -149,6 +152,66 @@ function ThemePicker({ theme, setTheme }) {
   )
 }
 
+const PERF_OPTS = [
+  ['auto', 'Auto', 'Picks the best profile for this device'],
+  ['lite', 'Lite', 'Low-end laptops & phones: no blur or grain, lighter previews'],
+  ['balanced', 'Balanced', 'Mid-range phones & laptops'],
+  ['full', 'Full', 'High-end machines: every effect at full resolution'],
+]
+const LEVEL_NAME = { lite: 'Lite', balanced: 'Balanced', full: 'Full' }
+
+function PerfPicker() {
+  const p = usePerf()
+  const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState({ top: 0, right: 0 })
+  const ref = useRef(null)
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e) => { if (ref.current && !ref.current.contains(e.target) && !e.target.closest('[data-perf-menu]')) setOpen(false) }
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); setOpen(false) } }
+    const close = () => setOpen(false)
+    window.addEventListener('mousedown', onDown); window.addEventListener('keydown', onKey, true)
+    window.addEventListener('scroll', close, true); window.addEventListener('resize', close)
+    return () => { window.removeEventListener('mousedown', onDown); window.removeEventListener('keydown', onKey, true); window.removeEventListener('scroll', close, true); window.removeEventListener('resize', close) }
+  }, [open])
+  const toggle = () => {
+    if (!open && ref.current) { const r = ref.current.getBoundingClientRect(); setPos({ top: r.bottom + 8, right: Math.max(8, window.innerWidth - r.right) }) }
+    setOpen((o) => !o)
+  }
+  const bars = p.level === 'lite' ? 1 : p.level === 'balanced' ? 2 : 3
+  return (
+    <>
+      <button ref={ref} className="btn !px-3" onClick={toggle} aria-haspopup="menu" aria-expanded={open} title={`Performance: ${LEVEL_NAME[p.level]}${p.mode === 'auto' ? ' (auto)' : ''}`} aria-label="Performance profile">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+          {[0, 1, 2].map((i) => <path key={i} d={`M${6 + i * 6} 19V${15 - i * 4}`} opacity={i < bars ? 1 : 0.28} />)}
+        </svg>
+        <span className="hidden lg:inline">{LEVEL_NAME[p.level]}</span>
+      </button>
+      {open && ReactDOM.createPortal(
+        <div data-perf-menu className="card fixed w-72 p-2 z-[60]" style={{ top: pos.top, right: pos.right, boxShadow: 'var(--shadow-lg)' }}>
+          <div className="eyebrow px-3 pt-2 pb-2">Performance</div>
+          {PERF_OPTS.map(([id, name, hint]) => (
+            <button key={id} className="w-full text-left px-3 py-2.5 rounded-[10px] hover:bg-[var(--surface2)] transition-colors" style={p.mode === id ? { background: 'var(--surface2)' } : undefined} onClick={() => { setPerfMode(id); setOpen(false) }}>
+              <span className="flex items-center gap-2 text-sm font-semibold">{name}{id === 'auto' && <span className="text-[11px] font-medium px-2 py-0.5 rounded-full" style={{ background: 'var(--surface)', color: 'var(--muted)' }}>now {LEVEL_NAME[p.level]}</span>}{p.mode === id && <span className="ml-auto" style={{ color: 'var(--accent)' }}>—</span>}</span>
+              <span className="block text-[12px] mt-0.5" style={{ color: 'var(--muted)' }}>{hint}</span>
+            </button>
+          ))}
+          <div className="px-3 pt-2 pb-2 text-[11.5px] leading-snug" style={{ color: 'var(--muted)' }}>
+            This device: {p.hw.cores} CPU threads{p.hw.mem ? ` · ${p.hw.mem}+ GB RAM` : ''}{p.hw.phone ? ' · phone' : ''}. Exports are never lowered — only previews and effects.
+          </div>
+        </div>, document.body)}
+    </>
+  )
+}
+
+function ToolLoading() {
+  return (
+    <div className="py-24 grid place-items-center">
+      <motion.div className="w-10 h-10 rounded-full border-[3px]" style={{ borderColor: 'var(--border)', borderTopColor: 'var(--copper)' }} animate={{ rotate: 360 }} transition={{ repeat: Infinity, ease: 'linear', duration: 0.8 }} />
+    </div>
+  )
+}
+
 export default function App() {
   const [theme, setThemeState] = useState(() => { try { return localStorage.getItem('ttt-theme') || 'creamy' } catch { return 'creamy' } })
   const [active, setActive] = useState(null)
@@ -168,7 +231,10 @@ export default function App() {
   const openTool = (t) => { setActive(t); window.scrollTo({ top: 0 }) }
   const ActiveComp = useMemo(() => active?.comp, [active])
 
+  const perfNow = usePerf()
+  useEffect(() => { runBenchmark() }, [])
   return (
+    <MotionConfig reducedMotion={perfNow.mode === 'lite' ? 'always' : 'user'}>
     <div className="min-h-screen relative overflow-x-clip">
       <div className="hero-tint" />
 
@@ -193,6 +259,7 @@ export default function App() {
             <span className="ml-auto flex gap-1"><span className="kbd">Ctrl</span><span className="kbd">K</span></span>
           </motion.button>
 
+          <PerfPicker />
           <ThemePicker theme={theme} setTheme={setTheme} />
         </div>
       </header>
@@ -258,7 +325,7 @@ export default function App() {
                   <h2 className="display font-semibold text-[26px] leading-none">{active.name}</h2>
                 </div>
               </div>
-              <ActiveComp />
+              <Suspense fallback={<ToolLoading />}><ActiveComp /></Suspense>
             </motion.div>
           )}
         </AnimatePresence>
@@ -272,5 +339,6 @@ export default function App() {
         onTheme={(id) => { setTheme(id); setPaletteOpen(false) }}
       />
     </div>
+    </MotionConfig>
   )
 }

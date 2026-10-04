@@ -1,3 +1,4 @@
+import { perf } from '../lib/perf.js'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence, useMotionValue, useSpring } from 'framer-motion'
 import { Dropzone, AnimatedNumber } from '../components/ui.jsx'
@@ -210,7 +211,7 @@ export default function ImageStudio() {
   const aspectR = showDims.w / showDims.h
   const availW = Math.max(120, box.w - PADDING.l - PADDING.r), availH = Math.max(120, box.h - PADDING.t - PADDING.b)
   const dw = Math.min(availW, availH * aspectR), dh = dw / aspectR
-  const dpr = Math.min(2, typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1)
+  const dpr = perf.dpr(2)
   const bk = Math.min(1, MAX_BUF / Math.max(dw * dpr, dh * dpr))
   const bw = Math.max(2, Math.round(dw * dpr * bk)), bh = Math.max(2, Math.round(dh * dpr * bk))
 

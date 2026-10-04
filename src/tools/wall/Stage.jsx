@@ -1,3 +1,4 @@
+import { perf } from '../../lib/perf.js'
 import React, { forwardRef, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { WallRenderer, probe } from '../../lib/wall/renderer.js'
@@ -99,10 +100,11 @@ const Stage = forwardRef(function Stage({ playing, setPlaying, mode, setMode, fs
 
   // renderer lifecycle
   useEffect(() => {
-    let raf, last = performance.now(), dead = false
+    let raf, last = performance.now(), dead = false, lastRun = 0
     try { R.current = new WallRenderer(canvas.current); R.current.setDesign(live.current.d, true) } catch (e) { setErr(e.message); return }
     const loop = (now) => {
       if (dead) return; raf = requestAnimationFrame(loop)
+      if (lastRun && now - lastRun < 1000 / perf.fps() - 3) return; lastRun = now
       const dt = Math.min(0.1, (now - last) / 1000); last = now
       const { d: dd, playing: pl } = live.current, r = R.current
       if (!r) return
@@ -116,7 +118,7 @@ const Stage = forwardRef(function Stage({ playing, setPlaying, mode, setMode, fs
   useEffect(() => { R.current?.setDesign(d); dirty.current = true }, [d])
   useEffect(() => {
     const c = canvas.current; if (!c) return
-    const dpr = Math.min(window.devicePixelRatio || 1, 2), sc = Math.min(dpr, Math.sqrt(1.5e6 / Math.max(1, W * H)))
+    const dpr = perf.dpr(2), sc = Math.min(dpr, Math.sqrt(1.5e6 * perf.scale() / Math.max(1, W * H)))
     c.width = Math.max(16, Math.round(W * sc)); c.height = Math.max(16, Math.round(H * sc)); dirty.current = true
     if (over.current) { over.current.width = c.width; over.current.height = c.height }
   }, [W, H])

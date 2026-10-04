@@ -1,13 +1,19 @@
 {
-  "name": "TheToolTable — Universal Multi-Tool Studio",
-  "short_name": "TheToolTable",
-  "description": "12 desktop-grade tools in one ultra-slick studio. Convert, compress, edit, generate — 100% in your browser.",
+  "id": "/",
+  "name": "TheToolTable — By Mubashir",
+  "short_name": "ToolTable",
+  "description": "A private workbench of file tools. Everything is processed on this device — nothing is uploaded.",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#FDFBF7",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "orientation": "any",
+  "background_color": "#F0EDE4",
   "theme_color": "#FDFBF7",
+  "categories": ["utilities", "productivity", "photo"],
   "icons": [
-    { "src": "/logo.png", "sizes": "1024x1024", "type": "image/png", "purpose": "any" },
-    { "src": "/logo.png", "sizes": "1024x1024", "type": "image/png", "purpose": "maskable" }
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }

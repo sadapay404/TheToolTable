@@ -1,3 +1,4 @@
+import { perf } from '../lib/perf.js'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import fixWebm from 'fix-webm-duration'
@@ -214,11 +215,12 @@ export default function Visualizer() {
   /* ---------------- render loop ---------------- */
   useEffect(() => {
     if (!file) return
-    let id, last = 0, slow = 0, q = 1, fr = 0
+    let id, last = 0, slow = 0, q = perf.scale(), fr = 0, lastRun = 0
     const raw = new Float32Array(NB), wave = new Float32Array(512), tmp = { f: new Uint8Array(2048), w: new Uint8Array(4096) }
     const prev = new VizRenderer()
     const frame = (ts) => {
       id = requestAnimationFrame(frame)
+      if (!exportRef.current && lastRun && ts - lastRun < 1000 / perf.fps() - 3) return; lastRun = ts
       const el = audioRef.current, cv = canvasRef.current, a = an.current, Pm = PR.current, g = gRef.current, ex = exportRef.current
       if (!cv || !el) return
       const dt = last ? Math.min(0.1, (ts - last) / 1000) : 0.016; last = ts

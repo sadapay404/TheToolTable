@@ -33,7 +33,7 @@ async function fetchWithProgress(url, onProgress, fallbackSize) {
 async function init({ modelUrl, modelSize }) {
   post({ type: 'phase', phase: 'engine', value: 0 })
   ort.env.wasm.wasmPaths = { wasm: new URL(wasmUrl, self.location.href).href, mjs: new URL(mjsUrl, self.location.href).href }
-  ort.env.wasm.numThreads = self.crossOriginIsolated ? Math.min(4, self.navigator.hardwareConcurrency || 2) : 1
+  ort.env.wasm.numThreads = self.crossOriginIsolated ? Math.max(1, Math.min(4, Math.floor((self.navigator.hardwareConcurrency || 2) / 2))) : 1
   ort.env.wasm.proxy = false
   post({ type: 'phase', phase: 'model', value: 0 })
   const bytes = await fetchWithProgress(modelUrl, (v) => post({ type: 'phase', phase: 'model', value: v }), modelSize)

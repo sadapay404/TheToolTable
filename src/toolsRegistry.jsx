@@ -18,6 +18,7 @@ const loaders = {
   ScanOcr: () => import('./tools/ScanOcr.jsx'),
   VoiceStudio: () => import('./tools/VoiceStudio.jsx'),
   InvoiceStudio: () => import('./tools/InvoiceStudio.jsx'),
+  Beam: () => import('./tools/Beam.jsx'),
 }
 const lz = (k) => { const C = lazy(loaders[k]); C.preload = loaders[k]; return C }
 
@@ -133,5 +134,12 @@ export const TOOLS = [
     desc: 'Beautiful invoices, receipts and quotations with live preview, real PDF output, Urdu text, tax and lakh formatting.',
     keywords: 'invoice receipt quotation quote bill billing pdf credit note proforma freelancer business tax ntn',
     comp: lz('InvoiceStudio'),
+  },
+  {
+    id: 'beam', n: 17, name: 'Beam', icon: '📡', color: '#2B6CB0',
+    tag: 'Share · Private',
+    desc: 'Send files and messages straight between two devices — no upload, no account, no server. Encrypted peer to peer.',
+    keywords: 'beam share send transfer file p2p webrtc airdrop nearby wifi qr chat',
+    comp: lz('Beam'),
   },
 ]

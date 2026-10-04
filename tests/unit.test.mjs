@@ -446,7 +446,9 @@ test('target-size bitrate maths stays inside the budget (video and audio)', () =
 
 test('the tool registry stays complete and lazily loadable (parsed as text — .jsx cannot load in Node)', async () => {
   const { readFileSync } = await import('node:fs')
-  const src = readFileSync(new URL('../src/toolsRegistry.jsx', import.meta.url), 'utf8')
+  // Normalise CRLF: Windows checkouts (and the Windows CI runner) deliver this file with \r\n,
+  // and `$` in a multiline regex does not match before \r\n — a real cross-platform failure.
+  const src = readFileSync(new URL('../src/toolsRegistry.jsx', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
   const loaders = [...src.matchAll(/^\s{2}([A-Za-z]+): \(\) => import\('\.\/tools\/([A-Za-z]+)\.jsx'\),$/gm)]
   assert.equal(loaders.length, 12, 'one lazy loader per tool')
   const ids = [...src.matchAll(/id: '([a-z]+)', n: (\d+), name: '([^']+)'/g)].map((m) => ({ id: m[1], n: Number(m[2]), name: m[3] }))

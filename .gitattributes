@@ -1,0 +1,20 @@
+# Keep source and config byte-identical everywhere (Windows checkouts used to deliver CRLF, which
+# broke `$`-anchored multiline parsing in tests and made diffs noisy).
+* text=auto
+*.js   text eol=lf
+*.jsx  text eol=lf
+*.mjs  text eol=lf
+*.json text eol=lf
+*.css  text eol=lf
+*.html text eol=lf
+*.md   text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.rs   text eol=lf
+*.sh   text eol=lf
+*.toml text eol=lf
+*.png  binary
+*.wasm binary
+*.onnx binary
+*.ico  binary
+*.ttf  binary

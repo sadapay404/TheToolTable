@@ -16,6 +16,7 @@ const loaders = {
   BackgroundStudio: () => import('./tools/BackgroundStudio.jsx'),
   PdfStudio: () => import('./tools/PdfStudio.jsx'),
   ScanOcr: () => import('./tools/ScanOcr.jsx'),
+  VoiceStudio: () => import('./tools/VoiceStudio.jsx'),
 }
 const lz = (k) => { const C = lazy(loaders[k]); C.preload = loaders[k]; return C }
 
@@ -117,5 +118,12 @@ export const TOOLS = [
     desc: 'Photograph or drop a page: auto-straighten, clean up, then read English and Urdu text offline into a searchable PDF.',
     keywords: 'ocr scan scanner document text urdu english arabic photo camera searchable pdf extract copy text recognise',
     comp: lz('ScanOcr'),
+  },
+  {
+    id: 'voice', n: 15, name: 'Voice & Subtitle Studio', icon: '🎙️', color: '#7B5BC4',
+    tag: 'Audio · Video',
+    desc: 'Subtitles from speech in Urdu, English and 90 more languages — offline Whisper, a subtitle editor, recorder and audio trimmer.',
+    keywords: 'subtitles srt vtt transcribe whisper speech to text urdu captions voice record microphone trim audio dictate dictation translate',
+    comp: lz('VoiceStudio'),
   },
 ]

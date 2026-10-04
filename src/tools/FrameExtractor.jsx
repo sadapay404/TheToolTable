@@ -180,14 +180,14 @@ export default function FrameExtractor() {
       setTrim((s) => ({ ...s, phase: 'Reading the video…', prog: 0.02 }))
       const ext = extName(file.name), inName = 'in.' + ext, outName = 'trim.' + ext
       await ff.writeFile(inName, await fetchFile(file))
-      await ff.exec(['-ss', start.toFixed(3), '-to', end.toFixed(3), '-i', inName, '-c', 'copy', '-avoid_negative_ts', 'make_zero', '-y', outName])
+      await ff.exec(['-ss', start.toFixed(3), '-i', inName, '-t', Math.max(0.05, end - start).toFixed(3), '-c', 'copy', '-avoid_negative_ts', 'make_zero', '-y', outName])
       const data = await ff.readFile(outName)
       const blob = new Blob([data.buffer], { type: file.type || 'video/mp4' })
       const name = `${base}-trim.${ext}`
       setTrim({ busy: false, prog: 1, phase: '', error: '', result: { blob, name, note: `${(end - start).toFixed(2)} s · no re-encode` } })
       download(blob, name); say('Lossless trim exported'); recentAction(`Lossless trim of ${file.name}`)
       ff.deleteFile(inName).catch(() => {}); ff.deleteFile(outName).catch(() => {})
-    } catch (e) { setTrim((s) => ({ ...s, busy: false, error: `Trim failed: ${e.message || e}. The trimming engine downloads once from the internet — check your connection and try again.` })) }
+    } catch (e) { setTrim((s) => ({ ...s, busy: false, error: `Trim failed: ${e.message || e}. The trimming engine is bundled in the app — try a different file or format.` })) }
     finally { if (handler) ff.off('progress', handler) }
   }
   const onGif = async () => {
@@ -195,7 +195,7 @@ export default function FrameExtractor() {
     try {
       const r = await encodeGif({ url, start, end, fps: cfg.gifFps, width: cfg.gifW, loop: cfg.gifLoop, preview: gifCanvasRef.current, cancelled: () => dead.current,
         onProgress: (p, n, total) => setGif((g) => ({ ...g, prog: p, n, total })) })
-      setGif((g) => { if (g.result) URL.revokeObjectURL(g.result.url); const name = `${base}.gif`; return { busy: false, prog: 1, n: 0, total: 0, error: '', result: { blob: r.blob, url: URL.createObjectURL(r.blob), name, note: `${r.frames} frames · ${r.w}×${r.h}` } } })
+      setGif((g) => { if (g.result) URL.revokeObjectURL(g.result.url); const name = `${base}.gif`; return { busy: false, prog: 1, n: 0, total: 0, error: '', result: { blob: r.blob, url: URL.createObjectURL(r.blob), name, note: `${r.frames} frames · ${r.w}×${r.h}`, capped: r.capped, wanted: r.wanted } } })
       download(r.blob, `${base}.gif`); say('GIF exported'); recentAction(`GIF from ${file.name}`)
     } catch (e) { setGif((g) => ({ ...g, busy: false, error: e.message === 'Cancelled' ? '' : `GIF failed: ${e.message}` })) }
   }

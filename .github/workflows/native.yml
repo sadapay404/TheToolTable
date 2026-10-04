@@ -23,6 +23,7 @@ jobs:
       - uses: swatinem/rust-cache@v2
         with: { workspaces: src-tauri }
       - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm test
       - name: Fetch yt-dlp + ffmpeg sidecars (bundled so users install nothing)
         id: sidecars
         continue-on-error: true
@@ -60,7 +61,10 @@ jobs:
           "$SDKM" --install "ndk;27.2.12479018" "platforms;android-35" "build-tools;35.0.0"
           echo "NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
       - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm test
       - run: npx tauri android init
+      - name: Add camera / mic / internet permissions to the generated manifest
+        run: node scripts/android-permissions.mjs
       - name: Build APK (64-bit + 32-bit phones)
         run: npx tauri android build --apk --target aarch64 --target armv7
       - name: Sign APK

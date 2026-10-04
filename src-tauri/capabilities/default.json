@@ -1,19 +1,98 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Main window permissions. yt-dlp arguments are produced only by the app's own audited buildArgs().",
-  "windows": ["main"],
+  "description": "Main window permissions. yt-dlp arguments are produced only by the app's own audited buildArgs(); file saves go to Downloads/TheToolTable (or app storage on Android).",
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:default",
     "fs:default",
     "opener:default",
     "shell:default",
-    { "identifier": "shell:allow-spawn", "allow": [{ "name": "binaries/yt-dlp", "sidecar": true, "args": true }] },
-    { "identifier": "shell:allow-execute", "allow": [
-      { "name": "binaries/yt-dlp", "sidecar": true, "args": true },
-      { "name": "binaries/ffmpeg", "sidecar": true, "args": ["-version"] }
-    ] },
-    { "identifier": "fs:allow-mkdir", "allow": [{ "path": "$DOWNLOAD/TheToolTable" }] },
-    { "identifier": "fs:allow-stat", "allow": [{ "path": "$DOWNLOAD/TheToolTable/**" }] }
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        {
+          "name": "binaries/yt-dlp",
+          "sidecar": true,
+          "args": true
+        }
+      ]
+    },
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        {
+          "name": "binaries/yt-dlp",
+          "sidecar": true,
+          "args": true
+        },
+        {
+          "name": "binaries/ffmpeg",
+          "sidecar": true,
+          "args": [
+            "-version"
+          ]
+        }
+      ]
+    },
+    {
+      "identifier": "fs:allow-mkdir",
+      "allow": [
+        {
+          "path": "$DOWNLOAD/TheToolTable"
+        }
+      ]
+    },
+    {
+      "identifier": "fs:allow-stat",
+      "allow": [
+        {
+          "path": "$DOWNLOAD/TheToolTable/**"
+        }
+      ]
+    },
+    {
+      "identifier": "fs:allow-mkdir",
+      "allow": [
+        {
+          "path": "$DOWNLOAD/**"
+        },
+        {
+          "path": "$APPDATA/**"
+        }
+      ]
+    },
+    {
+      "identifier": "fs:allow-write-file",
+      "allow": [
+        {
+          "path": "$DOWNLOAD/**"
+        },
+        {
+          "path": "$APPDATA/**"
+        }
+      ]
+    },
+    {
+      "identifier": "fs:allow-stat",
+      "allow": [
+        {
+          "path": "$DOWNLOAD/TheToolTable/**"
+        },
+        {
+          "path": "$APPDATA/**"
+        }
+      ]
+    },
+    {
+      "identifier": "fs:allow-read-file",
+      "allow": [
+        {
+          "path": "$DOWNLOAD/TheToolTable/**"
+        }
+      ]
+    }
   ]
 }

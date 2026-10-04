@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Dropzone, Note, AnimatedNumber, LiveProgress } from '../components/ui.jsx'
+import { planCompression, planSuggestion } from '../lib/compressplan.js'
 import { getFFmpeg } from '../lib/ffmpeg.js'
 import { fetchFile } from '@ffmpeg/util'
 import { fmtBytes, fmtTime, mediaDuration, download, baseName, recentAction, clamp } from '../lib/utils.js'
@@ -110,6 +111,10 @@ export default function Compressor() {
   const [elapsed, setElapsed] = useState(0)
   const [result, setResult] = useState(null)
   const [error, setError] = useState('')
+  const [pass, setPass] = useState(1)
+  const passRef = useRef(1)
+  const [overshoot, setOvershoot] = useState(null)
+  const [onePass, setOnePass] = useState(false)   // true only when the core cannot do pass 1
 
   useEffect(() => {
     if (!busy) return
@@ -125,40 +130,71 @@ export default function Compressor() {
     v.onloadedmetadata = () => setDims({ w: v.videoWidth, h: v.videoHeight })
   }
 
-  const plan = useMemo(() => {
-    if (!file || !Number.isFinite(duration) || duration <= 0) return null
-    const targetBytes = targetMB * 1024 * 1024
-    const overhead = targetBytes * 0.02
-    const audioBytes = (audioKbps * 1000 * duration) / 8
-    const videoBits = Math.max(0, (targetBytes - overhead - audioBytes) * 8)
-    const vKbps = Math.round(videoBits / duration / 1000)
-    const est = videoBits / 8 + audioBytes + overhead
-    return { targetBytes, overhead, audioBytes, vKbps, est, fits: est <= targetBytes }
-  }, [file, duration, targetMB, audioKbps])
+  const audioOnly = !!file && (!dims || !dims.w)
+
+  const plan = useMemo(
+    () => (file ? planCompression({ targetMB, duration, audioKbps, audioOnly }) : null),
+    [file, duration, targetMB, audioKbps, audioOnly],
+  )
 
   async function compress() {
-    if (!plan || plan.vKbps < 20) { setError('Budget too small for this duration — raise the target, lower audio bitrate, or scale resolution down.'); return }
-    setBusy(true); setProg(0); setElapsed(0); setError(''); setResult(null)
+    if (!plan || (!plan.audioOnly && plan.vKbps < 20)) {
+      const s = planSuggestion(plan, { duration, targetMB, audioKbps, audioOnly })
+      const tips = [s.audioKbps && `lower the audio bitrate to ${s.audioKbps} kbps`, s.targetMB && `raise the target to ${s.targetMB} MB`].filter(Boolean)
+      setError(`Budget too small for this duration — ${tips.length ? tips.join(', or ') : 'try a shorter clip'}.`)
+      return
+    }
+    setBusy(true); setProg(0); setElapsed(0); setError(''); setResult(null); setOvershoot(null)
+    let singlePass = false
+    setOnePass(false)
+    let handler, ffmpeg
     try {
-      const ffmpeg = await getFFmpeg()
-      const handler = ({ progress }) => setProg(progress * 100)
+      ffmpeg = await getFFmpeg()
+      // pass 1 covers 0–45 %, pass 2 the rest — one bar, two real passes.
+      handler = ({ progress }) => setProg((p) => Math.min(99.5, Math.max(p, plan.audioOnly ? progress * 100 : passRef.current === 1 ? progress * 45 : 45 + progress * 55)))
       ffmpeg.on('progress', handler)
       const inName = 'in' + file.name.slice(file.name.lastIndexOf('.'))
       await ffmpeg.writeFile(inName, await fetchFile(file))
-      const args = ['-i', inName]
-      if (scale < 1) args.push('-vf', `scale=trunc(iw*${scale}/2)*2:trunc(ih*${scale}/2)*2`)
-      args.push('-c:v', 'libx264', '-b:v', `${plan.vKbps}k`, '-maxrate', `${Math.round(plan.vKbps * 1.15)}k`, '-bufsize', `${plan.vKbps * 2}k`, '-preset', 'medium', '-c:a', 'aac', '-b:a', `${audioKbps}k`, '-y', 'out.mp4')
-      await ffmpeg.exec(args)
-      const data = await ffmpeg.readFile('out.mp4')
-      const blob = new Blob([data.buffer], { type: 'video/mp4' })
-      await ffmpeg.deleteFile(inName); await ffmpeg.deleteFile('out.mp4')
-      ffmpeg.off('progress', handler)
+      const vf = scale < 1 && !plan.audioOnly ? ['-vf', `scale=trunc(iw*${scale}/2)*2:trunc(ih*${scale}/2)*2`] : []
+
+      let outName, mime
+      if (plan.audioOnly) {
+        // Target-size audio: a single pass is exact, because AAC bitrate is predictable.
+        outName = 'out.m4a'; mime = 'audio/mp4'
+        await ffmpeg.exec(['-i', inName, '-vn', '-c:a', 'aac', '-b:a', `${plan.aKbps}k`, '-movflags', '+faststart', '-y', outName])
+      } else {
+        const rc = ['-c:v', 'libx264', '-b:v', `${plan.vKbps}k`, '-maxrate', `${Math.round(plan.vKbps * 1.08)}k`, '-bufsize', `${Math.round(plan.vKbps * 1.5)}k`, '-preset', 'medium']
+        // ---- pass 1: analysis (no audio, no output file) ----
+        passRef.current = 1; setPass(1); setProg(1)
+        try {
+          await ffmpeg.exec([...vf, '-i', inName, ...rc, '-pass', '1', '-passlogfile', 'tttpass', '-an', '-f', 'null', '/dev/null'])
+        } catch {
+          // A core without the null muxer still has to work: fall back to one pass and say so.
+          singlePass = true; setOnePass(true)
+        }
+        // ---- pass 2: the real file, using the stats from pass 1 ----
+        passRef.current = 2; setPass(2)
+        outName = 'out.mp4'; mime = 'video/mp4'
+        const passArgs = singlePass ? [] : ['-pass', '2', '-passlogfile', 'tttpass']
+        await ffmpeg.exec([...vf, '-i', inName, ...rc, ...passArgs, '-c:a', 'aac', '-b:a', `${audioKbps}k`, '-movflags', '+faststart', '-y', outName])
+      }
+
+      const data = await ffmpeg.readFile(outName)
+      const blob = new Blob([data.buffer], { type: mime })
+      for (const f of [inName, outName, 'tttpass-0.log', 'tttpass-0.log.mbtree']) { try { await ffmpeg.deleteFile(f) } catch { /* not all exist */ } }
       setResult(blob)
-      download(blob, `${baseName(file.name)}-${targetMB}mb.mp4`)
+      const over = blob.size - targetMB * 1024 * 1024
+      if (over > 1024 * 1024 * 0.25) setOvershoot(over)
+      const name = `${baseName(file.name)}-${targetMB}mb.${plan.audioOnly ? 'm4a' : 'mp4'}`
+      download(blob, name)
       recentAction(`Compressed ${file.name} into a ${targetMB} MB budget`)
     } catch (e) {
-      setError('Encode failed: ' + String(e?.message || e).slice(0, 220))
-    } finally { setBusy(false) }
+      const msg = String(e?.message || e)
+      setError('Encode failed: ' + msg.slice(0, 220) + (/dev\/null|null muxer/i.test(msg) ? ' (two-pass needs the bundled ffmpeg core — rebuilding it now, try again)' : ''))
+    } finally {
+      if (handler) ffmpeg?.off('progress', handler)
+      setBusy(false); passRef.current = 1; setPass(1)
+    }
   }
 
   const savedPct = result ? Math.max(0, Math.round((1 - result.size / file.size) * 100)) : 0
@@ -209,12 +245,14 @@ export default function Compressor() {
                   <span className="label">Audio bitrate</span>
                   <span className="text-[12px] font-bold tabular-nums" style={{ color: 'var(--copper)' }}>{audioKbps} kbps</span>
                 </div>
-                <input type="range" className="w-full" min="64" max="320" step="32" value={audioKbps} disabled={busy} onChange={(e) => setAudioKbps(+e.target.value)} />
+                <input type="range" className="w-full" min="64" max="320" step="32" value={audioKbps} disabled={busy || !!plan?.audioOnly} onChange={(e) => setAudioKbps(+e.target.value)} />
                 <div className="flex justify-between text-[10px] mt-1" style={{ color: 'var(--muted)' }}><span>64</span><span>320</span></div>
               </div>
               <div>
-                <div className="label mb-2">Resolution scale</div>
-                <Segmented disabled={busy} options={[[1, '100%'], [0.75, '75%'], [0.5, '50%'], [0.25, '25%']]} value={scale} onChange={setScale} />
+                <div className="label mb-2">{plan?.audioOnly ? 'Output' : 'Resolution scale'}</div>
+                {plan?.audioOnly
+                  ? <div className="text-[12.5px] font-semibold" style={{ color: 'var(--muted)' }}>Audio only → .m4a (AAC, {plan?.aKbps} kbps)</div>
+                  : <Segmented disabled={busy} options={[[1, '100%'], [0.75, '75%'], [0.5, '50%'], [0.25, '25%']]} value={scale} onChange={setScale} />}
               </div>
             </motion.div>
 
@@ -251,8 +289,8 @@ export default function Compressor() {
               <h3 className="display font-semibold text-[18px]">The plan</h3>
               <div className="grid grid-cols-2 gap-3">
                 <div className="rounded-xl border border-line p-3" style={{ background: 'var(--surface2)' }}>
-                  <div className="label">Video bitrate</div>
-                  <div className="font-bold text-[17px] mt-1 tabular-nums"><AnimatedNumber value={plan?.vKbps || 0} /> <span className="text-[11px]" style={{ color: 'var(--muted)' }}>kbps</span></div>
+                  <div className="label">{plan?.audioOnly ? 'Audio bitrate' : 'Video bitrate'}</div>
+                  <div className="font-bold text-[17px] mt-1 tabular-nums"><AnimatedNumber value={plan?.audioOnly ? (plan?.aKbps || 0) : (plan?.vKbps || 0)} /> <span className="text-[11px]" style={{ color: 'var(--muted)' }}>kbps</span></div>
                 </div>
                 <div className="rounded-xl border border-line p-3" style={{ background: 'var(--surface2)' }}>
                   <div className="label">Est. output</div>
@@ -298,8 +336,8 @@ export default function Compressor() {
                       <div className="absolute inset-0 grid place-items-center text-[11px] font-bold tabular-nums"><AnimatedNumber value={prog} />%</div>
                     </div>
                     <div className="flex-1">
-                      <div className="font-semibold text-[14px]">Two-pass calculated encode</div>
-                      <div className="text-[12px] mt-0.5" style={{ color: 'var(--muted)' }}>x264 · AAC · {fmtTime(elapsed)} elapsed</div>
+                      <div className="font-semibold text-[14px]">{plan?.audioOnly ? 'AAC encode to a byte budget' : `Two-pass calculated encode — pass ${pass} of 2`}</div>
+                      <div className="text-[12px] mt-0.5" style={{ color: 'var(--muted)' }}>{plan?.audioOnly ? `AAC ${plan?.aKbps} kbps` : `x264 · AAC ${audioKbps} kbps`} · {fmtTime(elapsed)} elapsed</div>
                       <div className="mt-3"><LiveProgress value={prog} /></div>
                     </div>
                   </div>
@@ -326,7 +364,12 @@ export default function Compressor() {
                       </div>
                     </div>
                   ))}
-                  <div className="text-[12px]" style={{ color: 'var(--muted)' }}>Downloaded as {baseName(file.name)}-{targetMB}mb.mp4 · target {targetMB} MB.</div>
+                  <div className="text-[12px]" style={{ color: 'var(--muted)' }}>
+                    Downloaded as {baseName(file.name)}-{targetMB}mb.{plan?.audioOnly ? 'm4a' : 'mp4'} · target {targetMB} MB · actual {fmtBytes(result.size)}.
+                  </div>
+                  {overshoot != null && (
+                    <Note tone="warn">The encoder landed {fmtBytes(overshoot)} over the budget (busy footage overshoots a fixed bitrate). Lower the audio bitrate, drop to 75% scale, or raise the target by {Math.ceil(overshoot / 1048576)} MB and run it again.</Note>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>

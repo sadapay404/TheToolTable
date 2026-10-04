@@ -1,11 +1,12 @@
 import Footer from './components/Footer.jsx'
 import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import ReactDOM from 'react-dom'
-import { AnimatePresence, MotionConfig, motion, useMotionValue, useSpring, useTransform } from 'framer-motion'
+import { MotionConfig, motion, useMotionValue, useSpring, useTransform } from 'framer-motion'
 import { usePerf, setPerfMode, runBenchmark } from './lib/perf.js'
 import { TOOLS } from './toolsRegistry.jsx'
 import { THEMES, THEME_ORDER, applyTheme } from './themes.js'
 import CommandPalette from './components/CommandPalette.jsx'
+import SaveToast from './components/SaveToast.jsx'
 import { Logo } from './components/Logo.jsx'
 
 const SPRING = { type: 'spring', stiffness: 300, damping: 25 }
@@ -267,9 +268,16 @@ export default function App() {
 
       <main className="max-w-6xl mx-auto px-6 pb-28 relative">
         <ErrorBoundary>
-        <AnimatePresence mode="wait">
+        {/*
+          The home ⇄ tool switch is deliberately a plain keyed mount animation, NOT <AnimatePresence>.
+          With `mode="wait"` a long tool run could leave the exiting view animating forever: it faded to
+          opacity 0, its exit never reported completion, the arriving view never mounted and the whole
+          app looked blank and un-navigable. In the default mode the exiting view was kept mounted as an
+          invisible ghost — and React then *reused that instance with its old state* the next time the
+          same tool was opened. Mounting the new view and letting React drop the old one cannot fail.
+        */}
           {!active ? (
-            <motion.div key="home" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -14 }} transition={SPRING}>
+            <motion.div key="home" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={SPRING}>
               {/* Masthead */}
               <section className="pt-20 pb-16 text-center relative">
                 <motion.div
@@ -310,7 +318,7 @@ export default function App() {
 
             </motion.div>
           ) : (
-            <motion.div key={active.id} initial={{ opacity: 0, y: 20, scale: 0.99 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -20, scale: 0.99 }} transition={SPRING}>
+            <motion.div key={active.id} initial={{ opacity: 0, y: 16, scale: 0.99 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={SPRING}>
               <div className="pt-10 pb-8 flex items-center gap-5">
                 <motion.button className="btn btn-ghost" whileTap={{ scale: 0.92 }} onClick={() => setActive(null)}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M19 12H5m7-7-7 7 7 7" /></svg>
@@ -325,10 +333,10 @@ export default function App() {
               <Suspense fallback={<ToolLoading />}><ActiveComp /></Suspense>
             </motion.div>
           )}
-        </AnimatePresence>
         </ErrorBoundary>
       </main>
       <Footer />
+      <SaveToast />
 
       <CommandPalette
         open={paletteOpen}

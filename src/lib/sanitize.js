@@ -1,8 +1,15 @@
 /**
  * Lossless metadata scrubbing — pixel data is never re-encoded.
- * JPEG: keeps SOI + image stream, drops all APPx/COM marker segments (EXIF/IPTC/XMP/thumbnails).
- * PNG:  keeps only critical chunks (IHDR/PLTE/IDAT/IEND) + tRNS/gAMA-safe set; drops tEXt/iTXt/zTXt/eXIf etc.
+ *
+ * JPEG: drops the identifying markers (APP1 EXIF/XMP, APP13 IPTC, APP12, COM) and keeps the ones
+ *       that are *rendering* information: APP0 JFIF, APP2 ICC profile, APP14 Adobe (a CMYK/YCCK
+ *       JPEG turns inside-out without it). Pixels stay byte-identical.
+ * PNG:  keeps critical chunks + colour management (iCCP/sRGB/gAMA/cHRM/pHYs/sBIT/tRNS) and drops all
+ *       text/time/eXIf metadata. A photo therefore keeps the exact colours it had.
  */
+
+/** Scrubbers accept an ArrayBuffer or any typed-array view of one. */
+const toAB = (b) => (b instanceof ArrayBuffer ? b : b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength))
 
 export function detectType(buf) {
   const b = new Uint8Array(buf)
@@ -12,7 +19,7 @@ export function detectType(buf) {
 }
 
 export function scrubJPEG(buf) {
-  const b = new Uint8Array(buf)
+  const b = new Uint8Array(toAB(buf))
   const keep = []
   keep.push(b.subarray(0, 2)) // SOI
   let i = 2
@@ -26,20 +33,24 @@ export function scrubJPEG(buf) {
     if (marker === 0xda) { keep.push(b.subarray(i)); break } // SOS -> rest is scan data + EOI
     if (marker === 0x00 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) { i += 2; continue } // standalone
     const len = (b[i + 2] << 8) | b[i + 3]
-    const isMeta = (marker >= 0xe0 && marker <= 0xef) || marker === 0xfe // APPx + COM
+    // APP segments that carry pixels' *meaning* rather than the photographer's identity.
+    const KEEP_APP = marker === 0xe0 /* JFIF   */ || marker === 0xe2 /* ICC    */ || marker === 0xee /* Adobe  */
+    const isMeta = ((marker >= 0xe0 && marker <= 0xef) || marker === 0xfe) && !KEEP_APP // APPx + COM minus the render-critical ones
     if (!isMeta) keep.push(b.subarray(i, i + 2 + len))
     i += 2 + len
   }
   return new Blob(keep, { type: 'image/jpeg' })
 }
 
-const PNG_KEEP = new Set(['IHDR', 'PLTE', 'IDAT', 'IEND', 'tRNS', 'sBIT', 'pHYs'])
+// Critical chunks + colour management. Text/time/eXIf chunks (tEXt/iTXt/zTXt/eXIf/tIME) are the metadata.
+const PNG_KEEP = new Set(['IHDR', 'PLTE', 'IDAT', 'IEND', 'tRNS', 'sBIT', 'pHYs', 'iCCP', 'sRGB', 'gAMA', 'cHRM'])
 
 export function scrubPNG(buf) {
-  const b = new Uint8Array(buf)
+  const ab = toAB(buf)
+  const b = new Uint8Array(ab)
   const out = [b.subarray(0, 8)]
   let i = 8
-  const dv = new DataView(buf)
+  const dv = new DataView(ab)
   while (i + 8 <= b.length) {
     const len = dv.getUint32(i)
     const type = String.fromCharCode(b[i + 4], b[i + 5], b[i + 6], b[i + 7])

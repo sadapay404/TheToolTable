@@ -13,8 +13,10 @@ import { normalizeUrl, summarise, buildArgs, infoArgs, JobTracker, err } from '.
 /* ====================================== HTTP ====================================== */
 
 const BASE_KEY = 'ttt.engine.base'
-export const getBase = () => (localStorage.getItem(BASE_KEY) || '/api/ytdlp').replace(/\/+$/, '')
-export const setBase = (v) => localStorage.setItem(BASE_KEY, (v || '').trim() || '/api/ytdlp')
+const lsGet = (k) => { try { return localStorage.getItem(k) } catch { return null } }
+const lsSet = (k, v) => { try { localStorage.setItem(k, v) } catch { /* private mode / blocked storage */ } }
+export const getBase = () => (lsGet(BASE_KEY) || '/api/ytdlp').replace(/\/+$/, '')
+export const setBase = (v) => lsSet(BASE_KEY, (v || '').trim() || '/api/ytdlp')
 
 async function http(path, opts = {}) {
   const res = await fetch(getBase() + path, {
@@ -82,7 +84,7 @@ export function nativeEngine(runner, kind) {
       o.url = normalizeUrl(o.url, true)
       const id = Math.random().toString(16).slice(2, 18).padEnd(16, '0')
       const dir = await runner.downloadsDir()
-      const t = new JobTracker(id, o.parts)
+      const t = new JobTracker(id, o.parts, o)
       const argv = buildArgs(o, { outTemplate: `${dir}/%(title).120B [%(id)s].%(ext)s`, tempDir: `${dir}/.tmp` })
       const p = runner.spawn(argv, (c) => t.feed(c))
       jobs.set(id, { t, p })

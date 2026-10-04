@@ -234,7 +234,7 @@ export default function MetadataExtractor() {
   return (
     <div className="space-y-5">
       {!file ? (
-        <Dropzone onFiles={analyze} accept="image/*,.heic,.tif,.tiff,.webp" label="Drop a photo or image file" sub="JPEG · PNG · TIFF · HEIC · WebP — every tag, GPS + place name, parsed on this device" />
+        <Dropzone onFiles={analyze} accept="image/*,.heic,.tif,.tiff,.webp" label="Drop a photo or image file" sub="JPEG · PNG · TIFF · HEIC · WebP — every tag and GPS, parsed on this device (the place name is looked up via OpenStreetMap)" />
       ) : (
         <>
           <div className="card p-6 flex flex-wrap items-center gap-4">

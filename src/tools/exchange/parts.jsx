@@ -1,3 +1,4 @@
+import { assetUrl } from '../../lib/utils.js'
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence, animate } from 'framer-motion'
@@ -59,7 +60,7 @@ export const Flag = memo(function Flag({ cc, size = 32, label = '' }) {
   const [bad, setBad] = useState(false)
   if (!cc || bad) return <Mono text={(label || cc || '?').toUpperCase()} size={size} />
   return <span className="relative inline-block rounded-full overflow-hidden shrink-0" style={{ width: size, height: size, boxShadow: '0 0 0 1px rgba(0,0,0,.12), 0 2px 6px -2px rgba(0,0,0,.35)' }}>
-    <img src={`/flags/${cc.toLowerCase()}.svg`} alt="" loading="lazy" draggable={false} onError={() => setBad(true)} className="absolute top-0 h-full max-w-none" style={{ left: '50%', width: size * 1.34, transform: 'translateX(-50%)' }} />
+    <img src={assetUrl(`flags/${cc.toLowerCase()}.svg`)} alt="" loading="lazy" draggable={false} onError={() => setBad(true)} className="absolute top-0 h-full max-w-none" style={{ left: '50%', width: size * 1.34, transform: 'translateX(-50%)' }} />
   </span>
 })
 export const Coin = memo(function Coin({ item, size = 32 }) {

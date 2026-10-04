@@ -1,6 +1,6 @@
 /* TheToolTable service worker — makes the app installable and fully usable offline after the first visit.
    Hashed build files are immutable → cache-first. The page itself is network-first so updates arrive on the next load. */
-const V = 'ttt-v1'
+const V = 'ttt-v2'
 const SHELL = ['/', '/index.html', '/manifest.webmanifest', '/logo.png']
 
 self.addEventListener('install', (e) => {
@@ -21,7 +21,7 @@ self.addEventListener('fetch', (e) => {
     e.respondWith(fetch(req).then((r) => { const c = r.clone(); caches.open(V).then((x) => x.put('/index.html', c)); return r }).catch(() => caches.match('/index.html')))
     return
   }
-  const immutable = url.pathname.startsWith('/assets/') || url.pathname.startsWith('/models/') || url.pathname.startsWith('/flags/') || url.pathname.startsWith('/icons/')
+  const immutable = ['/assets/', '/models/', '/flags/', '/icons/', '/ffmpeg/'].some((p) => url.pathname.startsWith(p))
   e.respondWith(caches.match(req).then((hit) => {
     if (hit && immutable) return hit
     const net = fetch(req).then((r) => { if (r.ok && r.type === 'basic') { const c = r.clone(); caches.open(V).then((x) => x.put(req, c)) } return r }).catch(() => hit)

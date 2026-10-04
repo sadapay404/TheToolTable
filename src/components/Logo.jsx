@@ -1,4 +1,5 @@
 import React from 'react'
+import { assetUrl } from '../lib/utils.js'
 
 /**
  * TheToolTable logo.
@@ -13,7 +14,7 @@ export function Logo({ className = 'w-9 h-9', shadow = false, big = false }) {
       style={shadow ? { boxShadow: big ? 'var(--shadow-lg)' : 'var(--shadow)', borderRadius: 12 } : undefined}
     >
       {!failed ? (
-        <img src="/logo.png" alt="TheToolTable" className="w-full h-full object-cover rounded-[inherit]" onError={() => setFailed(true)} draggable={false} />
+        <img src={assetUrl('logo.png')} alt="TheToolTable" className="w-full h-full object-cover rounded-[inherit]" onError={() => setFailed(true)} draggable={false} />
       ) : (
         <svg viewBox="0 0 64 64" className="w-full h-full rounded-[inherit]">
           <rect width="64" height="64" fill="#FDFBF7" />

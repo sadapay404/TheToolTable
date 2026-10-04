@@ -30,7 +30,11 @@ export function Dropzone({ onFiles, multiple = false, accept, label = 'Drop file
     <div
       className="dropzone p-10 text-center cursor-pointer"
       data-hot={hot}
+      role="button"
+      tabIndex={0}
+      aria-label={label || 'Choose files'}
       onClick={() => ref.current?.click()}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ref.current?.click() } }}
       onDragOver={(e) => { e.preventDefault(); setHot(true) }}
       onDragLeave={() => setHot(false)}
       onDrop={(e) => { e.preventDefault(); setHot(false); const fs = [...e.dataTransfer.files]; if (fs.length) onFiles(multiple ? fs : fs.slice(0, 1)) }}

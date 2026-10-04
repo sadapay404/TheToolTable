@@ -104,6 +104,11 @@ export function applyTheme(id) {
   root.dataset.theme = id
   Object.entries(t.vars).forEach(([k, v]) => root.style.setProperty(k, v))
   try { localStorage.setItem('ttt-theme', id) } catch {}
+  try {
+    root.style.colorScheme = t.dark ? 'dark' : 'light'
+    const meta = document.querySelector('meta[name="theme-color"]')
+    if (meta) meta.setAttribute('content', t.vars['--bg'])
+  } catch {}
 }
 
 export function savedTheme() {

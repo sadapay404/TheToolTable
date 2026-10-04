@@ -1,0 +1,31 @@
+# Quality gate for the web app: type-free but real — build + the node unit suite on every push.
+name: Web build & tests
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm test
+      - run: npm run build
+      - name: Check the bundled engines made it into the build
+        run: |
+          set -e
+          test -f dist/ffmpeg/ffmpeg-core.wasm || { echo "ffmpeg core missing from dist"; exit 1; }
+          test -f dist/models/isnet-quint8.onnx || { echo "IS-Net model missing from dist"; exit 1; }
+          ls dist/assets/*.js > /dev/null
+          du -sh dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: thetooltable-web-dist
+          path: dist
+          retention-days: 7

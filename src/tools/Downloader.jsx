@@ -4,6 +4,7 @@ import { AnimatedNumber, LiveProgress, Note } from '../components/ui.jsx'
 import RangeTrack, { TimeField, clock } from '../components/RangeTrack.jsx'
 import { fmtBytes, recentAction } from '../lib/utils.js'
 import { engine, getBase, setBase } from '../lib/engine.js'
+import { containerPlan } from '../lib/ytdlp-core.js'
 
 const SPRING = { type: 'spring', stiffness: 300, damping: 25 }
 
@@ -92,7 +93,7 @@ function OfflineCard({ onRetry }) {
             <input className="input mono text-[12.5px]" value={base} onChange={(e) => setBase(e.target.value)} placeholder="Engine address — default /api/ytdlp" />
             <button className="btn btn-primary" onClick={() => { setBase(base); onRetry() }}>Connect</button>
           </div>
-          <p className="text-[11.5px] mt-2" style={{ color: 'var(--muted)' }}>Self-hosting? Point this at e.g. <span className="mono">http://127.0.0.1:8787/api/ytdlp</span> or your own server.</p>
+          <p className="text-[11.5px] mt-2" style={{ color: 'var(--muted)' }}>Self-hosting? Point this at e.g. <span className="mono">http://127.0.0.1:8787/api/ytdlp</span> or your own server. In the Windows/Android app you can point it at a PC running <span className="mono">npm run engine</span> (use the LAN address, e.g. <span className="mono">http://192.168.1.20:8787/api/ytdlp</span>).</p>
         </div>
       </div>
     </Card>
@@ -195,7 +196,16 @@ function JobCard({ job, onRemove }) {
           </div>
         </div>
       )}
-      {s.state === 'done' && <div className="mt-3 text-[12px]" style={{ color: 'var(--muted)' }}>{savedMsg || s.file} · {fmtBytes(s.size)} · {s.elapsed.toFixed(1)}s</div>}
+      {s.state === 'done' && (
+        <div className="mt-3 space-y-1">
+          <div className="text-[12px]" style={{ color: 'var(--muted)' }}>{savedMsg || s.file || s.name} · {fmtBytes(s.size)} · {s.elapsed.toFixed(1)}s</div>
+          {s.fellBack && (
+            <div className="text-[11.5px] font-semibold" style={{ color: '#E8A33D' }}>
+              Saved as .{s.ext} instead of .{s.requested} — the source codecs can't be muxed into {String(s.requested).toUpperCase()} without re-encoding, and this app never re-encodes silently. Identical quality, different box.
+            </div>
+          )}
+        </div>
+      )}
     </motion.div>
   )
 }
@@ -248,7 +258,7 @@ export default function Downloader() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [info, setInfo] = useState(null)
-  const [opts, setOpts] = useState({ mode: 'video', height: null, container: 'mp4', audioFormat: 'best', clip: false, start: 0, end: 0, accurate: false, subs: false })
+  const [opts, setOpts] = useState({ mode: 'video', height: null, container: 'auto', audioFormat: 'best', clip: false, start: 0, end: 0, accurate: false, subs: false })
   const [jobs, setJobs] = useState([])
   const inputRef = useRef(null)
 
@@ -279,6 +289,8 @@ export default function Downloader() {
 
   const selected = useMemo(() => info?.kind === 'video' ? (opts.height ? info.heights.find((h) => h.height === opts.height) : info.heights[0]) : null, [info, opts.height])
   const clipLen = opts.clip && info?.duration ? Math.max(0, opts.end - opts.start) : null
+  /** What container will really come out (and why) — never claims MP4 for codecs that can't do MP4. */
+  const plan = useMemo(() => (info?.kind === 'video' ? containerPlan(info, opts.height, opts.container) : null), [info, opts.height, opts.container])
   const estBytes = useMemo(() => {
     if (!info || info.kind !== 'video') return 0
     let b = opts.mode === 'audio' ? (info.audioBytes || (info.audioKbps && info.duration ? (info.audioKbps * 1000 * info.duration) / 8 : 0)) : (selected?.bytes || 0)
@@ -291,13 +303,13 @@ export default function Downloader() {
     setError('')
     try {
       const j = await engine.start({
-        url: info.sourceUrl, mode: opts.mode, height: opts.height, container: opts.container, audioFormat: opts.audioFormat,
+        url: info.sourceUrl, mode: opts.mode, height: opts.height, container: plan?.container || opts.container, audioFormat: opts.audioFormat,
         clip: opts.clip && info.duration > 0, start: opts.start, end: opts.end, accurateCuts: opts.accurate, subs: opts.subs, metadata: true,
         parts: opts.mode === 'video' && info.needsMerge ? 2 : 1,
       })
       const label = opts.mode === 'audio'
         ? `Audio · ${opts.audioFormat === 'best' ? 'original codec' : opts.audioFormat.toUpperCase()}`
-        : `${opts.height ? opts.height + 'p' : selected ? selected.height + 'p best' : 'Best'} · ${opts.container.toUpperCase()}`
+        : `${opts.height ? opts.height + 'p' : selected ? selected.height + 'p best' : 'Best'} · ${(plan?.container || opts.container).toUpperCase()}`
       setJobs((js) => [{ id: j.id, title: info.title, label: label + (opts.clip ? ` · ${clock(opts.start)}–${clock(opts.end)}` : '') }, ...js])
     } catch (e) { if (e.offline) setEng({ status: 'offline' }); else setError(e.message) }
   }
@@ -406,6 +418,7 @@ export default function Downloader() {
                                 style={{ borderColor: on ? 'var(--ink)' : 'var(--border)', background: on ? 'var(--ink)' : 'var(--surface)', color: on ? 'var(--bg)' : 'var(--ink)' }}>
                                 <div className="font-bold text-[14px]">{h.height ? `${h.height}p` : 'Best'}{h.fps > 30 ? <span className="text-[10px] font-semibold opacity-70"> {Math.round(h.fps)}fps</span> : null}</div>
                                 <div className="text-[10.5px] mt-0.5 opacity-70">{h.height ? `${h.vcodec || ''} ${ref?.bytes ? '· ~' + fmtBytes(ref.bytes) : ''}` : `highest · ${ref?.height || '—'}p`}</div>
+                                <div className="text-[10px] mt-1 font-semibold" style={{ color: on ? 'var(--bg)' : ref?.mp4 ? '#4E937A' : 'var(--copper)' }}>{ref?.mp4 ? 'MP4-ready' : 'MKV (lossless)'}</div>
                               </motion.button>
                             )
                           })}
@@ -414,7 +427,13 @@ export default function Downloader() {
                       </div>
                       <div>
                         <div className="label mb-2">Container <span className="normal-case tracking-normal font-medium">— swapped losslessly, never re-encoded</span></div>
-                        <Seg id="cont" value={opts.container} onChange={(v) => set({ container: v })} options={[['mp4', 'MP4', 'most compatible'], ['mkv', 'MKV', 'any codec'], ['webm', 'WebM', 'VP9 / AV1']]} />
+                        <Seg id="cont" value={opts.container} onChange={(v) => set({ container: v })} options={[['auto', 'Auto', 'best lossless fit'], ['mp4', 'MP4', 'most compatible'], ['mkv', 'MKV', 'any codec'], ['webm', 'WebM', 'VP9 / AV1']]} />
+                        {plan && (
+                          <p className="text-[11.5px] mt-2 leading-relaxed" style={{ color: plan.fallback ? '#E8A33D' : 'var(--muted)' }}>
+                            {plan.fallback ? '⚠ ' : ''}{plan.reason}
+                            {plan.fallback ? ` The file will be saved as .${plan.container}.` : ''}
+                          </p>
+                        )}
                       </div>
                     </motion.div>
                   ) : (

@@ -35,14 +35,14 @@ export const TOOLS = [
   {
     id: 'compressor', n: 3, name: 'Target-Size Compressor', icon: '🎯', color: '#D04841',
     tag: 'Compress',
-    desc: 'Hit an exact byte budget (25 MB for Discord/Email) with computed bitrates.',
+    desc: 'Hit a byte budget (25 MB for Discord/Email) with real two-pass x264 (or AAC for audio), then see the actual size against the target.',
     keywords: 'compress target size discord email bitrate crf ffmpeg reduce mb',
     comp: lz('Compressor'),
   },
   {
     id: 'clipper', n: 4, name: 'Media Clipper & Downloader', icon: '✂️', color: '#7B6CB0',
     tag: 'Download · Cut',
-    desc: 'Paste any link — yt-dlp fetches it in the quality, format and time range you pick. Or clip a local file losslessly.',
+    desc: 'Paste any link — yt-dlp fetches it in the quality, format and time range you pick, and the container it promises is the container you get. Or clip a local file losslessly.',
     keywords: 'download yt-dlp youtube video audio mp3 clip trim cut waveform timeline url playlist section',
     comp: lz('Clipper'),
   },
@@ -77,7 +77,7 @@ export const TOOLS = [
   {
     id: 'units', n: 9, name: 'Currency, Unit & Time Converter', icon: '⚖️', color: '#4E937A',
     tag: 'Live · Offline-ready',
-    desc: 'Fiat and crypto in every combination, 170+ units, and the time in all 195 countries.',
+    desc: 'Fiat and crypto in every combination, 157 units across 16 categories, and the time in all 195 countries.',
     keywords: 'currency exchange rate usd pkr eur inr btc bitcoin ethereum crypto coin unit length mass temperature speed bytes energy tola marla time timezone time zone world clock converter india pakistan offline',
     comp: lz('UnitCurrency'),
   },

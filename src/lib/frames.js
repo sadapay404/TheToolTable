@@ -1,6 +1,7 @@
 // Frame-accurate video helpers shared by the Frame Studio (Tool 07): metadata, fps detection,
 // exact seeking, hi-res frame grabs, filmstrip thumbnails and GIF encoding. Pure browser code.
 import { GIFEncoder, quantize, applyPalette } from 'gifenc'
+import { gifPlan } from './gifplan.js'
 
 export const tc = (s) => { s = Math.max(0, s); const m = Math.floor(s / 60); const r = s - m * 60; return `${m}:${r.toFixed(3).padStart(6, '0')}` }
 
@@ -89,19 +90,13 @@ export async function filmstrip(url, duration, n, { height = 96, onThumb, cancel
   v.removeAttribute('src'); v.load()
 }
 
-export const MAX_GIF_FRAMES = 300
-
-export function gifPlan(start, end, fps) {
-  const dur = Math.max(0, end - start)
-  const wanted = Math.max(1, Math.floor(dur * fps))
-  const frames = Math.min(MAX_GIF_FRAMES, wanted)
-  return { frames, wanted, capped: wanted > MAX_GIF_FRAMES, seconds: frames / fps }
-}
+// Frame budgeting lives in its own dependency-free module so it stays unit-testable.
+export { MAX_GIF_FRAMES, gifPlan } from './gifplan.js'
 
 /** Encode start..end of the video as a GIF. Draws each frame into `preview` (a <canvas>) so the UI can show it live. */
 export async function encodeGif({ url, start, end, fps, width, loop, preview, onProgress, cancelled }) {
   const v = await loadVideo(url)
-  const { frames } = gifPlan(start, end, fps)
+  const { frames, wanted, capped } = gifPlan(start, end, fps)
   const w = width, h = Math.max(1, Math.round((v.videoHeight / v.videoWidth) * w))
   const c = document.createElement('canvas'); c.width = w; c.height = h
   const ctx = c.getContext('2d', { willReadFrequently: true })
@@ -121,7 +116,7 @@ export async function encodeGif({ url, start, end, fps, width, loop, preview, on
   }
   gif.finish()
   v.removeAttribute('src'); v.load()
-  return { blob: new Blob([gif.bytes()], { type: 'image/gif' }), frames, w, h }
+  return { blob: new Blob([gif.bytes()], { type: 'image/gif' }), frames, wanted, capped, w, h }
 }
 
 /** N frames evenly across start..end as an uncompressed (stored) ZIP of PNG/JPG files. */

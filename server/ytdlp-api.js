@@ -99,7 +99,7 @@ function startJob(o, bins, allowPrivate) {
   const id = crypto.randomBytes(8).toString('hex')
   const dir = path.join(WORK, id)
   fs.mkdirSync(path.join(dir, '.tmp'), { recursive: true })
-  const tracker = new JobTracker(id, o.parts)
+  const tracker = new JobTracker(id, o.parts, o)
   const job = { id, tracker, dir, created: Date.now(), proc: null, get state() { return tracker.s.state } }
   jobs.set(id, job)
 
@@ -146,19 +146,49 @@ const json = (res, status, body) => {
   res.end(s)
 }
 
+/**
+ * Origins allowed to talk to a self-hosted engine by default.
+ * The engine listens on 127.0.0.1 and can download files, so a wide-open `*` would let *any* website
+ * you happen to have open drive it. Add your own front-end origin with YTDLP_CORS, or set
+ * YTDLP_CORS=* on a machine you fully trust (a private VPS behind its own auth, for example).
+ */
+const DEFAULT_ORIGINS = [
+  'http://localhost:5173', 'http://127.0.0.1:5173',   // vite dev
+  'http://localhost:4173', 'http://127.0.0.1:4173',   // vite preview
+  'http://localhost:3000', 'http://127.0.0.1:3000',
+  'https://thetooltable.vercel.app', 'https://thetooltable.app', 'https://www.thetooltable.app',
+]
+
+export function parseCors(value) {
+  if (value === undefined || value === null || value === '' || value === false || value === '0' || value === 'off') return DEFAULT_ORIGINS
+  if (value === true || value === '1' || value === '*' || value === 'all') return '*'
+  return String(value).split(',').map((o) => o.trim()).filter(Boolean)
+}
+
+const originAllowed = (allow, origin) => allow === '*' || (!!origin && allow.includes(origin))
+
 /** connect-style middleware; `req.url` is relative to the mount point. */
 export function createYtdlpHandler({ allowPrivate = process.env.YTDLP_ALLOW_PRIVATE === '1', cors = false } = {}) {
+  const allow = cors ? parseCors(cors) : null
   return async function handler(req, res, next) {
     const url = new URL(req.url, 'http://x')
     const route = url.pathname.replace(/\/+$/, '') || '/'
+    const origin = req.headers?.origin
 
-    if (cors) {
-      res.setHeader('Access-Control-Allow-Origin', typeof cors === 'string' ? cors : '*')
+    if (allow && (req.method === 'OPTIONS' || originAllowed(allow, origin))) {
+      const echo = allow === '*' ? '*' : origin
+      res.setHeader('Access-Control-Allow-Origin', echo)
+      res.setHeader('Vary', 'Origin')
       res.setHeader('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS')
       res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
-      res.setHeader('Access-Control-Allow-Private-Network', 'true')
+      // Only tell the browser that a *public* page may reach this private address when the caller
+      // explicitly opted into a wildcard.
+      if (allow === '*') res.setHeader('Access-Control-Allow-Private-Network', 'true')
       res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition,Content-Length')
       if (req.method === 'OPTIONS') { res.writeHead(204); return res.end() }
+    } else if (allow && origin && !originAllowed(allow, origin)) {
+      res.writeHead(403, { 'Content-Type': 'application/json' })
+      return res.end(JSON.stringify({ error: `Origin ${origin} is not allowed to use this engine. Add it with YTDLP_CORS=${origin}` }))
     }
 
     try {

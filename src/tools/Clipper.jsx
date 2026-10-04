@@ -70,7 +70,9 @@ function ClipFile() {
       const ext = extName(file.name) || 'mp4'
       const inName = 'in.' + ext, outName = 'clip.' + ext
       await ffmpeg.writeFile(inName, await fetchFile(file))
-      await ffmpeg.exec(['-ss', range[0].toFixed(3), '-to', range[1].toFixed(3), '-i', inName, '-c', 'copy', '-y', outName])
+      // -ss BEFORE -i = fast input seek; -t (duration) is unambiguous where -to is not.
+      const clipDur = Math.max(0.05, range[1] - range[0])
+      await ffmpeg.exec(['-ss', range[0].toFixed(3), '-i', inName, '-t', clipDur.toFixed(3), '-c', 'copy', '-avoid_negative_ts', 'make_zero', '-y', outName])
       const data = await ffmpeg.readFile(outName)
       await ffmpeg.deleteFile(inName); await ffmpeg.deleteFile(outName)
       ffmpeg.off('progress', handler)

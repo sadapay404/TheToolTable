@@ -58,16 +58,31 @@ so it doesn't remove the packaging problem; it only moves it.
    (+ the matching Rust plugins). `engine.js` auto-selects the sidecar transport when running inside Tauri.
 5. yt-dlp finds `ffmpeg`/`ffprobe` next to its own executable, which is where Tauri places sidecars.
 
-**Status:** the shared core + generic native engine are tested; the Tauri runner (`tauriRunner` in
-`engine.js`) and the steps above are written to Tauri 2's documented sidecar API but **not yet run**,
-because no Tauri shell exists in the repo yet. Expect one debugging pass when it's first built.
+**Status:** the Tauri 2 shell exists (`src-tauri/`), the steps above are implemented, and
+`.github/workflows/native.yml` builds the Windows installers in CI with the sidecars fetched fresh
+(so `binaries/` stays out of git). What is *not* yet verified is a real download on a real machine:
+sidecar spawn, `--ffmpeg-location`, and the `path.downloadDir()` save all run through the same
+`ytdlp-core.js` that the HTTP engine uses, but they have only been exercised against a Node stand-in
+runner, not the frozen `yt-dlp.exe` in an installed app.
 
-## Android setup (Phase 2)
+## Android setup
 
-Tauri 2 mobile shell + a small Kotlin plugin wrapping youtubedl-android that exposes the runner
-contract (spawn → stream lines, kill, downloads dir, size). The shell injects it as
-`window.__TTT_ANDROID_RUNNER__`; `engine.js` already selects it. Save to the public Downloads
-via MediaStore (scoped storage), not a raw path.
+The Tauri 2 mobile shell builds a signed universal APK in CI. **The download engine is the one
+missing piece**: `engine.js` already looks for `window.__TTT_ANDROID_RUNNER__`, but nothing injects
+it yet — a small Kotlin plugin wrapping [youtubedl-android](https://github.com/yausername/youtubedl-android)
+still has to expose the runner contract (spawn → stream lines, kill, downloads dir, size).
+Until then Tool 04 on Android shows its offline card and accepts an engine address (point it at your
+PC's `npm run engine`), and every other tool works fully offline.
+
+Two Android-specific details that are handled:
+
+- **Saving files.** A `blob:` + `<a download>` does nothing inside a WebView, so `download()` in
+  `src/lib/utils.js` writes through Tauri's fs plugin instead: `Downloads/TheToolTable/<name>` first,
+  app-private `exports/` as a fallback, with a toast telling you where the file went.
+  On Android the fs plugin goes through scoped storage, so no `WRITE_EXTERNAL_STORAGE` prompt appears.
+- **Camera scanning** (QR Studio → Scan) needs `android.permission.CAMERA` in the generated manifest
+  and a runtime grant. The manifest ship-step is in the workflow; if the WebView refuses the camera on
+  a given device, the Image tab still decodes screenshots and photos without any permission.
 
 ## Keeping yt-dlp alive (sites break it often)
 

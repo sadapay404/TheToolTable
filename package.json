@@ -15,7 +15,7 @@
     "app:win": "tauri build",
     "app:win:sidecars": "node scripts/fetch-sidecars.mjs && tauri build --config src-tauri/tauri.sidecars.conf.json",
     "app:android": "tauri android build --apk --target aarch64 --target armv7",
-    "test": "node --test tests/*.test.mjs",
+    "test": "node scripts/run-tests.mjs",
     "smoke": "node scripts/harness/smoke.mjs",
     "e2e": "node scripts/harness/e2e.mjs"
   },

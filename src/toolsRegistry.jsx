@@ -20,6 +20,7 @@ const loaders = {
   InvoiceStudio: () => import('./tools/InvoiceStudio.jsx'),
   Beam: () => import('./tools/Beam.jsx'),
   IconForge: () => import('./tools/IconForge.jsx'),
+  PkMoney: () => import('./tools/PkMoney.jsx'),
 }
 const lz = (k) => { const C = lazy(loaders[k]); C.preload = loaders[k]; return C }
 
@@ -149,5 +150,12 @@ export const TOOLS = [
     desc: 'Turn one logo into every icon you need: favicon, PWA, Android, iPhone, Windows, macOS and Tauri packs in one ZIP.',
     keywords: 'icon favicon ico icns app icon android ios pwa manifest tauri maskable adaptive logo asset generator',
     comp: lz('IconForge'),
+  },
+  {
+    id: 'pkmoney', n: 19, name: 'Pakistan Money Kit', icon: '🪙', color: '#1F7A4D',
+    tag: 'Money · Pakistan',
+    desc: 'Zakat with live nisab, salary tax slabs, loan and EMI schedules, savings profit and tola-masha-ratti gold maths.',
+    keywords: 'zakat nisab income tax salary fbr slab emi loan installment profit savings gold tola masha ratti silver rupee pakistan lakh',
+    comp: lz('PkMoney'),
   },
 ]

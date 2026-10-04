@@ -50,6 +50,7 @@ const P = {
   waves: 'M3 12h2m3-5v10m4-13v16m4-12v8m4-5v2', bolt: 'M13 3 5 13h6l-1 8 8-10h-6z', palette: 'M12 3a9 9 0 1 0 0 18c1.5 0 2-1 1.5-2s0-2 1.5-2h2a4 4 0 0 0 4-4c0-5-4.5-10-9-10M7.5 11h.01M10 7.5h.01M15 8h.01',
   info: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18M12 11v5M12 8h.01', alert: 'M12 4 2.5 20h19zM12 10v5M12 17.5h.01',
   box: 'M3 7.5 12 3l9 4.5v9L12 21l-9-4.5zM3 7.5 12 12l9-4.5M12 12v9', cut: 'M6 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6M6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6M8 8l12 11M8 16 20 5',
+  scale: 'M12 4v16M7 20h10M4 7h16M4 7l-2.5 6a3 3 0 0 0 5 0zM20 7l-2.5 6a3 3 0 0 0 5 0z',
   qr: 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2v2h-2zM18 14h2v2M14 18h2v2m4-2v2', list: 'M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01',
 }
 export function KIco({ n, s = 18, w = 1.8, className = '', style }) {

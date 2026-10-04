@@ -2,7 +2,7 @@
   "name": "thetooltable",
   "private": true,
   "version": "1.0.0",
-  "description": "TheToolTable \u2014 a growing set of desktop-grade tools in one ultra-slick 3D animated studio.",
+  "description": "TheToolTable — a growing set of desktop-grade tools in one ultra-slick 3D animated studio.",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
@@ -17,6 +17,7 @@
     "app:android": "tauri android build --apk --target aarch64 --target armv7"
   },
   "dependencies": {
+    "@ffmpeg/core": "^0.12.6",
     "@ffmpeg/ffmpeg": "^0.12.10",
     "@ffmpeg/util": "^0.12.1",
     "@fontsource-variable/fraunces": "^5.3.0",

@@ -4,7 +4,6 @@ import { fetchFile, toBlobURL } from '@ffmpeg/util'
 let instance = null
 let loading = null
 
-const CDN = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd'
 
 /** Lazy, shared single-threaded ffmpeg.wasm instance (no COOP/COEP needed). */
 export async function getFFmpeg(onProgress) {
@@ -13,10 +12,9 @@ export async function getFFmpeg(onProgress) {
   loading = (async () => {
     const ffmpeg = new FFmpeg()
     if (onProgress) ffmpeg.on('progress', onProgress)
-    const [coreURL, wasmURL] = await Promise.all([
-      toBlobURL(`${CDN}/ffmpeg-core.js`, 'text/javascript'),
-      toBlobURL(`${CDN}/ffmpeg-core.wasm`, 'application/wasm'),
-    ])
+    // The ffmpeg core ships inside the app (works offline, in the PWA and in the Windows/Android builds).
+    const base = `${import.meta.env.BASE_URL || '/'}ffmpeg/`
+    const [coreURL, wasmURL] = await Promise.all([toBlobURL(base + 'ffmpeg-core.js', 'text/javascript'), toBlobURL(base + 'ffmpeg-core.wasm', 'application/wasm')])
     await ffmpeg.load({ coreURL, wasmURL })
     instance = ffmpeg
     loading = null
@@ -32,7 +30,11 @@ export async function convertWithFFmpeg(inputFile, outputName, args, onProgress)
   try {
     await ffmpeg.writeFile(inputFile.name, await fetchFile(inputFile))
     await ffmpeg.exec(['-i', inputFile.name, ...args, outputName])
-    const data = await ffmpeg.readFile(outputName)
+    let data
+    try { data = await ffmpeg.readFile(outputName) } catch {
+      try { await ffmpeg.deleteFile(inputFile.name) } catch {}
+      throw new Error(args.includes('-vn') ? 'This file has no audio track to extract.' : 'Nothing could be produced from this file — it may be empty or in an unsupported variant.')
+    }
     await ffmpeg.deleteFile(inputFile.name)
     await ffmpeg.deleteFile(outputName)
     return new Blob([data.buffer], { type: 'application/octet-stream' })

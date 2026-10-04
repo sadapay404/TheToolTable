@@ -63,6 +63,20 @@ async function unzip(buf) {
 
 /* ================= engines ================= */
 
+/** Real 32-bit BMP (BITMAPV4HEADER, BGRA, top-down) — browsers cannot encode BMP from a canvas. */
+function encodeBMP(img) {
+  const { width: w, height: h, data } = img, size = 14 + 108 + w * h * 4
+  const buf = new ArrayBuffer(size), v = new DataView(buf), u = new Uint8Array(buf)
+  u[0] = 0x42; u[1] = 0x4d; v.setUint32(2, size, true); v.setUint32(10, 122, true)
+  v.setUint32(14, 108, true); v.setInt32(18, w, true); v.setInt32(22, -h, true); v.setUint16(26, 1, true); v.setUint16(28, 32, true); v.setUint32(30, 3, true); v.setUint32(34, w * h * 4, true)
+  v.setInt32(38, 2835, true); v.setInt32(42, 2835, true)
+  v.setUint32(54, 0x00ff0000, true); v.setUint32(58, 0x0000ff00, true); v.setUint32(62, 0x000000ff, true); v.setUint32(66, 0xff000000, true)
+  u[70] = 0x20; u[71] = 0x6e; u[72] = 0x69; u[73] = 0x57 // 'Win ' colour space
+  let o = 122
+  for (let i = 0; i < data.length; i += 4) { u[o++] = data[i + 2]; u[o++] = data[i + 1]; u[o++] = data[i]; u[o++] = data[i + 3] }
+  return new Blob([buf], { type: 'image/bmp' })
+}
+
 async function canvasPath(file, target, onProg) {
   const url = URL.createObjectURL(file)
   try {
@@ -71,9 +85,10 @@ async function canvasPath(file, target, onProg) {
     c.width = img.naturalWidth || 1024; c.height = img.naturalHeight || 1024
     c.getContext('2d').drawImage(img, 0, 0)
     onProg?.(70)
-    const mime = { png: 'image/png', jpeg: 'image/jpeg', webp: 'image/webp', bmp: 'image/bmp' }[target]
+    if (target === 'bmp') { const bmp = encodeBMP(c.getContext('2d').getImageData(0, 0, c.width, c.height)); onProg?.(100); return { blob: bmp, ext: 'bmp' } }
+    const mime = { png: 'image/png', jpeg: 'image/jpeg', webp: 'image/webp' }[target]
     const blob = await new Promise((res) => c.toBlob(res, mime, target === 'jpeg' || target === 'webp' ? 0.98 : undefined))
-    if (!blob) throw new Error('Browser encoder unavailable for ' + target)
+    if (!blob || blob.type !== mime) throw new Error('This browser cannot encode ' + target.toUpperCase())
     onProg?.(100)
     return { blob, ext: target === 'jpeg' ? 'jpg' : target }
   } finally { URL.revokeObjectURL(url) }

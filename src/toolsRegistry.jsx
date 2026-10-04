@@ -17,6 +17,7 @@ const loaders = {
   PdfStudio: () => import('./tools/PdfStudio.jsx'),
   ScanOcr: () => import('./tools/ScanOcr.jsx'),
   VoiceStudio: () => import('./tools/VoiceStudio.jsx'),
+  InvoiceStudio: () => import('./tools/InvoiceStudio.jsx'),
 }
 const lz = (k) => { const C = lazy(loaders[k]); C.preload = loaders[k]; return C }
 
@@ -125,5 +126,12 @@ export const TOOLS = [
     desc: 'Subtitles from speech in Urdu, English and 90 more languages — offline Whisper, a subtitle editor, recorder and audio trimmer.',
     keywords: 'subtitles srt vtt transcribe whisper speech to text urdu captions voice record microphone trim audio dictate dictation translate',
     comp: lz('VoiceStudio'),
+  },
+  {
+    id: 'invoice', n: 16, name: 'Invoice & Receipt Studio', icon: '🧾', color: '#2F7D6B',
+    tag: 'Business · PDF',
+    desc: 'Beautiful invoices, receipts and quotations with live preview, real PDF output, Urdu text, tax and lakh formatting.',
+    keywords: 'invoice receipt quotation quote bill billing pdf credit note proforma freelancer business tax ntn',
+    comp: lz('InvoiceStudio'),
   },
 ]

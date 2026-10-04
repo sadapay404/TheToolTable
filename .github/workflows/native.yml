@@ -48,15 +48,16 @@ jobs:
         with: { node-version: 20, cache: npm }
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: 17 }
-      - uses: android-actions/setup-android@v3
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
       - uses: swatinem/rust-cache@v2
         with: { workspaces: src-tauri }
-      - name: Android NDK
+      - name: Android SDK + NDK (runner's preinstalled SDK)
         run: |
-          sdkmanager --install "ndk;27.2.12479018" "platforms;android-35" "build-tools;35.0.0"
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKM" --licenses > /dev/null || true
+          "$SDKM" --install "ndk;27.2.12479018" "platforms;android-35" "build-tools;35.0.0"
           echo "NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npx tauri android init

@@ -77,9 +77,9 @@ export const TOOLS = [
   },
   {
     id: 'decision', n: 10, name: 'Decision & Randomizer Hub', icon: '🎲', color: '#C3423F',
-    tag: '3D · Fun',
-    desc: 'Physics 3D coin flip, bottle spin, loaded dice & custom wheel spinner.',
-    keywords: 'coin flip dice bottle spin wheel random decision d6 d20 loaded party',
+    tag: '3D · Fair random',
+    desc: 'Coin, dice, wheel, bottle, name draw & teams, number generator and an oracle — all with fair crypto-grade randomness.',
+    keywords: 'coin flip dice bottle spin wheel random decision picker raffle teams numbers lottery yes no magic 8 ball oracle truth dare party',
     comp: DecisionHub,
   },
   {

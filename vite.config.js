@@ -28,8 +28,27 @@ const ffmpegCore = () => {
   }
 }
 
+/** Ships the OCR engine (worker, wasm cores, English + Urdu models) inside the app (/ocr/*) so scanning works offline and in the native builds. */
+const ocrAssets = () => {
+  const nm = (...a) => path.resolve('node_modules', ...a)
+  const map = { 'worker.min.js': nm('tesseract.js/dist/worker.min.js'), 'lang/eng.traineddata.gz': nm('@tesseract.js-data/eng/4.0.0_best_int/eng.traineddata.gz'), 'lang/urd.traineddata.gz': nm('@tesseract.js-data/urd/4.0.0_best_int/urd.traineddata.gz') }
+  for (const c of ['simd-lstm', 'relaxedsimd-lstm', 'lstm']) map[`core/tesseract-core-${c}.wasm.js`] = nm('tesseract.js-core', `tesseract-core-${c}.wasm.js`)
+  return {
+    name: 'tttable-ocr-assets',
+    configureServer(server) {
+      server.middlewares.use('/ocr', (req, res, next) => {
+        const f = decodeURIComponent((req.url || '').split('?')[0]).replace(/^\//, '')
+        if (!map[f]) return next()
+        res.setHeader('Content-Type', f.endsWith('.js') ? 'text/javascript' : 'application/octet-stream'); res.setHeader('Cache-Control', 'no-cache')
+        fs.createReadStream(map[f]).pipe(res)
+      })
+    },
+    generateBundle() { for (const [f, src] of Object.entries(map)) this.emitFile({ type: 'asset', fileName: `ocr/${f}`, source: fs.readFileSync(src) }) },
+  }
+}
+
 export default defineConfig({
-  plugins: [react(), ytdlpEngine(), ffmpegCore()],
+  plugins: [react(), ytdlpEngine(), ffmpegCore(), ocrAssets()],
   server: { allowedHosts: true },
   preview: { allowedHosts: true },
   optimizeDeps: { exclude: ['@ffmpeg/ffmpeg', '@ffmpeg/util'] },

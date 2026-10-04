@@ -15,6 +15,7 @@ const loaders = {
   QRStudio: () => import('./tools/QRStudio.jsx'),
   BackgroundStudio: () => import('./tools/BackgroundStudio.jsx'),
   PdfStudio: () => import('./tools/PdfStudio.jsx'),
+  ScanOcr: () => import('./tools/ScanOcr.jsx'),
 }
 const lz = (k) => { const C = lazy(loaders[k]); C.preload = loaders[k]; return C }
 
@@ -109,5 +110,12 @@ export const TOOLS = [
     desc: 'Merge, split, reorder, rotate, watermark, number, sign and redact PDFs — pages are copied, never recompressed.',
     keywords: 'pdf merge split reorder rotate extract watermark page numbers sign signature redact images jpg convert metadata',
     comp: lz('PdfStudio'),
+  },
+  {
+    id: 'ocr', n: 14, name: 'Scan & OCR', icon: '🧾', color: '#2F8F83',
+    tag: 'Documents · Urdu',
+    desc: 'Photograph or drop a page: auto-straighten, clean up, then read English and Urdu text offline into a searchable PDF.',
+    keywords: 'ocr scan scanner document text urdu english arabic photo camera searchable pdf extract copy text recognise',
+    comp: lz('ScanOcr'),
   },
 ]

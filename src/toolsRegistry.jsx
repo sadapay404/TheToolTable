@@ -21,6 +21,7 @@ const loaders = {
   Beam: () => import('./tools/Beam.jsx'),
   IconForge: () => import('./tools/IconForge.jsx'),
   PkMoney: () => import('./tools/PkMoney.jsx'),
+  TextLab: () => import('./tools/TextLab.jsx'),
 }
 const lz = (k) => { const C = lazy(loaders[k]); C.preload = loaders[k]; return C }
 
@@ -157,5 +158,12 @@ export const TOOLS = [
     desc: 'Zakat with live nisab, salary tax slabs, loan and EMI schedules, savings profit and tola-masha-ratti gold maths.',
     keywords: 'zakat nisab income tax salary fbr slab emi loan installment profit savings gold tola masha ratti silver rupee pakistan lakh',
     comp: lz('PkMoney'),
+  },
+  {
+    id: 'textlab', n: 20, name: 'Text & Writing Lab', icon: '✍️', color: '#8A5A2B',
+    tag: 'Writing · Urdu',
+    desc: 'Count, tidy, convert and compare text in English and Urdu — case changer, find and replace, diff, and Urdu to Roman Urdu.',
+    keywords: 'text word count character counter case converter find replace regex diff compare urdu roman urdu transliteration slug clean lines sort duplicate base64',
+    comp: lz('TextLab'),
   },
 ]

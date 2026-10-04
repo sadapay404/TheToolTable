@@ -94,7 +94,7 @@ const Stage = forwardRef(function Stage({ playing, setPlaying, mode, setMode, fs
     const ro = new ResizeObserver(() => { const r = el.getBoundingClientRect(); if (r.width > 20 && r.height > 20) setBox((b) => (Math.abs(b.cw - r.width) < 1 && Math.abs(b.ch - r.height) < 1 ? b : { ...b, cw: r.width, ch: r.height })) })
     ro.observe(el); return () => ro.disconnect()
   }, [])
-  const fb = box.cw ? (fs ? { w: box.cw, h: box.ch } : fit(aspect, box.cw - 4, box.ch - 4)) : { w: 640, h: 400 }
+  const fb = box.cw ? (fs ? { w: box.cw, h: box.ch } : fit(aspect, box.cw - (mode === 'phone' ? 48 : 28), box.ch - (mode === 'phone' ? 48 : 28))) : { w: 640, h: 400 }
   const W = Math.round(fb.w), H = Math.round(fb.h)
 
   // renderer lifecycle
@@ -105,9 +105,10 @@ const Stage = forwardRef(function Stage({ playing, setPlaying, mode, setMode, fs
       if (dead) return; raf = requestAnimationFrame(loop)
       const dt = Math.min(0.1, (now - last) / 1000); last = now
       const { d: dd, playing: pl } = live.current, r = R.current
+      if (!r) return
       const moving = r.step(dt)
       if (pl && dd.amp > 0) phase.current = (phase.current + (dt * Math.PI * 2) / dd.loop) % (Math.PI * 2)
-      if (moving || dirty.current || (pl && dd.amp > 0)) { r.draw(phase.current, canvas.current.width, canvas.current.height); dirty.current = false }
+      if (moving || dirty.current || (pl && dd.amp > 0)) { if (canvas.current) r.draw(phase.current, canvas.current.width, canvas.current.height); dirty.current = false }
     }
     raf = requestAnimationFrame(loop)
     return () => { dead = true; cancelAnimationFrame(raf); R.current?.dispose(); R.current = null }

@@ -87,7 +87,7 @@ export default function BackgroundStudio() {
         <AnimatePresence mode="wait" initial={false}>
           <motion.div key={view} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}>
             {view === 'studio' && (
-              <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_410px] items-start">
+              <div className="grid gap-6 grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_410px] items-start">
                 <div className="lg:sticky lg:top-4 space-y-4">
                   <Stage ref={stageRef} d={d} mode={mode} setMode={setMode} playing={playing} setPlaying={setPlaying} fs={fs} onFullscreen={toggleFs} />
                   <div className="flex flex-wrap items-center gap-2.5 rounded-[22px] border border-line p-3" style={{ background: 'var(--surface)', boxShadow: 'var(--shadow)' }}>

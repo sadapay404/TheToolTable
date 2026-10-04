@@ -43,7 +43,7 @@ export default function PdfStudio() {
       <AnimatePresence initial={false}>
         {showTray && (
           <motion.div key="tray" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
-            <div className="flex flex-wrap items-stretch gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <div className="flex-1 min-w-[260px]"><Drop compact accept="application/pdf,.pdf" title={busy ? 'Reading…' : docs.length ? 'Add more PDFs' : 'Drop PDFs here'} sub={docs.length ? 'Several files can be merged' : 'Everything stays on your device'} icon={docs.length ? 'plus' : 'upload'} onFiles={onFiles} /></div>
               <AnimatePresence initial={false}>{docs.map((d) => (
                 <motion.div key={d.id} layout initial={{ opacity: 0, scale: 0.7 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.7 }} transition={SPRING} className="flex items-center gap-3 rounded-[20px] border border-line pl-3 pr-2 py-2" style={{ background: 'var(--surface)', boxShadow: 'var(--shadow)' }}>

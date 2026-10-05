@@ -2,6 +2,15 @@
 
 A personal multi-tool studio with 20 browser-first utilities. Most file processing stays in the browser; the Downloader can use a local or separately hosted yt-dlp companion engine, and the Metadata Extractor contacts OpenStreetMap only when you explicitly request a place lookup or map. Files are not uploaded by default. No re-encoding unless a tool explicitly offers it (notably Tool 03 and selected Converter outputs).
 
+## Download v1.1.0
+
+- [Android APK](https://github.com/sadapay404/TheToolTable/releases/download/v1.1.0/TheToolTable.apk)
+- [Windows installer (EXE)](https://github.com/sadapay404/TheToolTable/releases/download/v1.1.0/TheToolTable_1.1.0_x64-setup.exe)
+- [Windows installer (MSI)](https://github.com/sadapay404/TheToolTable/releases/download/v1.1.0/TheToolTable_1.1.0_x64_en-US.msi)
+- [Release details and notes](https://github.com/sadapay404/TheToolTable/releases/tag/v1.1.0)
+
+The repository is private, so downloads require an account with access. On Android, Downloader needs a network-reachable HTTPS companion engine; Windows includes yt-dlp and FFmpeg.
+
 ## Branding
 
 - `public/logo.png` — the official logo (1024×1024, Creamy White theme: warm ivory canvas, espresso mark, caramel accent).

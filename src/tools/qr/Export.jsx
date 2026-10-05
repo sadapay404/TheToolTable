@@ -20,19 +20,20 @@ export default function Export({ result, name, toast }) {
   const base = fname.trim() ? slug(fname) : name
   const ratio = result.H / result.W
   const canShare = typeof navigator !== 'undefined' && !!navigator.share
-  const transparentOk = result.style.bg.type !== 'none'
+  const backgroundAlreadyClear = result.style.bg.type === 'none'
+  const transparentExport = backgroundAlreadyClear || transparent
 
   const run = async (kind) => {
     setBusy(kind)
     try {
       let blob
-      if (kind === 'copy' || kind === 'share' || fmt === 'png') blob = await pngBlob(result, kind === 'copy' || kind === 'share' ? Math.min(px, 2048) : px, { transparent })
+      if (kind === 'copy' || kind === 'share' || fmt === 'png') blob = await pngBlob(result, kind === 'copy' || kind === 'share' ? Math.min(px, 2048) : px, { transparent: transparentExport })
       if (kind === 'copy') { await copyPng(blob); toast('Copied image to clipboard'); return }
       if (kind === 'share') { const f = new File([blob], base + '.png', { type: 'image/png' }); await navigator.share({ files: [f], title: 'QR code' }); return }
       if (fmt === 'png') { download(blob, `${base}-${px}px.png`); toast(`Saved ${px} × ${Math.round(px * ratio)} PNG`); recentAction(`QR PNG ${px}px`) }
       else if (fmt === 'svg') { download(new Blob([svgFile(result, 1024)], { type: 'image/svg+xml' }), `${base}.svg`); toast('Saved SVG vector'); recentAction('QR SVG') }
-      else if (fmt === 'pdf') { const b = await pdfBlob(result, { mm, dpi, transparent }); download(b, `${base}-${mm}mm.pdf`); toast(`Saved ${mm} mm PDF`); recentAction('QR PDF') }
-      else { download(new Blob([toEPS(result, (mm / 25.4) * 72, transparent)], { type: 'application/postscript' }), `${base}-${mm}mm.eps`); toast('Saved EPS vector'); recentAction('QR EPS') }
+      else if (fmt === 'pdf') { const b = await pdfBlob(result, { mm, dpi, transparent: transparentExport }); download(b, `${base}-${mm}mm.pdf`); toast(`Saved ${mm} mm PDF`); recentAction('QR PDF') }
+      else { download(new Blob([toEPS(result, (mm / 25.4) * 72, transparentExport)], { type: 'application/postscript' }), `${base}-${mm}mm.eps`); toast('Saved EPS vector'); recentAction('QR EPS') }
     } catch (e) { if (e?.name !== 'AbortError') toast(e.message || 'Export failed', true) } finally { setBusy(false) }
   }
   const cm = (mm / 10).toFixed(1)
@@ -58,12 +59,12 @@ export default function Export({ result, name, toast }) {
             {fmt === 'pdf' && <div><span className="block text-[12.5px] font-semibold mb-2">Print quality</span><Seg small value={String(dpi)} onChange={(v) => setDpi(+v)} options={[['150', '150 dpi'], ['300', '300 dpi'], ['600', '600 dpi']]} /><div className="text-[11.5px] mt-1.5" style={{ color: 'var(--muted)' }}>Embedded at {mmToPx(mm, dpi)} px, stored uncompressed. Page is exactly {cm} cm + margins.</div></div>}
             {fmt === 'eps' && <div className="text-[12px] rounded-xl p-3" style={{ background: 'var(--surface2)', color: 'var(--muted)' }}>EPS is flat vector: gradients use their first colour, and frame text and logos are left out (the space stays clear). Use SVG or PDF for the full design.</div>}
           </>}
-          {fmt !== 'svg' && <Switch on={transparent && transparentOk} onChange={setTransparent} label="Transparent background" hint={transparentOk ? 'Keeps the area behind the code empty' : 'Set the background to “Clear” in Style first'} />}
+          {fmt !== 'svg' && <Switch on={backgroundAlreadyClear || transparent} disabled={backgroundAlreadyClear} onChange={setTransparent} label="Transparent background" hint={backgroundAlreadyClear ? 'Your QR already has a clear background' : 'Removes the background colour or image from this export'} />}
         </motion.div>
       </AnimatePresence>
       <TextIn label="File name" value={fname} onChange={setFname} ph={name} />
       <div className="flex flex-wrap gap-2.5 pt-1">
-        <Btn solid icon="download" busy={busy === true} disabled={!!busy} onClick={() => run('file')} className="!px-7 !py-3">Download {fmt.toUpperCase()}</Btn>
+        <Btn solid icon="download" busy={!!busy} disabled={!!busy} onClick={() => run('file')} className="!px-7 !py-3">Download {fmt.toUpperCase()}</Btn>
         <Btn icon="copy" onClick={() => run('copy')} disabled={!!busy}>Copy image</Btn>
         {canShare && <Btn icon="share" onClick={() => run('share')} disabled={!!busy}>Share</Btn>}
       </div>

@@ -1,7 +1,7 @@
 import QRCode from 'qrcode'
 import { Path } from './paths.js'
-import { addDot, addEyeFrame, addEyeBall } from './shapes.js'
-import { wrapFrame } from './frames.js'
+import { addDot, addEyeFrame, addEyeBall, DOT_SHAPES, FRAME_SHAPES, BALL_SHAPES } from './shapes.js'
+import { wrapFrame, FRAME_STYLES, FONTS } from './frames.js'
 import { logoById, logoMarkup } from './logos.js'
 
 export const DEFAULT_STYLE = {
@@ -13,15 +13,112 @@ export const DEFAULT_STYLE = {
   frame: { style: 'none', label: 'SCAN ME', color: '#1A1411', text: '#FFFFFF', font: 'sans' },
 }
 
+const isRecord = (value) => !!value && typeof value === 'object' && !Array.isArray(value)
+const safeKey = (key) => key !== '__proto__' && key !== 'prototype' && key !== 'constructor'
+const clamp = (value, min, max, fallback) => {
+  const n = Number(value)
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback
+}
+const boundedInt = (value, min, max, fallback) => Math.round(clamp(value, min, max, fallback))
+const safeHex = (value, fallback) => typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value) ? value.toUpperCase() : fallback
+const safeImage = (value) => typeof value === 'string' && value.length <= 4 * 1024 * 1024 && /^data:image\/(?:png|jpeg);base64,[a-z0-9+/=\r\n]+$/i.test(value) ? value : null
+const safeEnum = (value, options, fallback) => options.includes(value) ? value : fallback
+const shapeKeys = (list) => list.map(([key]) => key)
+
 export const merge = (a, b) => {
-  if (!b || typeof b !== 'object' || Array.isArray(b)) return b === undefined ? a : b
-  const o = { ...a }
-  for (const k of Object.keys(b)) o[k] = a && typeof a[k] === 'object' && a[k] !== null && !Array.isArray(a[k]) && typeof b[k] === 'object' && b[k] !== null && !Array.isArray(b[k]) ? merge(a[k], b[k]) : b[k]
+  if (!isRecord(b)) return b === undefined ? a : b
+  const o = { ...(isRecord(a) ? a : {}) }
+  for (const k of Object.keys(b)) {
+    if (!safeKey(k)) continue
+    const old = a?.[k], next = b[k]
+    o[k] = isRecord(old) && isRecord(next) ? merge(old, next) : next
+  }
   return o
 }
-export const withDefaults = (s) => merge(DEFAULT_STYLE, s || {})
+
+/** Merge persisted/imported settings with the built-in schema and keep SVG inputs safe. */
+export const withDefaults = (input) => {
+  const merged = merge(DEFAULT_STYLE, isRecord(input) ? input : {})
+  const s = {
+    ...merged,
+    dots: isRecord(merged.dots) ? merged.dots : DEFAULT_STYLE.dots,
+    eyes: isRecord(merged.eyes) ? merged.eyes : DEFAULT_STYLE.eyes,
+    bg: isRecord(merged.bg) ? merged.bg : DEFAULT_STYLE.bg,
+    logo: isRecord(merged.logo) ? merged.logo : DEFAULT_STYLE.logo,
+    frame: isRecord(merged.frame) ? merged.frame : DEFAULT_STYLE.frame,
+  }
+  const d = s.dots, e = s.eyes, b = s.bg, l = s.logo, f = s.frame
+  const p = Array.isArray(e.p) ? e.p : DEFAULT_STYLE.eyes.p
+  return {
+    ecc: safeEnum(s.ecc, ['auto', 'L', 'M', 'Q', 'H'], DEFAULT_STYLE.ecc),
+    margin: boundedInt(s.margin, 0, 8, DEFAULT_STYLE.margin),
+    dots: {
+      ...d,
+      shape: safeEnum(d.shape, shapeKeys(DOT_SHAPES), DEFAULT_STYLE.dots.shape),
+      scale: clamp(d.scale, 0.5, 1, DEFAULT_STYLE.dots.scale),
+      fill: safeEnum(d.fill, ['solid', 'gradient', 'duo', 'image'], DEFAULT_STYLE.dots.fill),
+      color: safeHex(d.color, DEFAULT_STYLE.dots.color),
+      c2: safeHex(d.c2, DEFAULT_STYLE.dots.c2),
+      c3: safeHex(d.c3, DEFAULT_STYLE.dots.c3),
+      stops: d.stops === 3 ? 3 : 2,
+      angle: boundedInt(d.angle, 0, 360, DEFAULT_STYLE.dots.angle),
+      grad: safeEnum(d.grad, ['linear', 'radial'], DEFAULT_STYLE.dots.grad),
+      duo: safeEnum(d.duo, ['random', 'checker', 'rows', 'diag', 'rings'], DEFAULT_STYLE.dots.duo),
+      seed: boundedInt(d.seed, 0, 1_000_000, DEFAULT_STYLE.dots.seed),
+      image: safeImage(d.image),
+      dark: clamp(d.dark, 0, 0.8, DEFAULT_STYLE.dots.dark),
+    },
+    eyes: {
+      ...e,
+      frame: safeEnum(e.frame, shapeKeys(FRAME_SHAPES), DEFAULT_STYLE.eyes.frame),
+      ball: safeEnum(e.ball, shapeKeys(BALL_SHAPES), DEFAULT_STYLE.eyes.ball),
+      sync: typeof e.sync === 'boolean' ? e.sync : DEFAULT_STYLE.eyes.sync,
+      frameColor: safeHex(e.frameColor, DEFAULT_STYLE.eyes.frameColor),
+      ballColor: safeHex(e.ballColor, DEFAULT_STYLE.eyes.ballColor),
+      per: typeof e.per === 'boolean' ? e.per : DEFAULT_STYLE.eyes.per,
+      p: [0, 1, 2].map((i) => ({
+        f: safeHex(p[i]?.f, DEFAULT_STYLE.eyes.p[i].f),
+        b: safeHex(p[i]?.b, DEFAULT_STYLE.eyes.p[i].b),
+      })),
+    },
+    bg: {
+      ...b,
+      type: safeEnum(b.type, ['none', 'solid', 'gradient', 'image'], DEFAULT_STYLE.bg.type),
+      color: safeHex(b.color, DEFAULT_STYLE.bg.color),
+      c2: safeHex(b.c2, DEFAULT_STYLE.bg.c2),
+      angle: boundedInt(b.angle, 0, 360, DEFAULT_STYLE.bg.angle),
+      image: safeImage(b.image),
+      fade: clamp(b.fade, 0, 0.95, DEFAULT_STYLE.bg.fade),
+      radius: clamp(b.radius, 0, 0.5, DEFAULT_STYLE.bg.radius),
+    },
+    logo: {
+      ...l,
+      id: typeof l.id === 'string' && /^[\w-]{1,64}$/.test(l.id) ? l.id : null,
+      upload: safeImage(l.upload),
+      size: clamp(l.size, 0.08, 0.32, DEFAULT_STYLE.logo.size),
+      badge: safeEnum(l.badge, ['circle', 'rounded', 'square', 'none'], DEFAULT_STYLE.logo.badge),
+      badgeColor: safeHex(l.badgeColor, DEFAULT_STYLE.logo.badgeColor),
+      color: safeHex(l.color, DEFAULT_STYLE.logo.color),
+      clear: typeof l.clear === 'boolean' ? l.clear : DEFAULT_STYLE.logo.clear,
+      border: typeof l.border === 'boolean' ? l.border : DEFAULT_STYLE.logo.border,
+    },
+    frame: {
+      ...f,
+      style: safeEnum(f.style, FRAME_STYLES.map(([key]) => key), DEFAULT_STYLE.frame.style),
+      label: typeof f.label === 'string' ? f.label.slice(0, 80) : DEFAULT_STYLE.frame.label,
+      color: safeHex(f.color, DEFAULT_STYLE.frame.color),
+      text: safeHex(f.text, DEFAULT_STYLE.frame.text),
+      font: safeEnum(f.font, Object.keys(FONTS), DEFAULT_STYLE.frame.font),
+    },
+  }
+}
+
 /** style without heavy data URLs (for localStorage) */
-export const lightStyle = (s) => { const c = JSON.parse(JSON.stringify(s)); c.dots.image = null; c.bg.image = null; c.logo.upload = null; return c }
+export const lightStyle = (s) => {
+  const c = withDefaults(s)
+  c.dots.image = null; c.bg.image = null; c.logo.upload = null
+  return c
+}
 
 export function makeMatrix(text, ecc) {
   const qr = QRCode.create(text && text.length ? text : ' ', { errorCorrectionLevel: ecc })
@@ -47,6 +144,7 @@ const linGrad = (id, N, angle, stops) => {
 const radGrad = (id, N, stops) => `<radialGradient id="${id}" gradientUnits="userSpaceOnUse" cx="${N / 2}" cy="${N / 2}" r="${(N * 0.72).toFixed(2)}">${stops.map((c, i) => `<stop offset="${(i / (stops.length - 1)).toFixed(2)}" stop-color="${c}"/>`).join('')}</radialGradient>`
 
 export function buildQR(text, styleIn, uid = 'q') {
+  uid = typeof uid === 'string' ? uid.replace(/[^a-z0-9_-]/gi, '').slice(0, 32) || 'q' : 'q'
   const st = withDefaults(styleIn)
   const ecc = effectiveEcc(st)
   const m = makeMatrix(text, ecc)
@@ -155,16 +253,23 @@ function loadImg(src) {
 }
 /** Rasterise to a canvas. bg: null (transparent) | css colour */
 export async function toCanvas(r, w, { bg = null } = {}) {
-  const h = Math.round((w * r.H) / r.W)
-  const img = await loadImg(dataUrl(r.svg, w, r))
-  const c = document.createElement('canvas'); c.width = Math.round(w); c.height = h
+  const width = Math.round(Number(w)), height = Math.round((width * r.H) / r.W)
+  if (!Number.isSafeInteger(width) || width < 1 || width > 8192 || !Number.isSafeInteger(height) || height < 1 || height > 8192 || width * height > 32_000_000) {
+    throw new Error('That export is too large for a browser canvas. Choose a smaller size.')
+  }
+  const img = await loadImg(dataUrl(r.svg, width, r))
+  const c = document.createElement('canvas'); c.width = width; c.height = height
   const x = c.getContext('2d')
+  if (!x) throw new Error('Canvas rendering is not available in this browser.')
   if (bg) { x.fillStyle = bg; x.fillRect(0, 0, c.width, c.height) }
   x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high'
   x.drawImage(img, 0, 0, c.width, c.height)
   return c
 }
-export const canvasBlob = (c, type = 'image/png') => new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('Image too large for this device — try a smaller size'))), type))
+export const canvasBlob = (c, type = 'image/png') => new Promise((res, rej) => {
+  if (!c?.toBlob) { rej(new Error('Canvas image export is not available in this browser.')); return }
+  c.toBlob((b) => (b ? res(b) : rej(new Error('Image too large for this device — try a smaller size'))), type)
+})
 export async function toPng(r, w, opts) { return canvasBlob(await toCanvas(r, w, opts)) }
 
 /** vector EPS: flat colours (gradients → first stop), no frame text */

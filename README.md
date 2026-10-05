@@ -70,7 +70,7 @@ yt-dlp is a native program, so one tiny engine layer (`src/lib/engine.js`) picks
 | Where the app runs | How yt-dlp is provided | User setup |
 |---|---|---|
 | Windows Tauri app | yt-dlp + FFmpeg sidecars when built with the sidecar config; installer can also be built without them | none when bundled |
-| Android Tauri app | the Android runner/plugin is not integrated yet | downloader is not available as a bundled offline feature yet |
+| Android Tauri app | HTTP companion transport (no native yt-dlp bundled yet) | enter a network-reachable HTTPS `/api/ytdlp` engine address |
 | Web dev/preview | Vite companion endpoint (`/api/ytdlp`) | install yt-dlp once with the setup script |
 | Static hosting (including Vercel) | separately hosted companion engine | enter its `/api/ytdlp` address below; configure CORS for the app origin |
 
@@ -89,3 +89,4 @@ Shipped apps never need them. Full native plan: [docs/NATIVE-ENGINE.md](docs/NAT
 - **Scan & OCR** bundles English and Urdu; other languages are fetched on first use.
 - **Pakistan Money Kit** ships the published tax slabs for the last two tax years and lets you edit every rate. Gold and silver prices are examples — type today's rate. Tax rules change every budget; confirm on fbr.gov.pk.
 - **Beam** needs no server. Pick "Same Wi-Fi only" to avoid contacting any outside STUN server.
+- Repair status for all 20 tools and the remaining release tasks: [docs/REPAIR-LOG.md](docs/REPAIR-LOG.md).

@@ -92,9 +92,16 @@ export function Btn({ children, icon, onClick, primary, small, disabled, busy, c
 }
 export function Drop({ onFiles, accept, multiple = true, title = 'Drop files here', sub = 'or click to browse', icon = 'upload', compact, children }) {
   const [hot, setHot] = useState(false), ref = useRef(null)
+  const openPicker = () => ref.current?.click()
+  const onKeyDown = (e) => {
+    if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return
+    e.preventDefault(); openPicker()
+  }
   return (
-    <motion.div whileHover={{ y: -3 }} transition={SPRING} onClick={() => ref.current?.click()} onDragOver={(e) => { e.preventDefault(); setHot(true) }} onDragLeave={() => setHot(false)} onDrop={(e) => { e.preventDefault(); setHot(false); const fs = [...e.dataTransfer.files]; if (fs.length) onFiles(multiple ? fs : fs.slice(0, 1)) }}
-      className={`cursor-pointer rounded-[24px] text-center ${compact ? 'p-5' : 'p-10'}`} style={{ border: `2px dashed ${hot ? 'var(--copper)' : 'var(--border)'}`, background: hot ? 'color-mix(in srgb, var(--copper) 9%, var(--surface))' : 'var(--surface)', transition: 'background .2s, border-color .2s' }}>
+    <motion.div role="button" tabIndex={0} aria-label={title} whileHover={{ y: -3 }} transition={SPRING}
+      onClick={(e) => { if (e.target === ref.current || e.target.closest?.('button,a,input,select,textarea')) return; openPicker() }}
+      onKeyDown={onKeyDown} onDragOver={(e) => { e.preventDefault(); setHot(true) }} onDragLeave={() => setHot(false)} onDrop={(e) => { e.preventDefault(); setHot(false); const fs = [...e.dataTransfer.files]; if (fs.length) onFiles(multiple ? fs : fs.slice(0, 1)) }}
+      className={`cursor-pointer rounded-[24px] text-center focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${compact ? 'p-5' : 'p-10'}`} style={{ border: `2px dashed ${hot ? 'var(--copper)' : 'var(--border)'}`, background: hot ? 'color-mix(in srgb, var(--copper) 9%, var(--surface))' : 'var(--surface)', transition: 'background .2s, border-color .2s' }}>
       <input ref={ref} data-drop type="file" hidden multiple={multiple} accept={accept} onChange={(e) => { const fs = [...e.target.files]; if (fs.length) onFiles(fs); e.target.value = '' }} />
       {children || <>
         <motion.div animate={hot ? { y: -6, scale: 1.15 } : { y: [0, -4, 0] }} transition={hot ? SPRING : { repeat: Infinity, duration: 2.6 }} className="mx-auto mb-3 w-12 h-12 rounded-2xl grid place-items-center" style={{ background: 'color-mix(in srgb, var(--copper) 14%, var(--surface2))', color: 'var(--copper)' }}><KIco n={icon} s={22} /></motion.div>
@@ -106,15 +113,18 @@ export function Drop({ onFiles, accept, multiple = true, title = 'Drop files her
 
 /** icon+label tile dock: scrolls on mobile, active tile fills with ink */
 export function Dock({ value, onChange, items, cols }) {
+  const count = cols || items.length, scroll = count >= 5
   return (
-    <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${cols || items.length}, minmax(0,1fr))` }}>
-      {items.map(([k, l, ic], i) => { const on = k === value; return (
-        <motion.button key={k} type="button" onClick={() => onChange(k)} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ ...SPRING, delay: i * 0.035 }} whileHover={{ y: -4 }} whileTap={{ scale: 0.94 }} aria-pressed={on}
-          className="relative flex flex-col items-center gap-1.5 rounded-2xl px-1.5 py-3 border" style={{ borderColor: on ? 'var(--ink)' : 'var(--border)', background: 'var(--surface)', color: on ? 'var(--bg)' : 'var(--ink)', boxShadow: on ? '0 14px 24px -14px rgba(0,0,0,.6)' : 'var(--shadow)' }}>
-          <motion.span className="absolute inset-0 rounded-2xl" style={{ background: 'var(--ink)' }} initial={false} animate={{ opacity: on ? 1 : 0, scale: on ? 1 : 0.85 }} transition={SPRING} />
-          <motion.span className="relative" animate={{ rotate: on ? [0, -16, 12, 0] : 0, scale: on ? 1.1 : 1 }} transition={{ duration: 0.45 }} style={{ color: on ? 'var(--bg)' : 'var(--copper)' }}><KIco n={ic} s={22} /></motion.span>
-          <span className="relative text-[11.5px] sm:text-[12.5px] font-semibold leading-tight text-center">{l}</span>
-        </motion.button>) })}
+    <div className={scroll ? 'overflow-x-auto overscroll-x-contain pb-1 -mx-1 px-1' : ''}>
+      <div className={`grid gap-2 ${scroll ? 'min-w-[560px] sm:min-w-0' : ''}`} style={{ gridTemplateColumns: `repeat(${count}, minmax(0,1fr))` }}>
+        {items.map(([k, l, ic], i) => { const on = k === value; return (
+          <motion.button key={k} type="button" onClick={() => onChange(k)} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ ...SPRING, delay: i * 0.035 }} whileHover={{ y: -4 }} whileTap={{ scale: 0.94 }} aria-pressed={on}
+            className="relative flex flex-col items-center gap-1.5 rounded-2xl px-1.5 py-3 border" style={{ borderColor: on ? 'var(--ink)' : 'var(--border)', background: 'var(--surface)', color: on ? 'var(--bg)' : 'var(--ink)', boxShadow: on ? '0 14px 24px -14px rgba(0,0,0,.6)' : 'var(--shadow)' }}>
+            <motion.span className="absolute inset-0 rounded-2xl" style={{ background: 'var(--ink)' }} initial={false} animate={{ opacity: on ? 1 : 0, scale: on ? 1 : 0.85 }} transition={SPRING} />
+            <motion.span className="relative" animate={{ rotate: on ? [0, -16, 12, 0] : 0, scale: on ? 1.1 : 1 }} transition={{ duration: 0.45 }} style={{ color: on ? 'var(--bg)' : 'var(--copper)' }}><KIco n={ic} s={22} /></motion.span>
+            <span className="relative text-[11.5px] sm:text-[12.5px] font-semibold leading-tight text-center">{l}</span>
+          </motion.button>) })}
+      </div>
     </div>
   )
 }

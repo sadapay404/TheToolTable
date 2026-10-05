@@ -35,9 +35,13 @@ export default function Scan() {
   const [busy, setBusy] = useState(false)
   const [scans, setScans] = useStore('scans', [])
   const [cam, setCam] = useState({ on: false, err: '', facing: 'environment', torch: false, torchOk: false, keep: false })
-  const camRef = useRef({ stream: null, timer: 0, last: '', lastT: 0 })
-  const video = useRef(), overlay = useRef(), work = useRef(document.createElement('canvas'))
+  const camRef = useRef({ stream: null, timer: 0, raf: 0, last: '', lastT: 0 })
+  const video = useRef(), overlay = useRef(), work = useRef(null)
+  if (!work.current) work.current = document.createElement('canvas')
   const imgRef = useRef(null)
+  const assetUrlRef = useRef(null)
+  const scanRequestRef = useRef(0)
+  const camGenerationRef = useRef(0)
 
   const remember = useCallback((items, src) => {
     if (!items.length) return
@@ -48,21 +52,62 @@ export default function Scan() {
     })
   }, [setScans])
 
-  const runOn = useCallback(async (el, url, src, { hard = true } = {}) => {
+  const replaceAssetUrl = useCallback((url) => {
+    const previous = assetUrlRef.current
+    if (previous && previous !== url) URL.revokeObjectURL(previous)
+    assetUrlRef.current = typeof url === 'string' && url.startsWith('blob:') ? url : null
+  }, [])
+  const releaseAsset = useCallback(() => {
+    const url = assetUrlRef.current
+    if (url) URL.revokeObjectURL(url)
+    assetUrlRef.current = null
+    imgRef.current = null
+  }, [])
+  const clearImage = useCallback(() => {
+    scanRequestRef.current++
+    releaseAsset()
+    setBusy(false); setShot(null); setFound(null)
+  }, [releaseAsset])
+
+  const runOn = useCallback(async (el, url, src, { hard = true, request } = {}) => {
+    const id = request ?? ++scanRequestRef.current
+    if (id !== scanRequestRef.current) return null
     setBusy(true)
     try {
       const d = await decodeSource(el, { formats: ['All'], max: 20, hard })
+      if (id !== scanRequestRef.current) return null
       setShot(url ? { url, w: d.w, h: d.h } : null); setFound(d); setSel(0)
       if (d.items.length) { remember(d.items, src); recentAction(`Scanned ${d.items.length} code${d.items.length > 1 ? 's' : ''}`) }
       return d
-    } catch (e) { toast(e.message || 'Could not read that image', true) } finally { setBusy(false) }
+    } catch (e) {
+      if (id === scanRequestRef.current) toast(e.message || 'Could not read that image', true)
+      return null
+    } finally {
+      if (id === scanRequestRef.current) setBusy(false)
+    }
   }, [remember, toast])
 
   const fromFile = useCallback(async (file) => {
     if (!file) return
+    if (file.size > 25 * 1024 * 1024) { toast('Choose an image smaller than 25 MB.', true); return }
+    if (file.type && !file.type.startsWith('image/')) { toast('Choose an image file to scan.', true); return }
+    const request = ++scanRequestRef.current
     const url = URL.createObjectURL(file)
-    try { const img = await loadImg(url); imgRef.current = img; await runOn(img, url, 'image') } catch (e) { toast(e.message, true) }
-  }, [runOn, toast])
+    replaceAssetUrl(url)
+    setShot(null); setFound(null); setBusy(true)
+    try {
+      const img = await loadImg(url)
+      if (request !== scanRequestRef.current) return
+      if (img.naturalWidth * img.naturalHeight > 50_000_000) throw new Error('This image is too large to scan. Resize it and try again.')
+      imgRef.current = img
+      await runOn(img, url, 'image', { request })
+    } catch (e) {
+      if (request === scanRequestRef.current) {
+        toast(e.message || 'Could not open this image', true)
+        releaseAsset(); setShot(null); setFound(null); setBusy(false)
+      }
+    }
+  }, [releaseAsset, replaceAssetUrl, runOn, toast])
 
   useEffect(() => {
     if (mode !== 'image') return
@@ -72,74 +117,145 @@ export default function Scan() {
 
   /* ---------- camera ---------- */
   const stopCam = useCallback(() => {
-    const c = camRef.current; clearTimeout(c.timer); c.stream?.getTracks().forEach((t) => t.stop()); c.stream = null
-    setCam((s) => ({ ...s, on: false, torch: false }))
+    camGenerationRef.current++
+    const c = camRef.current
+    clearTimeout(c.timer); c.timer = 0
+    if (c.raf) cancelAnimationFrame(c.raf)
+    c.raf = 0
+    const stream = c.stream; c.stream = null; c.last = ''
+    stream?.getTracks().forEach((track) => track.stop())
+    if (video.current) { video.current.pause(); video.current.srcObject = null }
+    setCam((state) => ({ ...state, on: false, torch: false }))
   }, [])
-  useEffect(() => () => { const c = camRef.current; clearTimeout(c.timer); c.stream?.getTracks().forEach((t) => t.stop()) }, [])
+  useEffect(() => () => {
+    scanRequestRef.current++; camGenerationRef.current++
+    const c = camRef.current
+    clearTimeout(c.timer)
+    if (c.raf) cancelAnimationFrame(c.raf)
+    c.stream?.getTracks().forEach((track) => track.stop())
+    c.stream = null
+    if (video.current) { video.current.pause(); video.current.srcObject = null }
+    releaseAsset()
+  }, [releaseAsset])
   useEffect(() => { if (mode !== 'camera') stopCam() }, [mode, stopCam])
 
-  const drawOverlay = (items, w, h) => {
-    const cv = overlay.current; if (!cv) return
-    cv.width = cv.clientWidth * 2; cv.height = cv.clientHeight * 2
-    const x = cv.getContext('2d'); x.clearRect(0, 0, cv.width, cv.height)
-    const vw = video.current.videoWidth, vh = video.current.videoHeight
-    const s = Math.max(cv.width / vw, cv.height / vh), ox = (cv.width - vw * s) / 2, oy = (cv.height - vh * s) / 2
+  const drawOverlay = (items) => {
+    const cv = overlay.current, v = video.current
+    if (!cv || !v?.videoWidth || !v.videoHeight) return
+    cv.width = Math.max(1, Math.round(cv.clientWidth * 2)); cv.height = Math.max(1, Math.round(cv.clientHeight * 2))
+    const x = cv.getContext('2d'); if (!x) return
+    x.clearRect(0, 0, cv.width, cv.height)
+    const s = Math.max(cv.width / v.videoWidth, cv.height / v.videoHeight), ox = (cv.width - v.videoWidth * s) / 2, oy = (cv.height - v.videoHeight * s) / 2
     items.forEach((it, i) => { x.beginPath(); it.pts.forEach((p, j) => { const X = p.x * s + ox, Y = p.y * s + oy; j ? x.lineTo(X, Y) : x.moveTo(X, Y) }); x.closePath(); x.lineWidth = 6; x.strokeStyle = COLORS[i % COLORS.length]; x.fillStyle = COLORS[i % COLORS.length] + '33'; x.fill(); x.stroke() })
   }
+  const camStateRef = useRef(cam); camStateRef.current = cam
   const loop = useCallback(async () => {
-    const c = camRef.current, v = video.current
-    if (!c.stream || !v) return
+    const c = camRef.current, v = video.current, stream = c.stream, generation = camGenerationRef.current
+    if (!stream || !v) return
     if (v.readyState >= 2 && v.videoWidth) {
-      const cv = work.current; const k = Math.min(1, 960 / v.videoWidth); cv.width = v.videoWidth * k; cv.height = v.videoHeight * k
-      const x = cv.getContext('2d', { willReadFrequently: true }); x.drawImage(v, 0, 0, cv.width, cv.height)
+      const cv = work.current, k = Math.min(1, 960 / v.videoWidth)
+      cv.width = Math.max(1, Math.round(v.videoWidth * k)); cv.height = Math.max(1, Math.round(v.videoHeight * k))
+      const x = cv.getContext('2d', { willReadFrequently: true })
+      if (!x) return
+      x.drawImage(v, 0, 0, cv.width, cv.height)
       try {
         const d = await decodeSource(cv, { formats: ['All'], max: 8, hard: false, maxDim: 960 })
+        if (camGenerationRef.current !== generation || camRef.current.stream !== stream) return
         const scaled = d.items.map((it) => ({ ...it, pts: it.pts.map((p) => ({ x: p.x / k, y: p.y / k })) }))
-        drawOverlay(scaled, v.videoWidth, v.videoHeight)
+        drawOverlay(scaled)
         if (d.items.length) {
-          const key = d.items.map((i) => i.text).join('|')
+          const key = d.items.map((item) => item.text).join('|')
           if (key !== c.last || Date.now() - c.lastT > 4000) {
             c.last = key; c.lastT = Date.now()
             setFound({ w: v.videoWidth, h: v.videoHeight, items: scaled }); setSel(0); remember(scaled, 'camera'); recentAction('Camera scan')
             if (navigator.vibrate) navigator.vibrate(60)
             if (!camStateRef.current.keep) { stopCam(); return }
           }
-        } else drawOverlay([], 0, 0)
+        } else drawOverlay([])
       } catch {}
     }
-    c.timer = setTimeout(loop, 140)
+    if (camGenerationRef.current === generation && camRef.current.stream === stream) c.timer = setTimeout(loop, 140)
   }, [remember, stopCam])
-  const camStateRef = useRef(cam); camStateRef.current = cam
 
-  const startCam = async (facing = cam.facing) => {
-    stopCam(); setFound(null); setShot(null)
-    if (!navigator.mediaDevices?.getUserMedia) { setCam((s) => ({ ...s, err: 'Camera access needs a secure (https) page and a supported browser.' })); return }
+  const startCam = useCallback(async (facing = cam.facing) => {
+    stopCam(); clearImage()
+    if (!navigator.mediaDevices?.getUserMedia) { setCam((state) => ({ ...state, err: 'Camera access needs a secure (https) page and a supported browser.' })); return }
+    const generation = camGenerationRef.current
+    setCam((state) => ({ ...state, err: '', facing, torch: false, torchOk: false }))
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: facing }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false })
+      if (generation !== camGenerationRef.current) { stream.getTracks().forEach((track) => track.stop()); return }
       camRef.current.stream = stream; camRef.current.last = ''
-      const t = stream.getVideoTracks()[0]; const caps = t.getCapabilities?.() || {}
-      setCam((s) => ({ ...s, on: true, err: '', facing, torch: false, torchOk: !!caps.torch }))
-      requestAnimationFrame(async () => { const v = video.current; if (!v) return; v.srcObject = stream; try { await v.play() } catch {} loop() })
-    } catch (e) { setCam((s) => ({ ...s, on: false, err: e.name === 'NotAllowedError' ? 'Camera permission was blocked. Allow it in the address bar, or use an image instead.' : e.name === 'NotFoundError' ? 'No camera found on this device.' : 'Could not start the camera: ' + (e.message || e.name) })) }
-  }
-  const toggleTorch = async () => { const t = camRef.current.stream?.getVideoTracks()[0]; if (!t) return; try { await t.applyConstraints({ advanced: [{ torch: !cam.torch }] }); setCam((s) => ({ ...s, torch: !s.torch })) } catch { toast('Torch not available', true) } }
+      const track = stream.getVideoTracks()[0], caps = track?.getCapabilities?.() || {}
+      setCam((state) => ({ ...state, on: true, err: '', facing, torch: false, torchOk: !!caps.torch }))
+      camRef.current.raf = requestAnimationFrame(async () => {
+        const currentVideo = video.current
+        if (generation !== camGenerationRef.current || camRef.current.stream !== stream) { stream.getTracks().forEach((item) => item.stop()); return }
+        if (!currentVideo) { stopCam(); return }
+        currentVideo.srcObject = stream
+        try { await currentVideo.play(); if (generation === camGenerationRef.current) loop() }
+        catch (e) {
+          if (generation === camGenerationRef.current) { stopCam(); setCam((state) => ({ ...state, err: 'The camera opened but video playback could not start: ' + (e.message || 'try another browser') })) }
+        }
+      })
+    } catch (e) {
+      if (generation !== camGenerationRef.current) return
+      setCam((state) => ({ ...state, on: false, err: e.name === 'NotAllowedError' ? 'Camera permission was blocked. Allow it in the address bar, or use an image instead.' : e.name === 'NotFoundError' ? 'No camera found on this device.' : 'Could not start the camera: ' + (e.message || e.name) }))
+    }
+  }, [cam.facing, clearImage, loop, stopCam])
+  const toggleTorch = async () => { const track = camRef.current.stream?.getVideoTracks()[0]; if (!track) return; try { await track.applyConstraints({ advanced: [{ torch: !cam.torch }] }); setCam((state) => ({ ...state, torch: !state.torch })) } catch { toast('Torch not available', true) } }
 
   const grabScreen = async () => {
     if (!navigator.mediaDevices?.getDisplayMedia) { toast('Screen capture isn’t supported in this browser', true); return }
+    const request = ++scanRequestRef.current
+    let stream = null, screenVideo = null
+    setBusy(true)
     try {
-      const st = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })
-      const v = document.createElement('video'); v.srcObject = st; v.muted = true; await v.play(); await new Promise((r) => setTimeout(r, 450))
-      const c = document.createElement('canvas'); c.width = v.videoWidth; c.height = v.videoHeight; c.getContext('2d').drawImage(v, 0, 0)
-      st.getTracks().forEach((t) => t.stop())
-      const blob = await new Promise((r) => c.toBlob(r, 'image/png')); const url = URL.createObjectURL(blob)
-      imgRef.current = c; await runOn(c, url, 'screen')
-    } catch (e) { if (e.name !== 'NotAllowedError') toast('Screen capture failed', true) }
+      stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })
+      if (request !== scanRequestRef.current) return
+      screenVideo = document.createElement('video'); screenVideo.srcObject = stream; screenVideo.muted = true; screenVideo.playsInline = true
+      await screenVideo.play(); await new Promise((resolve) => setTimeout(resolve, 350))
+      if (request !== scanRequestRef.current) return
+      if (!screenVideo.videoWidth || !screenVideo.videoHeight) throw new Error('The shared screen did not provide a video frame.')
+      const scale = Math.min(1, 3000 / Math.max(screenVideo.videoWidth, screenVideo.videoHeight))
+      const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(screenVideo.videoWidth * scale)); c.height = Math.max(1, Math.round(screenVideo.videoHeight * scale))
+      const context = c.getContext('2d'); if (!context) throw new Error('Screen capture is not available in this browser.')
+      context.drawImage(screenVideo, 0, 0, c.width, c.height)
+      const blob = await new Promise((resolve) => c.toBlob(resolve, 'image/png'))
+      if (!blob) throw new Error('Could not capture a frame from that screen.')
+      const url = URL.createObjectURL(blob); replaceAssetUrl(url)
+      imgRef.current = c
+      await runOn(c, url, 'screen', { request })
+    } catch (e) {
+      if (request === scanRequestRef.current && e.name !== 'NotAllowedError') toast(e.message || 'Screen capture failed', true)
+    } finally {
+      stream?.getTracks().forEach((track) => track.stop())
+      if (screenVideo) { screenVideo.pause(); screenVideo.srcObject = null }
+      if (request === scanRequestRef.current) setBusy(false)
+    }
   }
-  const retryEnhanced = async () => { if (!imgRef.current) return; const c = enhance(imgRef.current); const d = await runOn(c, shot?.url, 'image'); if (d && !d.items.length) toast('Still nothing readable in that image', true); else toast('Found it with enhanced contrast') }
+  const retryEnhanced = async () => {
+    if (!imgRef.current || busy) return
+    try {
+      const c = enhance(imgRef.current), d = await runOn(c, shot?.url, 'image')
+      if (d && !d.items.length) toast('Still nothing readable in that image', true)
+      else if (d) toast('Found it with enhanced contrast')
+    } catch (e) { toast(e.message || 'Could not enhance that image', true) }
+  }
   const demo = async () => {
-    const { buildQR, toCanvas, DEFAULT_STYLE } = await import('../../lib/qr/render.js')
-    const c = await toCanvas(buildQR('https://thetooltable.app/hello', { ...DEFAULT_STYLE, frame: { ...DEFAULT_STYLE.frame, style: 'label-bottom' } }), 700, { bg: '#fff' })
-    imgRef.current = c; await runOn(c, c.toDataURL(), 'image')
+    if (busy) return
+    const request = ++scanRequestRef.current
+    setBusy(true)
+    try {
+      const { buildQR, toCanvas, DEFAULT_STYLE } = await import('../../lib/qr/render.js')
+      if (request !== scanRequestRef.current) return
+      const c = await toCanvas(buildQR('https://thetooltable.app/hello', { ...DEFAULT_STYLE, frame: { ...DEFAULT_STYLE.frame, style: 'label-bottom' } }), 700, { bg: '#fff' })
+      if (request !== scanRequestRef.current) return
+      replaceAssetUrl(null)
+      imgRef.current = c; await runOn(c, c.toDataURL(), 'image', { request })
+    } catch (e) {
+      if (request === scanRequestRef.current) { toast(e.message || 'Could not create a sample code', true); setBusy(false) }
+    }
   }
 
   const items = found?.items || []
@@ -172,7 +288,7 @@ export default function Scan() {
                     </svg>
                     <AnimatePresence>{busy && <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 grid place-items-center" style={{ background: 'rgba(255,255,255,.55)' }}><motion.span animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 0.9, ease: 'linear' }} style={{ color: 'var(--copper)' }}><QIco n="refresh" s={32} /></motion.span></motion.div>}</AnimatePresence>
                   </div>
-                  <div className="flex flex-wrap gap-2"><Btn small icon="upload" onClick={() => { setShot(null); setFound(null) }}>New image</Btn>{!items.length && <Btn small icon="wand" copper onClick={retryEnhanced} busy={busy}>Try enhanced contrast</Btn>}</div>
+                  <div className="flex flex-wrap gap-2"><Btn small icon="upload" onClick={clearImage}>New image</Btn>{!items.length && <Btn small icon="wand" copper onClick={retryEnhanced} busy={busy}>Try enhanced contrast</Btn>}</div>
                 </div>
               ))}
               {mode === 'camera' && (
@@ -227,7 +343,7 @@ export default function Scan() {
         </Panel>
         {scans.length > 0 && <Panel delay={0.14} className="!p-4">
           <Label>Recent</Label>
-          <div className="space-y-1.5">{scans.slice(0, 4).map((s) => <motion.button key={s.id} type="button" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} whileHover={{ x: 4 }} onClick={() => { setFound({ w: 1, h: 1, items: [{ text: s.text, format: s.format, pts: [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }] }] }); setSel(0); setShot(null); setMode('image') }} className="w-full flex items-center gap-2.5 text-left rounded-xl px-2.5 py-2" style={{ background: 'var(--surface2)' }}><span className="w-7 h-7 rounded-lg grid place-items-center shrink-0" style={{ background: 'var(--surface)', color: 'var(--copper)' }}><QIco n={parse(s.text, s.format).icon} s={15} /></span><span className="min-w-0"><span className="block text-[12.5px] font-semibold truncate">{s.title || s.text}</span><span className="block text-[11px]" style={{ color: 'var(--muted)' }}>{s.label} · {new Date(s.t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span></span></motion.button>)}</div>
+          <div className="space-y-1.5">{scans.slice(0, 4).map((s) => <motion.button key={s.id} type="button" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} whileHover={{ x: 4 }} onClick={() => { clearImage(); setFound({ w: 1, h: 1, items: [{ text: s.text, format: s.format, pts: [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }] }] }); setSel(0); setMode('image') }} className="w-full flex items-center gap-2.5 text-left rounded-xl px-2.5 py-2" style={{ background: 'var(--surface2)' }}><span className="w-7 h-7 rounded-lg grid place-items-center shrink-0" style={{ background: 'var(--surface)', color: 'var(--copper)' }}><QIco n={parse(s.text, s.format).icon} s={15} /></span><span className="min-w-0"><span className="block text-[12.5px] font-semibold truncate">{s.title || s.text}</span><span className="block text-[11px]" style={{ color: 'var(--muted)' }}>{s.label} · {new Date(s.t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span></span></motion.button>)}</div>
         </Panel>}
       </div>
       {toastNode}

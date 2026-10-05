@@ -1,6 +1,6 @@
-import React, { useRef, useState } from 'react'
+import React, { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Panel, Label, Seg, Stage, Stepper, PrimaryBtn, Burst, ChipRow, DIco, usePersist, useLog, rnd, sfx, SPRING, CountText } from './parts.jsx'
+import { Panel, Label, Seg, Stage, Stepper, PrimaryBtn, Burst, ChipRow, DIco, usePersist, useLog, useSafeTimeout, rnd, sfx, SPRING, CountText } from './parts.jsx'
 
 const METALS = {
   gold: { name: 'Gold', a: '#FFE9B8', b: '#E8B84B', c: '#B8860B', rim: '#9a7010', ink: '#5a4208' },
@@ -28,6 +28,7 @@ function CoinBody({ rot, toss, metal, labels, size, dur, idx }) {
 
 export default function Coin() {
   const log = useLog()
+  const schedule = useSafeTimeout()
   const [o, setO] = usePersist('coin', { n: 1, metal: 'gold', heads: 'Heads', tails: 'Tails', speed: 'normal' })
   const upd = (p) => setO((s) => ({ ...s, ...p }))
   const [coins, setCoins] = useState([{ rot: 0, face: 0 }])
@@ -45,7 +46,7 @@ export default function Coin() {
     setBusy(true); setOut(null); sfx('whoosh')
     const next = shown.map((c) => { const face = rnd(2); const spins = 4 + rnd(4); const cur = c.rot; const base = Math.ceil(cur / 360) * 360; return { rot: base + spins * 360 + face * 180, face, toss: true } })
     setCoins(next)
-    setTimeout(() => {
+    schedule(() => {
       sfx('thud'); setBusy(false)
       setCoins((cs) => cs.map((c) => ({ ...c, toss: false })))
       const h = next.filter((c) => c.face === 0).length, t = next.length - h

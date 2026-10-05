@@ -13,11 +13,15 @@ const sizedSvg = (svg, w, h) => svg.replace(/width="\d+" height="\d+"/, `width="
 const load = (src) => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src })
 
 async function rasterize(res, px) {
-  const vb = res.svg.includes('viewBox') ? res.svg : res.svg.replace(/width="(\d+)" height="(\d+)"/, 'viewBox="0 0 $1 $2" width="$1" height="$2"')
-  const h = Math.round((px * res.h) / res.w)
-  const img = await load('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(vb.replace(/width="\d+" height="\d+"/, `width="${px}" height="${h}"`)))
-  const c = document.createElement('canvas'); c.width = px; c.height = h
-  const x = c.getContext('2d'); x.imageSmoothingEnabled = false; x.drawImage(img, 0, 0, px, h)
+  const width = Math.round(Number(px)), h = Math.round((width * res.h) / res.w)
+  if (!Number.isSafeInteger(width) || width < 1 || width > 8192 || !Number.isSafeInteger(h) || h < 1 || h > 8192 || width * h > 32_000_000) {
+    throw new Error('That barcode export is too large for a browser canvas. Choose a smaller width.')
+  }
+  const vb = res.svg.includes('viewBox') ? res.svg : res.svg.replace(/width="([\d.]+)(?:px)?" height="([\d.]+)(?:px)?"/, 'viewBox="0 0 $1 $2" width="$1" height="$2"')
+  const img = await load('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(vb.replace(/width="[\d.]+(?:px)?" height="[\d.]+(?:px)?"/, `width="${width}" height="${h}"`)))
+  const c = document.createElement('canvas'); c.width = width; c.height = h
+  const x = c.getContext('2d'); if (!x) throw new Error('Canvas rendering is not available in this browser.')
+  x.imageSmoothingEnabled = false; x.drawImage(img, 0, 0, width, h)
   return c
 }
 
@@ -48,7 +52,7 @@ export default function Barcode() {
         setCheck(t ? { ok: true, text: t } : { ok: false })
       } catch (e) { if (my === seq.current) { setErr(e.message || 'Could not encode'); setRes(null); setCheck(null) } }
     }, 250)
-    return () => clearTimeout(id)
+    return () => { clearTimeout(id); if (seq.current === my) seq.current++ }
   }, [o.fmt, o.text, o.hrt, o.quiet, o.fg, o.bg, o.ec])
   const pick = (d) => { setGrp(d.group); upd({ fmt: d.id, text: d.sample }) }
   const name = `barcode-${slug(def.name)}-${slug(o.text)}`

@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { AnimatedNumber, LiveProgress, Note } from '../components/ui.jsx'
 import RangeTrack, { TimeField, clock } from '../components/RangeTrack.jsx'
 import { fmtBytes, recentAction } from '../lib/utils.js'
-import { engine, getBase, setBase as persistEngineBase } from '../lib/engine.js'
+import { engine, getBase, isAndroidPlatform, setBase as persistEngineBase } from '../lib/engine.js'
 
 const SPRING = { type: 'spring', stiffness: 300, damping: 25 }
 
@@ -84,7 +84,9 @@ function OfflineCard({ onRetry }) {
         <div className="flex-1 min-w-0">
           <h3 className="display font-semibold text-[19px]">The download engine is asleep</h3>
           <p className="text-[13px] mt-1.5 leading-relaxed" style={{ color: 'var(--muted)' }}>
-            yt-dlp runs in a companion engine, not inside a browser tab. Start the engine on your PC, or connect to a separately hosted engine below. Static website hosting does not include the downloader service.
+            {isAndroidPlatform
+              ? 'This Android build does not bundle a native yt-dlp engine yet. Run the companion engine on a network-reachable PC or server, then enter its HTTPS /api/ytdlp address below. Do not use localhost or 127.0.0.1 here; on a phone those addresses refer to the phone itself.'
+              : 'yt-dlp runs in a companion engine, not inside a browser tab. Start the engine on your PC, or connect to a separately hosted engine below. Static website hosting does not include the downloader service.'}
           </p>
           <div className="mt-4 space-y-2">
             {cmds.map((c, i) => (
@@ -99,7 +101,7 @@ function OfflineCard({ onRetry }) {
             <input className="input mono min-w-0 text-[12.5px]" aria-label="Downloader engine address" value={baseDraft} onChange={(e) => setBaseDraft(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && connect()} placeholder="Engine address — default /api/ytdlp" />
             <button className="btn btn-primary w-full sm:w-auto" onClick={connect}>Connect</button>
           </div>
-          <p className="text-[11.5px] mt-2 leading-relaxed" style={{ color: 'var(--muted)' }}>Example local address: <span className="mono break-all">http://127.0.0.1:8787/api/ytdlp</span>. A remote engine must allow this app’s origin through CORS.</p>
+          <p className="text-[11.5px] mt-2 leading-relaxed" style={{ color: 'var(--muted)' }}>{isAndroidPlatform ? 'The remote engine must use HTTPS and allow this app’s origin through CORS.' : <>Example local address: <span className="mono break-all">http://127.0.0.1:8787/api/ytdlp</span>. A remote engine must allow this app’s origin through CORS.</>}</p>
         </div>
       </div>
     </Card>

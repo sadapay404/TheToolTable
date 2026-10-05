@@ -1,11 +1,12 @@
 import React, { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Panel, Label, Seg, Stage, PrimaryBtn, Burst, Switch, Stepper, ChipRow, CountText, usePersist, useLog, rnd, rndf, shuffle, sfx, SPRING } from './parts.jsx'
+import { Panel, Label, Seg, Stage, PrimaryBtn, Burst, Switch, Stepper, ChipRow, CountText, usePersist, useLog, useSafeTimeout, rnd, rndf, shuffle, sfx, SPRING } from './parts.jsx'
 
 const PRESETS = { '1 – 6': { min: 1, max: 6, count: 1, unique: false }, '1 – 10': { min: 1, max: 10, count: 1, unique: false }, '1 – 100': { min: 1, max: 100, count: 1, unique: false }, 'Lottery 6/49': { min: 1, max: 49, count: 6, unique: true, sort: true }, 'PIN (4 digits)': { min: 0, max: 9, count: 4, unique: false, sort: false }, '0 or 1': { min: 0, max: 1, count: 8, unique: false } }
 
 export default function Numbers() {
   const log = useLog()
+  const schedule = useSafeTimeout()
   const [o, setO] = usePersist('numbers', { min: 1, max: 100, count: 5, dec: 0, unique: true, sort: false })
   const upd = (p) => setO((s) => ({ ...s, ...p }))
   const [res, setRes] = useState(null)
@@ -18,7 +19,7 @@ export default function Numbers() {
   const gen = () => {
     if (busy || bad) return
     setBusy(true); sfx('whoosh')
-    setTimeout(() => {
+    schedule(() => {
       let list = []
       if (o.dec > 0) { const f = 10 ** o.dec; for (let i = 0; i < o.count; i++) list.push(Math.round((lo + rndf() * (hi - lo)) * f) / f) }
       else if (o.unique) { if (span <= 200000) list = shuffle(Array.from({ length: span }, (_, i) => lo + i)).slice(0, o.count); else { const s = new Set(); while (s.size < o.count) s.add(lo + rnd(span)); list = [...s] } }
@@ -70,7 +71,7 @@ export default function Numbers() {
           <div className="space-y-4">
             <Stepper label="How many" value={o.count} min={1} max={30} onChange={(count) => upd({ count })} />
             <div><div className="text-[13.5px] font-semibold mb-2">Decimals</div><Seg small value={String(o.dec)} onChange={(d) => upd({ dec: +d })} options={[['0', 'None'], ['1', '1'], ['2', '2'], ['3', '3']]} /></div>
-            <Switch on={o.unique} onChange={(unique) => upd({ unique })} label="No repeats" hint="Whole numbers only" />
+            <Switch on={o.unique} onChange={(unique) => upd({ unique })} disabled={o.dec > 0} label="No repeats" hint={o.dec > 0 ? 'Available for whole numbers only' : 'Whole numbers only'} />
             <Switch on={o.sort} onChange={(sort) => upd({ sort })} label="Sort ascending" />
           </div>
         </Panel>

@@ -1,25 +1,34 @@
 import React, { useState } from 'react'
 import { Panel, Label, Seg, Btn, Range, Field, Bar, Empty } from '../kit/ui.jsx'
 import { DocSelect, Thumb } from './shared.jsx'
-import { parseRanges, rangeToIdx, renderCanvas, zipFiles } from '../../lib/pdf/engine.js'
+import { parseRanges, rangeToIdx, renderCanvas, zipFiles, MAX_ARCHIVE_ENTRIES, MAX_PDF_BATCH_PIXELS } from '../../lib/pdf/engine.js'
 
 export default function ToImages({ docs, active, setActive, publish, toast }) {
   const doc = docs.find((d) => d.id === active) || docs[0]
   const [fmt, setFmt] = useState('png'), [scale, setScale] = useState(2), [txt, setTxt] = useState(''), [busy, setBusy] = useState(0)
   if (!doc) return <Panel><Empty icon="image" title="Add a PDF first" sub="Every page can be exported as a PNG, JPG or WebP picture." /></Panel>
   const run = async () => {
+    if (busy) return
     let idx = Array.from({ length: doc.pages }, (_, i) => i)
     if (txt.trim()) { const r = parseRanges(txt, doc.pages); if (r.error) return toast(r.error, 'err'); idx = rangeToIdx(r.ranges) }
+    if (idx.length > MAX_ARCHIVE_ENTRIES) return toast(`Export no more than ${MAX_ARCHIVE_ENTRIES.toLocaleString()} pages at once.`, 'err')
     setBusy(0.02)
     try {
-      const mime = { png: 'image/png', jpg: 'image/jpeg', webp: 'image/webp' }[fmt], base = doc.name.replace(/\.pdf$/i, ''), files = []
+      const mime = { png: 'image/png', jpg: 'image/jpeg', webp: 'image/webp' }[fmt], base = doc.name.replace(/\.pdf$/i, '').slice(0, 100), files = []
+      let totalPixels = 0
       for (let k = 0; k < idx.length; k++) {
-        const c = await renderCanvas(doc, idx[k], { scale: scale * (96 / 72) / (96 / 72) })
-        const blob = await new Promise((r) => c.toBlob(r, mime, 0.98))
-        files.push([`${base}_page_${String(idx[k] + 1).padStart(String(doc.pages).length, '0')}.${fmt}`, new Uint8Array(await blob.arrayBuffer()), blob]); setBusy((k + 1) / idx.length)
+        const c = await renderCanvas(doc, idx[k], { scale })
+        try {
+          totalPixels += c.width * c.height
+          if (totalPixels > MAX_PDF_BATCH_PIXELS) throw new RangeError(`The selected pages exceed ${MAX_PDF_BATCH_PIXELS / 1_000_000} megapixels in total. Export fewer pages at a time.`)
+          const blob = await new Promise((resolve, reject) => c.toBlob((b) => b ? resolve(b) : reject(new Error('Could not encode a rendered PDF page.')), mime, 0.98))
+          const data = idx.length === 1 ? blob : new Uint8Array(await blob.arrayBuffer())
+          files.push([`${base}_page_${String(idx[k] + 1).padStart(String(doc.pages).length, '0')}.${fmt}`, data])
+        } finally { c.width = c.height = 0 }
+        setBusy((k + 1) / idx.length)
       }
-      if (files.length === 1) publish(files[0][2], files[0][0], `${fmt.toUpperCase()} · 1 page`)
-      else publish(zipFiles(files.map(([n, b]) => [n, b])), `${base}_images.zip`, `${files.length} ${fmt.toUpperCase()} images`)
+      if (files.length === 1) publish(files[0][1], files[0][0], `${fmt.toUpperCase()} · 1 page`)
+      else publish(zipFiles(files), `${base}_images.zip`, `${files.length} ${fmt.toUpperCase()} images`)
     } catch (e) { toast(e.message || 'Failed', 'err') } finally { setBusy(0) }
   }
   return (
@@ -28,7 +37,7 @@ export default function ToImages({ docs, active, setActive, publish, toast }) {
         <Label>Pages</Label>
         <div className="space-y-4">
           <DocSelect docs={docs} value={doc.id} onChange={setActive} />
-          <Field label={`Which pages? ${doc.pages} total — leave empty for all`}><input className="input" value={txt} onChange={(e) => setTxt(e.target.value)} placeholder="e.g. 1-3, 7" /></Field>
+          <Field label={`Which pages? ${doc.pages} total — leave empty for all`}><input className="input" maxLength={20_000} value={txt} onChange={(e) => setTxt(e.target.value)} placeholder="e.g. 1-3, 7" /></Field>
           <div className="grid grid-cols-4 sm:grid-cols-6 gap-3">{Array.from({ length: Math.min(doc.pages, 6) }, (_, i) => <Thumb key={i} doc={doc} idx={i} w={160} />)}</div>
         </div>
       </Panel>

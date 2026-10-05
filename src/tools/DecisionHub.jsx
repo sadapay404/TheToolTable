@@ -25,7 +25,11 @@ export default function DecisionHub() {
   const [sound, setSnd] = usePersist('sound', true)
   const [hist, setHist] = usePersist('hist', [])
   useEffect(() => setSound(sound), [sound])
-  const log = useCallback((kind, text) => { recentAction(text); setHist((h) => [{ kind, text, k: Date.now() + Math.random(), t: Date.now() }, ...h].slice(0, 24)) }, [setHist])
+  const log = useCallback((kind, text) => {
+    const message = String(text ?? '').slice(0, 240)
+    recentAction(message)
+    setHist((h) => [{ kind, text: message, k: Date.now() + Math.random(), t: Date.now() }, ...h].slice(0, 24))
+  }, [setHist])
   const idx = Math.max(0, GAMES.findIndex((g) => g.id === tab))
   const G = GAMES[idx]
 
@@ -38,10 +42,10 @@ export default function DecisionHub() {
               const on = g.id === tab
               return (
                 <motion.button key={g.id} type="button" onClick={() => { setTab(g.id); sfx('click') }} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ ...SPRING, delay: i * 0.04 }} whileHover={{ y: -4 }} whileTap={{ scale: 0.93 }} aria-pressed={on}
-                  className="relative flex flex-col items-center gap-1.5 rounded-2xl px-1.5 py-3 border" style={{ borderColor: on ? 'var(--ink)' : 'var(--border)', background: 'var(--surface)', color: on ? 'var(--bg)' : 'var(--ink)', boxShadow: on ? '0 14px 24px -14px rgba(0,0,0,.6)' : 'var(--shadow)' }}>
+                  className="relative flex min-w-0 flex-col items-center gap-1.5 rounded-2xl px-1.5 py-3 border" style={{ borderColor: on ? 'var(--ink)' : 'var(--border)', background: 'var(--surface)', color: on ? 'var(--bg)' : 'var(--ink)', boxShadow: on ? '0 14px 24px -14px rgba(0,0,0,.6)' : 'var(--shadow)' }}>
                   <motion.span className="absolute inset-0 rounded-2xl" style={{ background: 'var(--ink)' }} initial={false} animate={{ opacity: on ? 1 : 0, scale: on ? 1 : 0.85 }} transition={SPRING} />
                   <motion.span className="relative" animate={{ rotate: on ? [0, -18, 14, 0] : 0, scale: on ? 1.12 : 1 }} transition={{ duration: 0.5 }} style={{ color: on ? 'var(--bg)' : 'var(--copper)' }}><DIco n={g.icon} s={24} /></motion.span>
-                  <span className="relative text-[11.5px] sm:text-[12.5px] font-semibold leading-tight text-center">{g.name}</span>
+                  <span className="relative min-w-0 max-w-full break-words text-[11.5px] sm:text-[12.5px] font-semibold leading-tight text-center">{g.name}</span>
                 </motion.button>
               )
             })}
@@ -63,8 +67,8 @@ export default function DecisionHub() {
             <div className="flex flex-wrap gap-2">
               <AnimatePresence initial={false}>
                 {hist.slice(0, 12).map((h) => (
-                  <motion.span key={h.k} layout initial={{ opacity: 0, scale: 0.7, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.7 }} transition={SPRING} className="inline-flex items-center gap-2 rounded-full pl-2 pr-3.5 py-1.5 text-[12.5px] font-medium border border-line" style={{ background: 'var(--surface2)' }}>
-                    <span className="w-6 h-6 rounded-full grid place-items-center" style={{ background: 'var(--surface)', color: 'var(--copper)' }}><DIco n={{ coin: 'coin', dice: 'dice', wheel: 'wheel', bottle: 'bottle', draw: 'users', numbers: 'hash', oracle: 'ball' }[h.kind] || 'dot'} s={13} /></span>{h.text}
+                  <motion.span key={h.k} layout initial={{ opacity: 0, scale: 0.7, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.7 }} transition={SPRING} className="inline-flex min-w-0 max-w-full items-center gap-2 rounded-full pl-2 pr-3.5 py-1.5 text-[12.5px] font-medium border border-line" style={{ background: 'var(--surface2)' }}>
+                    <span className="w-6 h-6 rounded-full grid place-items-center shrink-0" style={{ background: 'var(--surface)', color: 'var(--copper)' }}><DIco n={{ coin: 'coin', dice: 'dice', wheel: 'wheel', bottle: 'bottle', draw: 'users', numbers: 'hash', oracle: 'ball' }[h.kind] || 'dot'} s={13} /></span><span className="min-w-0 break-words">{h.text}</span>
                   </motion.span>
                 ))}
               </AnimatePresence>

@@ -1,15 +1,42 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Panel, Label, Btn, Drop, Chips, Range, Switch, Field, KIco, SPRING, Dock, Swap, Seg, useToast, usePref, save, fmtSize, Stat2 } from './kit/ui.jsx'
-import { DEFAULTS, SHAPES, FONTS, PRESETS, PACKS, drawIcon, buildPack, zipOf } from '../lib/icons/forge.js'
+import { DEFAULTS, SHAPES, FONTS, PRESETS, PACKS, normalizeIconOptions, drawIcon, buildPack, zipOf } from '../lib/icons/forge.js'
 
 function Ic({ size, o, img, variant, css, px, className = '', style }) {
   const ref = useRef(null), key = JSON.stringify(o) + (img?.src || '') + variant
   useEffect(() => { const c = ref.current; if (!c) return; const S = px || Math.round(size * (window.devicePixelRatio || 1) * 1.5); c.width = c.height = S; drawIcon(c.getContext('2d'), S, o, img, variant) }, [key, size, px])
   return <canvas ref={ref} className={className} style={{ width: size, height: size, imageRendering: px && px < 40 ? 'pixelated' : 'auto', ...css, ...style }} />
 }
+const MAX_ICON_FILE_BYTES = 20 * 1024 * 1024
+const MAX_ICON_IMAGE_PIXELS = 20_000_000
+const MAX_ICON_EDGE = 2_048
+const PACK_IDS = PACKS.map((p) => p.id)
 const loadImg = (file) => new Promise((res, rej) => {
-  const u = URL.createObjectURL(file), i = new Image(); i.onload = async () => { if (!i.naturalWidth) i.width = i.height = 1024; res(i) }; i.onerror = () => rej(new Error('Could not read that image')); i.src = u
+  if (!file || !Number.isFinite(file.size) || file.size > MAX_ICON_FILE_BYTES) return rej(new RangeError('Choose an image smaller than 20 MB.'))
+  const source = URL.createObjectURL(file), original = new Image()
+  const release = (url) => URL.revokeObjectURL(url)
+  original.onload = () => {
+    release(source)
+    const w = original.naturalWidth, h = original.naturalHeight
+    if (!w || !h || w * h > MAX_ICON_IMAGE_PIXELS) return rej(new RangeError('That image is too large to use as an icon.'))
+    const scale = Math.min(1, MAX_ICON_EDGE / w, MAX_ICON_EDGE / h)
+    if (scale === 1) return res(original)
+    try {
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.max(1, Math.round(w * scale)); canvas.height = Math.max(1, Math.round(h * scale))
+      canvas.getContext('2d').drawImage(original, 0, 0, canvas.width, canvas.height)
+      canvas.toBlob((blob) => {
+        if (!blob) return rej(new Error('Could not resize that image.'))
+        const url = URL.createObjectURL(blob), image = new Image()
+        image.onload = () => { release(url); res(image) }
+        image.onerror = () => { release(url); rej(new Error('Could not resize that image.')) }
+        image.src = url
+      }, 'image/png')
+    } catch { rej(new Error('Could not process that image. Try a PNG or JPEG.')) }
+  }
+  original.onerror = () => { release(source); rej(new Error('Could not read that image.')) }
+  original.src = source
 })
 
 function Preview({ o, img }) {
@@ -53,18 +80,44 @@ function Preview({ o, img }) {
 }
 
 export default function IconForge() {
-  const [o, setO] = usePref('icon', 'o', DEFAULTS), [img, setImg] = useState(null), [tab, setTab] = useState('design'), [sel, setSel] = usePref('icon', 'packs', PACKS.map((p) => p.id)), [busy, setBusy] = useState(null), [toast, toastNode] = useToast(), [ver, setVer] = useState(0)
-  const set = (p) => setO((x) => ({ ...x, ...p }))
-  useEffect(() => { document.fonts?.load('700 40px Fraunces').then(() => setVer((v) => v + 1)) }, [])
+  const [savedOptions, setSavedOptions] = usePref('icon', 'o', DEFAULTS), [img, setImg] = useState(null), [tab, setTab] = useState('design')
+  const [savedPacks, setSavedPacks] = usePref('icon', 'packs', PACKS.map((p) => p.id)), [busy, setBusy] = useState(null), [toast, toastNode] = useToast(), [ver, setVer] = useState(0)
+  const pickSeq = useRef(0), busyLock = useRef(false)
+  const o = useMemo(() => normalizeIconOptions(savedOptions), [savedOptions])
+  const sel = useMemo(() => Array.isArray(savedPacks) ? [...new Set(savedPacks.filter((id) => PACK_IDS.includes(id)))] : PACK_IDS, [savedPacks])
+  const setSel = (action) => setSavedPacks((old) => {
+    const current = Array.isArray(old) ? old.filter((id) => PACK_IDS.includes(id)) : []
+    const next = typeof action === 'function' ? action(current) : action
+    return Array.isArray(next) ? [...new Set(next.filter((id) => PACK_IDS.includes(id)))] : []
+  })
+  const set = (p) => {
+    if (p && Object.hasOwn(p, 'mode') && p.mode !== 'image') pickSeq.current++
+    setSavedOptions((x) => normalizeIconOptions({ ...normalizeIconOptions(x), ...p }))
+  }
+  useEffect(() => {
+    let active = true
+    Promise.resolve().then(() => document.fonts?.load?.('700 40px Fraunces')).catch(() => {}).finally(() => { if (active) setVer((v) => v + 1) })
+    return () => { active = false; pickSeq.current++ }
+  }, [])
   const oo = useMemo(() => ({ ...o, _v: ver }), [o, ver])
-  const pick = async (f) => { try { const i = await loadImg(f); setImg(i); set({ mode: 'image' }) } catch (e) { toast(e.message, 'err') } }
-  const run = async (ids, single) => {
-    setBusy(single || 'all')
+  const pick = async (f) => {
+    const request = ++pickSeq.current
     try {
-      const all = {}; for (const id of ids) { const f = await buildPack(id, o, img); const root = ids.length > 1 || true ? id + '/' : ''; for (const [k, v] of Object.entries(f)) all[(ids.length > 1 ? root : '') + k] = v }
+      const i = await loadImg(f)
+      if (request !== pickSeq.current) return
+      setImg(i); set({ mode: 'image' })
+    } catch (e) { if (request === pickSeq.current) toast(e.message || 'Could not load that image.', 'err') }
+  }
+  const run = async (ids, single) => {
+    if (busyLock.current) return
+    const safeIds = Array.isArray(ids) ? [...new Set(ids.filter((id) => PACK_IDS.includes(id)))] : []
+    if (!safeIds.length) return
+    busyLock.current = true; setBusy(single || 'all')
+    try {
+      const all = {}; for (const id of safeIds) { const f = await buildPack(id, o, img); for (const [k, v] of Object.entries(f)) all[(safeIds.length > 1 ? id + '/' : '') + k] = v }
       const blob = zipOf(all), nm = (o.name || 'app').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'app'
-      save(blob, `${nm}-icons${ids.length === 1 ? '-' + ids[0] : ''}.zip`); toast(`${Object.keys(all).length} files · ${fmtSize(blob.size)}`)
-    } catch (e) { toast('Could not build the pack: ' + (e.message || e), 'err') } finally { setBusy(null) }
+      save(blob, `${nm}-icons${safeIds.length === 1 ? '-' + safeIds[0] : ''}.zip`); toast(`${Object.keys(all).length} files · ${fmtSize(blob.size)}`)
+    } catch (e) { toast('Could not build the pack: ' + (e.message || e), 'err') } finally { busyLock.current = false; setBusy(null) }
   }
   const counts = { web: 8, pwa: 11, android: 18, ios: 19, desktop: 28 }
   const noImg = o.mode === 'image' && !img
@@ -105,7 +158,7 @@ export default function IconForge() {
               </Panel>
               <Panel delay={0.1}>
                 <Label>Shape</Label>
-                <div className="grid grid-cols-4 gap-2">{SHAPES.map(([k, l]) => <motion.button key={k} type="button" whileHover={{ y: -3 }} whileTap={{ scale: 0.93 }} onClick={() => set({ shape: k })} className="rounded-2xl border p-2 text-center" style={{ borderColor: o.shape === k ? 'var(--copper)' : 'var(--border)', background: 'var(--surface)' }}><Ic size={44} o={{ ...oo, shape: k }} img={img} variant="full" px={96} css={{ margin: '0 auto' }} /><span className="text-[11.5px] font-semibold block mt-1">{l}</span></motion.button>)}</div>
+                <div className="grid grid-cols-4 gap-2">{SHAPES.map(([k, l]) => <motion.button key={k} type="button" aria-pressed={o.shape === k} whileHover={{ y: -3 }} whileTap={{ scale: 0.93 }} onClick={() => set({ shape: k })} className="rounded-2xl border p-2 text-center" style={{ borderColor: o.shape === k ? 'var(--copper)' : 'var(--border)', background: 'var(--surface)' }}><Ic size={44} o={{ ...oo, shape: k }} img={img} variant="full" px={96} css={{ margin: '0 auto' }} /><span className="text-[11.5px] font-semibold block mt-1">{l}</span></motion.button>)}</div>
                 {o.shape === 'rounded' && <div className="mt-4"><Range label="Corner radius" min={0} max={50} step={1} value={o.radius} onChange={(v) => set({ radius: v })} fmt={(v) => v + '%'} /></div>}
                 <div className="grid grid-cols-2 gap-3 mt-5"><Field label="App name (for manifests)"><input className="input" value={o.name} onChange={(e) => set({ name: e.target.value })} /></Field><Field label="Theme colour"><input type="color" className="w-full h-[42px] rounded-xl border border-line bg-transparent cursor-pointer" value={o.theme} onChange={(e) => set({ theme: e.target.value })} /></Field></div>
               </Panel>
@@ -113,16 +166,17 @@ export default function IconForge() {
           ) : (
             <div className="space-y-4">
               <Panel>
-                <Label right={<Btn small onClick={() => setSel(sel.length === PACKS.length ? [] : PACKS.map((p) => p.id))}>{sel.length === PACKS.length ? 'Clear' : 'Select all'}</Btn>}>Choose what you need</Label>
+                <Label right={<Btn small disabled={Boolean(busy)} onClick={() => setSel(sel.length === PACKS.length ? [] : PACK_IDS)}>{sel.length === PACKS.length ? 'Clear' : 'Select all'}</Btn>}>Choose what you need</Label>
                 <div className="space-y-2.5">
                   {PACKS.map((p, i) => { const on = sel.includes(p.id); return (
                     <motion.div key={p.id} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ ...SPRING, delay: i * 0.05 }} className="rounded-2xl border p-3.5 flex items-center gap-3" style={{ borderColor: on ? 'var(--copper)' : 'var(--border)', background: on ? 'color-mix(in srgb, var(--copper) 8%, var(--surface))' : 'var(--surface)' }}>
-                      <button type="button" aria-label={p.name} aria-pressed={on} onClick={() => setSel(on ? sel.filter((x) => x !== p.id) : [...sel, p.id])} className="w-6 h-6 rounded-lg grid place-items-center shrink-0 border" style={{ background: on ? 'var(--copper)' : 'transparent', borderColor: on ? 'var(--copper)' : 'var(--border)', color: '#fff' }}>{on && <KIco n="check" s={14} />}</button>
+                      <button type="button" aria-label={p.name} aria-pressed={on} disabled={Boolean(busy)} onClick={() => setSel(on ? sel.filter((x) => x !== p.id) : [...sel, p.id])} className="w-6 h-6 rounded-lg grid place-items-center shrink-0 border disabled:cursor-not-allowed disabled:opacity-50" style={{ background: on ? 'var(--copper)' : 'transparent', borderColor: on ? 'var(--copper)' : 'var(--border)', color: '#fff' }}>{on && <KIco n="check" s={14} />}</button>
                       <div className="min-w-0 flex-1"><div className="font-semibold text-[14px]">{p.name}</div><div className="text-[12px]" style={{ color: 'var(--muted)' }}>{p.note}</div></div>
-                      <Btn small icon="download" busy={busy === p.id} onClick={() => run([p.id], p.id)} disabled={noImg}>{counts[p.id]}+ files</Btn>
+                      <Btn small icon="download" busy={busy === p.id} onClick={() => run([p.id], p.id)} disabled={Boolean(busy) || noImg}>{counts[p.id]}+ files</Btn>
                     </motion.div>) })}
                 </div>
-                <Btn primary className="w-full mt-5" icon="download" busy={busy === 'all'} disabled={!sel.length || noImg} onClick={() => run(PACKS.map((p) => p.id).filter((x) => sel.includes(x)))}>Download {sel.length} pack{sel.length === 1 ? '' : 's'} as ZIP</Btn>
+                <Btn primary className="w-full mt-5" icon="download" busy={busy === 'all'} disabled={Boolean(busy) || !sel.length || noImg} onClick={() => run(PACK_IDS.filter((x) => sel.includes(x)))}>Download {sel.length} pack{sel.length === 1 ? '' : 's'} as ZIP</Btn>
+                {busy && <div role="status" aria-live="polite" className="text-[12.5px] mt-3 font-semibold" style={{ color: 'var(--copper)' }}>Rendering icon files… Please wait; a second export is temporarily disabled.</div>}
                 {noImg && <div className="text-[12.5px] mt-3 font-semibold" style={{ color: '#C3423F' }}>Add your logo first, or switch the symbol to Letters.</div>}
               </Panel>
               <div className="text-[12px] px-2" style={{ color: 'var(--muted)' }}>Every size is drawn fresh from your design, not shrunk from one image, so small icons stay crisp. Nothing is compressed beyond the PNG format itself.</div>

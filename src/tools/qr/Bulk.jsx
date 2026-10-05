@@ -1,27 +1,33 @@
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { QIco, Btn, Panel, Label, Seg, Switch, Range, TextIn, Select, Drop, SPRING, useToast, CountText } from './ui.jsx'
 import { useQR, useStore } from './store.js'
 import { buildQR } from '../../lib/qr/render.js'
 import { bulkZip, bulkPdf } from '../../lib/qr/exportKit.js'
+import { parseCSV } from '../../lib/qr/csv.js'
 import { download, recentAction } from '../../lib/utils.js'
 
-function parseCSV(text) {
-  const rows = []; let row = [], cur = '', q = false
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i]
-    if (q) { if (ch === '"') { if (text[i + 1] === '"') { cur += '"'; i++ } else q = false } else cur += ch }
-    else if (ch === '"') q = true
-    else if (ch === ',' || ch === ';' || ch === '\t') { row.push(cur); cur = '' }
-    else if (ch === '\n' || ch === '\r') { if (ch === '\r' && text[i + 1] === '\n') i++; row.push(cur); rows.push(row); row = []; cur = '' }
-    else cur += ch
-  }
-  if (cur.length || row.length) { row.push(cur); rows.push(row) }
-  return rows.filter((r) => r.some((c) => c.trim()))
-}
-const wrap = (kind, v) => { v = v.trim(); if (!v) return ''; if (kind === 'tel') return 'tel:' + v.replace(/[^\d+]/g, ''); if (kind === 'mail') return 'mailto:' + v; if (kind === 'wa') return 'https://wa.me/' + v.replace(/\D/g, ''); if (kind === 'url') return /^[a-z][a-z0-9+.-]*:/i.test(v) ? v : 'https://' + v; return v }
 const MAX = 1000
-
+function scanPasteLines(value) {
+  const entries = []; let count = 0, start = 0
+  for (let i = 0; i <= value.length; i++) {
+    if (i < value.length && value[i] !== '\n' && value[i] !== '\r') continue
+    const line = value.slice(start, i).trim()
+    if (line) { count++; if (entries.length < MAX + 1) entries.push(line) }
+    if (value[i] === '\r' && value[i + 1] === '\n') i++
+    start = i + 1
+  }
+  return { entries, count }
+}
+const wrap = (kind, value) => {
+  const v = value.trim()
+  if (!v) return ''
+  if (kind === 'tel') { const digits = v.replace(/\D/g, ''); return digits ? 'tel:' + (v.startsWith('+') ? '+' : '') + digits : '' }
+  if (kind === 'mail') return 'mailto:' + v.replace(/[\r\n]/g, '')
+  if (kind === 'wa') { const digits = v.replace(/\D/g, ''); return digits ? 'https://wa.me/' + digits : '' }
+  if (kind === 'url') return /^https?:\/\//i.test(v) ? v : /^[a-z][a-z0-9+.-]*:/i.test(v) ? '' : 'https://' + v
+  return v
+}
 export default function Bulk() {
   const { style, go } = useQR()
   const [toastNode, toast] = useToast()
@@ -34,30 +40,71 @@ export default function Bulk() {
   const [seq, setSeq] = useStore('bseq', { tpl: 'https://example.com/t/{n}', start: 1, count: 24, pad: 4 })
   const [out, setOut] = useStore('bout', { kind: 'zip', fmt: 'png', px: 1024, labels: true, page: 'a4', cols: 3, rows: 4, guides: true, numbered: false })
   const [prog, setProg] = useState(null)
+  const abortRef = useRef(null), progressTimer = useRef(0), mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+      abortRef.current?.abort()
+      clearTimeout(progressTimer.current)
+    }
+  }, [])
   const up = (p) => setOut((c) => ({ ...c, ...p }))
+  const pasteStats = useMemo(() => scanPasteLines(paste), [paste])
 
   const items = useMemo(() => {
     let list = []
-    if (src === 'paste') list = paste.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).map((l) => { if (hasLabel) { const m = /^([^,\t;]+)[,\t;](.*)$/.exec(l); if (m) return { label: m[1].trim(), text: m[2].trim() } } return { text: l } })
+    if (src === 'paste') list = pasteStats.entries.map((l) => { if (hasLabel) { const m = /^([^,\t;]+)[,\t;](.*)$/.exec(l); if (m) return { label: m[1].trim(), text: m[2].trim() } } return { text: l } })
     else if (src === 'csv' && csv) { const rs = header ? csv.rows.slice(1) : csv.rows; list = rs.map((r) => ({ text: (r[col] || '').trim(), label: lcol >= 0 ? (r[lcol] || '').trim() : undefined })) }
     else if (src === 'seq') { const n = Math.max(0, Math.min(MAX, +seq.count || 0)); list = Array.from({ length: n }, (_, i) => { const num = String((+seq.start || 0) + i).padStart(+seq.pad || 0, '0'); return { text: seq.tpl.includes('{n}') ? seq.tpl.replaceAll('{n}', num) : seq.tpl + num, label: num } }) }
     list = list.map((x) => ({ ...x, text: wrap(kind, x.text) })).filter((x) => x.text)
     return list.slice(0, MAX).map((x, i) => ({ ...x, label: out.numbered ? `#${String(i + 1).padStart(String(list.length).length, '0')}${x.label ? ' · ' + x.label : ''}` : x.label, name: (x.label || '') + '-' + String(i + 1).padStart(3, '0') }))
-  }, [src, paste, hasLabel, csv, col, lcol, header, seq, kind, out.numbered])
-  const over = src === 'paste' ? paste.split(/\r?\n/).filter((l) => l.trim()).length > MAX : false
+  }, [src, pasteStats, hasLabel, csv, col, lcol, header, seq, kind, out.numbered])
+  const sourceCount = src === 'paste' ? pasteStats.count : src === 'csv' && csv ? Math.max(0, csv.rows.length - (header ? 1 : 0)) : src === 'seq' ? +seq.count : 0
+  const over = sourceCount > MAX
   const previews = useMemo(() => items.slice(0, 12).map((it) => { try { return buildQR(it.text, style, 'p').svg.replace('__W__', '100%').replace('__H__', '100%') } catch { return '' } }), [items, style])
 
-  const load = async (f) => { const t = await f[0].text(); const rows = parseCSV(t); if (!rows.length) { toast('That file looks empty', true); return } setCsv({ name: f[0].name, rows }); setCol(0); setLcol(-1) }
+  const load = async (files) => {
+    const file = files?.[0]
+    if (!file) return
+    if (file.size > 8 * 1024 * 1024) { toast('Choose a CSV file smaller than 8 MB.', true); return }
+    try {
+      const rows = parseCSV(await file.text())
+      if (!rows.length) { toast('That file looks empty', true); return }
+      if (mounted.current) { setCsv({ name: file.name, rows }); setCol(0); setLcol(-1) }
+    } catch (e) { if (mounted.current) toast(e.message || 'Could not read that CSV', true) }
+  }
+  const cancelExport = () => {
+    const controller = abortRef.current
+    if (!controller) return
+    controller.abort()
+    abortRef.current = null
+    clearTimeout(progressTimer.current)
+    setProg(null)
+  }
   const go2 = async () => {
-    if (!items.length) return
+    if (!items.length || abortRef.current) return
+    const controller = new AbortController()
+    abortRef.current = controller
     setProg({ i: 0, n: items.length })
     try {
-      const onP = (i, n) => setProg({ i, n })
-      if (out.kind === 'zip') { const b = await bulkZip(items, style, { format: out.fmt, px: out.px, labels: out.labels }, onP); download(b, `qr-codes-${items.length}.zip`) }
-      else { const b = await bulkPdf(items, style, { page: out.page, cols: out.cols, rows: out.rows, labels: out.labels, guides: out.guides }, onP); download(b, `qr-sheet-${items.length}.pdf`) }
-      recentAction(`Bulk ${items.length} QR codes`); toast(`Done — ${items.length} codes`); setProg({ i: items.length, n: items.length, done: true })
-      setTimeout(() => setProg(null), 2400)
-    } catch (e) { toast(e.message || 'Bulk export failed', true); setProg(null) }
+      const onP = (i, n) => { if (mounted.current && !controller.signal.aborted) setProg({ i, n }) }
+      if (out.kind === 'zip') {
+        const blob = await bulkZip(items, style, { format: out.fmt, px: out.px, labels: out.labels }, onP, controller.signal)
+        if (!controller.signal.aborted) download(blob, `qr-codes-${items.length}.zip`)
+      } else {
+        const blob = await bulkPdf(items, style, { page: out.page, cols: out.cols, rows: out.rows, labels: out.labels, guides: out.guides }, onP, controller.signal)
+        if (!controller.signal.aborted) download(blob, `qr-sheet-${items.length}.pdf`)
+      }
+      if (!controller.signal.aborted && mounted.current) {
+        recentAction(`Bulk ${items.length} QR codes`); toast(`Done — ${items.length} codes`); setProg({ i: items.length, n: items.length, done: true })
+        clearTimeout(progressTimer.current); progressTimer.current = setTimeout(() => { if (mounted.current) setProg(null) }, 2400)
+      }
+    } catch (e) {
+      if (!controller.signal.aborted && mounted.current) { toast(e.message || 'Bulk export failed', true); setProg(null) }
+    } finally {
+      if (abortRef.current === controller) abortRef.current = null
+    }
   }
   const perPage = out.cols * out.rows
   const csvCols = csv ? Math.max(...csv.rows.slice(0, 50).map((r) => r.length)) : 0
@@ -72,7 +119,7 @@ export default function Bulk() {
             <AnimatePresence mode="wait" initial={false}>
               <motion.div key={src} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }} className="space-y-3">
                 {src === 'paste' && <>
-                  <TextIn area rows={7} mono value={paste} onChange={setPaste} ph={'One entry per line…\nhttps://…'} />
+                  <TextIn area rows={7} mono maxLength={100000} value={paste} onChange={setPaste} ph={'One entry per line…\nhttps://…'} />
                   <Switch on={hasLabel} onChange={setHasLabel} label="First column is a label" hint="Lines like  Table 4, https://…  print “Table 4” under each code" />
                 </>}
                 {src === 'csv' && <>
@@ -125,6 +172,7 @@ export default function Bulk() {
           <div className="pt-1">
             <Btn solid full icon={out.kind === 'zip' ? 'zip' : 'print'} onClick={go2} disabled={!items.length || !!prog} busy={!!prog && !prog.done} className="!py-3.5">{prog ? (prog.done ? 'Saved!' : `Making ${prog.i} / ${prog.n}…`) : `Generate ${items.length} ${out.kind === 'zip' ? 'files (ZIP)' : 'codes (PDF)'}`}</Btn>
             <AnimatePresence>{prog && <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="mt-3 overflow-hidden"><div className="h-2 rounded-full overflow-hidden" style={{ background: 'var(--border)' }}><motion.div className="h-full rounded-full" style={{ background: prog.done ? '#2F9C6B' : 'var(--copper)' }} animate={{ width: (prog.i / prog.n) * 100 + '%' }} transition={{ duration: 0.2 }} /></div></motion.div>}</AnimatePresence>
+            {prog && !prog.done && <Btn full small onClick={cancelExport} className="mt-2">Cancel export</Btn>}
           </div>
         </div>
       </Panel>

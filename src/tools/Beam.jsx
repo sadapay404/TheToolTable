@@ -1,10 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Panel, Label, Btn, Drop, Bar, KIco, SPRING, Chips, Empty, Seg, useToast, save, fmtSize, uid } from './kit/ui.jsx'
-import { Peer } from '../lib/beam/peer.js'
+import { Peer, MAX_BEAM_FILE_SIZE, MAX_BEAM_CHAT_CHARS } from '../lib/beam/peer.js'
 import { CodeOut, CodeIn, Step } from './beam/parts.jsx'
 
-const LIVE = ['connected']
+const percent = (got, size) => size > 0 ? Math.min(100, Math.max(0, (got / size) * 100)) : 100
 
 function Choose({ onPick, mode, setMode }) {
   return (
@@ -20,7 +20,7 @@ function Choose({ onPick, mode, setMode }) {
       <Panel delay={0.15}>
         <Label>Connection</Label>
         <Seg value={mode} onChange={setMode} options={[['auto', 'Anywhere'], ['lan', 'Same Wi-Fi only']]} />
-        <div className="text-[12.5px] mt-3" style={{ color: 'var(--muted)' }}>{mode === 'auto' ? 'Works across networks. A public STUN server is asked for your address once — your files never touch a server.' : 'No outside server is contacted at all. Both devices must be on the same Wi-Fi or hotspot.'} Both people must pick the same option.</div>
+        <div className="text-[12.5px] mt-3" style={{ color: 'var(--muted)' }}>{mode === 'auto' ? 'Tries a direct connection across networks using public STUN. Some routers or firewalls block peer-to-peer links; if that happens, try the same Wi-Fi option. Files never pass through STUN.' : 'No outside server is contacted. Both devices must be on the same Wi-Fi or hotspot.'} Both people must pick the same option.</div>
       </Panel>
       <div className="grid gap-3 sm:grid-cols-3 text-[13px]">
         {[['lock', 'End-to-end encrypted', 'WebRTC encrypts every byte.'], ['zap', 'No upload, no limits', 'Straight between devices.'], ['wifi', 'No accounts', 'Just two codes, copied once.']].map(([ic, t, d], i) => <motion.div key={t} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ ...SPRING, delay: 0.25 + i * 0.06 }} className="flex gap-3 p-4 rounded-2xl border border-line" style={{ background: 'var(--surface)' }}><span style={{ color: 'var(--copper)' }}><KIco n={ic} s={20} /></span><div><div className="font-semibold">{t}</div><div style={{ color: 'var(--muted)' }}>{d}</div></div></motion.div>)}
@@ -33,17 +33,24 @@ function Room({ peer, onLeave, toast }) {
   const [items, setItems] = useState([]), [chat, setChat] = useState([]), [msg, setMsg] = useState(''), [state, setState] = useState(peer.state), endRef = useRef(null)
   const patch = useCallback((id, p) => setItems((l) => l.map((x) => (x.id === id ? { ...x, ...p } : x))), [])
   useEffect(() => {
-    peer.on('state', setState).on('chat', (t) => setChat((c) => [...c, { me: false, t, at: Date.now() }]))
-      .on('incoming', (m) => setItems((l) => [{ id: 'r' + m.id, name: m.name, size: m.size, dir: 'in', pct: 0, at: Date.now() }, ...l]))
-      .on('recv', (id, got, size) => patch('r' + id, { pct: (got / size) * 100 }))
-      .on('received', (id, blob, name) => { patch('r' + id, { pct: 100, blob, done: true }); toast(`Received ${name}`) })
-      .on('sent', (id, off, size, done) => patch('s' + id, { pct: (off / size) * 100, done: !!done }))
-      .on('fail', (id, e) => { patch('s' + id, { err: e }); toast(e, 'err') })
+    const handlers = {
+      state: setState,
+      chat: (t) => setChat((c) => [...c, { me: false, t, at: Date.now() }].slice(-500)),
+      incoming: (m) => setItems((l) => [{ id: 'r' + m.id, name: m.name, size: m.size, dir: 'in', pct: m.size === 0 ? 100 : 0, at: Date.now() }, ...l].slice(0, 250)),
+      recv: (id, got, size) => patch('r' + id, { pct: percent(got, size) }),
+      received: (id, blob, name) => { patch('r' + id, { pct: 100, blob, done: true }); toast(`Received ${name}`) },
+      sent: (id, off, size, done) => patch('s' + id, { pct: percent(off, size), done: !!done }),
+      fail: (id, e) => { patch('s' + id, { err: e }); toast(e, 'err') },
+      transferError: (id, e) => { if (id) patch('r' + id, { err: e }); toast(e, 'err') },
+      error: (e) => toast(e, 'err'),
+    }
+    Object.entries(handlers).forEach(([event, handler]) => peer.on(event, handler))
+    return () => Object.keys(handlers).forEach((event) => peer.off(event))
   }, [peer, patch, toast])
   useEffect(() => { endRef.current?.scrollTo({ top: 1e6, behavior: 'smooth' }) }, [chat])
   const send = (files) => files.forEach((f) => { const id = uid(); setItems((l) => [{ id: 's' + id, name: f.name, size: f.size, dir: 'out', pct: 0, at: Date.now() }, ...l]); peer.sendFile(f, id) })
   const live = state === 'connected'
-  const say = () => { const t = msg.trim(); if (!t || !live) return; peer.sendText(t); setChat((c) => [...c, { me: true, t, at: Date.now() }]); setMsg('') }
+  const say = () => { const t = msg.trim(); if (!t || !live) return; try { peer.sendText(t); setChat((c) => [...c, { me: true, t, at: Date.now() }].slice(-500)); setMsg('') } catch (e) { toast(e.message || 'Could not send that message.', 'err') } }
   return (
     <div className="space-y-5">
       <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} className="rounded-[22px] p-4 flex items-center gap-4 flex-wrap" style={{ background: live ? 'color-mix(in srgb, #2F9E6B 14%, var(--surface))' : 'color-mix(in srgb, #C3423F 12%, var(--surface))', border: '1px solid var(--border)' }}>
@@ -54,8 +61,8 @@ function Room({ peer, onLeave, toast }) {
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] items-start">
         <Panel>
           <Label>Send files</Label>
-          <Drop onFiles={send} compact title="Drop files to beam them" sub="Any type, any number — sent one after another" icon="send" />
-          <div className="mt-5"><Label right={<span className="text-[12px] font-semibold tabular-nums">{items.length}</span>}>Transfers</Label>
+          <Drop onFiles={send} compact title="Drop files to beam them" sub={`Files up to ${fmtSize(MAX_BEAM_FILE_SIZE)} — sent one after another`} icon="send" />
+          <div className="mt-5"><Label right={<div className="flex items-center gap-2"><span className="text-[12px] font-semibold tabular-nums">{items.length}</span>{items.some((i) => i.done || i.err) && <Btn small icon="trash" onClick={() => setItems((l) => l.filter((i) => !i.done && !i.err))}>Clear done</Btn>}</div>}>Transfers</Label>
             {!items.length ? <Empty icon="send" title="No transfers yet" sub="Files you send or receive show up here." /> : (
               <div className="space-y-2.5 max-h-[420px] overflow-auto pr-1">
                 <AnimatePresence initial={false}>{items.map((it) => (
@@ -76,7 +83,7 @@ function Room({ peer, onLeave, toast }) {
             {!chat.length && <Empty icon="text" title="Say hello" sub="Paste links or notes — they travel the same private pipe." />}
             <AnimatePresence initial={false}>{chat.map((c, i) => <motion.div key={i} initial={{ opacity: 0, y: 10, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={SPRING} className={`flex ${c.me ? 'justify-end' : 'justify-start'}`}><div dir="auto" className="rounded-2xl px-3.5 py-2 text-[13.5px] max-w-[85%] break-words whitespace-pre-wrap" style={{ background: c.me ? 'var(--ink)' : 'var(--surface2)', color: c.me ? 'var(--bg)' : 'var(--ink)' }}>{/^https?:\/\/\S+$/.test(c.t) ? <a href={c.t} target="_blank" rel="noreferrer" className="underline">{c.t}</a> : c.t}</div></motion.div>)}</AnimatePresence>
           </div>
-          <div className="flex gap-2 mt-3"><input className="input flex-1" dir="auto" value={msg} placeholder={live ? 'Type a message' : 'Not connected'} disabled={!live} onChange={(e) => setMsg(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && say()} /><Btn primary icon="send" disabled={!live || !msg.trim()} onClick={say}>Send</Btn></div>
+          <div className="flex gap-2 mt-3"><input className="input flex-1" dir="auto" maxLength={MAX_BEAM_CHAT_CHARS} value={msg} placeholder={live ? 'Type a message' : 'Not connected'} disabled={!live} onChange={(e) => setMsg(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && say()} /><Btn primary icon="send" disabled={!live || !msg.trim()} onClick={say}>Send</Btn></div>
         </Panel>
       </div>
     </div>

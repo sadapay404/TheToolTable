@@ -4,15 +4,58 @@ export const LANGS = [
   ['eng', 'English', true], ['urd', 'Urdu · اردو', true], ['eng+urd', 'English + Urdu', true],
   ['ara', 'Arabic · العربية'], ['hin', 'Hindi · हिन्दी'], ['pan', 'Punjabi'], ['fas', 'Persian · فارسی'], ['fra', 'French'], ['deu', 'German'], ['spa', 'Spanish'], ['ita', 'Italian'], ['tur', 'Turkish'], ['rus', 'Russian'], ['chi_sim', 'Chinese (simplified)'], ['jpn', 'Japanese'], ['kor', 'Korean'],
 ]
-const MAX = 3000
+export const MAX_SCAN_SIDE = 2_400
+export const MAX_SCAN_PIXELS = 4_500_000
+export const MAX_SCAN_TOTAL_PIXELS = 36_000_000
+export const MAX_SCAN_PAGES = 40
+export const MAX_SCAN_IMAGE_BYTES = 50 * 1024 * 1024
+const MIN_SCAN_SIDE = 16
 
-export function toCanvas(src, max = MAX) {
-  const w = src.width || src.videoWidth, h = src.height || src.videoHeight, k = Math.min(1, max / Math.max(w, h))
-  const c = document.createElement('canvas'); c.width = Math.round(w * k); c.height = Math.round(h * k); c.getContext('2d').drawImage(src, 0, 0, c.width, c.height); return c
+export function fitScanSize(width, height, { maxSide = MAX_SCAN_SIDE, maxPixels = MAX_SCAN_PIXELS } = {}) {
+  const w0 = Number(width), h0 = Number(height)
+  if (!Number.isFinite(w0) || !Number.isFinite(h0) || w0 <= 0 || h0 <= 0) throw new RangeError('The image has invalid dimensions.')
+  const side = Math.max(MIN_SCAN_SIDE, Math.floor(Number(maxSide))), pixels = Math.max(MIN_SCAN_SIDE ** 2, Math.floor(Number(maxPixels)))
+  if (!Number.isFinite(side) || !Number.isFinite(pixels)) throw new RangeError('The image size limit is invalid.')
+  const scale = Math.min(1, side / Math.max(w0, h0), Math.sqrt(pixels / (w0 * h0)))
+  let w = Math.max(1, Math.floor(w0 * scale)), h = Math.max(1, Math.floor(h0 * scale))
+  while (w * h > pixels) { if (w >= h && w > 1) w--; else if (h > 1) h--; else break }
+  return { width: w, height: h, capped: w < Math.round(w0) || h < Math.round(h0) }
+}
+
+export function isScanImageFile(file) {
+  return /^image\/(?:jpeg|png|webp|gif|bmp|avif|tiff?)$/i.test(file?.type || '') || /\.(?:jpe?g|png|webp|gif|bmp|avif|tiff?)$/i.test(file?.name || '')
+}
+
+export function isValidQuad(quad) {
+  if (!Array.isArray(quad) || quad.length !== 4 || quad.some((p) => !Array.isArray(p) || p.length !== 2 || p.some((v) => !Number.isFinite(Number(v)) || Number(v) < 0 || Number(v) > 1))) return false
+  const pts = quad.map(([x, y]) => [Number(x), Number(y)]), crosses = pts.map((p, i) => {
+    const a = pts[(i + 1) % 4], b = pts[(i + 2) % 4]
+    return (a[0] - p[0]) * (b[1] - a[1]) - (a[1] - p[1]) * (b[0] - a[0])
+  })
+  const sign = Math.sign(crosses[0])
+  if (!sign || crosses.some((v) => !Number.isFinite(v) || Math.sign(v) !== sign || Math.abs(v) < 1e-5)) return false
+  let area = 0
+  for (let i = 0; i < 4; i++) area += pts[i][0] * pts[(i + 1) % 4][1] - pts[(i + 1) % 4][0] * pts[i][1]
+  return Math.abs(area) / 2 >= 0.002
+}
+
+export function toCanvas(src, max = MAX_SCAN_SIDE, maxPixels = MAX_SCAN_PIXELS) {
+  const w = Number(src?.width || src?.videoWidth), h = Number(src?.height || src?.videoHeight)
+  const size = fitScanSize(w, h, { maxSide: Math.min(MAX_SCAN_SIDE, Number(max)), maxPixels })
+  const c = document.createElement('canvas'); c.width = size.width; c.height = size.height
+  const ctx = c.getContext('2d')
+  if (!ctx) { c.width = c.height = 0; throw new Error('Could not create an image canvas on this device.') }
+  try { ctx.drawImage(src, 0, 0, c.width, c.height); return c }
+  catch (error) { c.width = c.height = 0; throw new Error('This image could not be decoded by the browser.') }
 }
 export function rotateCanvas(c, dir = 1) {
-  const o = document.createElement('canvas'); o.width = c.height; o.height = c.width; const x = o.getContext('2d')
-  x.translate(o.width / 2, o.height / 2); x.rotate((dir * Math.PI) / 2); x.drawImage(c, -c.width / 2, -c.height / 2); return o
+  if (!c || !Number.isFinite(c.width) || !Number.isFinite(c.height) || c.width < 1 || c.height < 1 || c.width * c.height > MAX_SCAN_PIXELS) throw new RangeError('This page cannot be rotated safely.')
+  const turns = Math.trunc(Number(dir))
+  if (!Number.isFinite(turns)) throw new RangeError('Choose a valid rotation.')
+  const o = document.createElement('canvas'); o.width = c.height; o.height = c.width
+  const x = o.getContext('2d')
+  if (!x) { o.width = o.height = 0; throw new Error('Could not create a canvas to rotate this page.') }
+  x.translate(o.width / 2, o.height / 2); x.rotate((turns * Math.PI) / 2); x.drawImage(c, -c.width / 2, -c.height / 2); return o
 }
 export const FULL = () => [[0, 0], [1, 0], [1, 1], [0, 1]]
 export const rotateQuad = (q, dir = 1) => order(dir > 0 ? q.map(([x, y]) => [1 - y, x]) : q.map(([x, y]) => [y, 1 - x]))
@@ -36,33 +79,52 @@ export function autoQuad(canvas) {
   if (area < w * h * 0.18 || area > w * h * 0.985) return FULL()
   const tl = pts.reduce((a, p) => (p[0] + p[1] < a[0] + a[1] ? p : a)), br = pts.reduce((a, p) => (p[0] + p[1] > a[0] + a[1] ? p : a)), tr = pts.reduce((a, p) => (p[0] - p[1] > a[0] - a[1] ? p : a)), bl = pts.reduce((a, p) => (p[0] - p[1] < a[0] - a[1] ? p : a))
   const q = [tl, tr, br, bl].map(([px, py]) => [px / w, py / h]), a = Math.abs((q[0][0] * q[1][1] - q[1][0] * q[0][1]) + (q[1][0] * q[2][1] - q[2][0] * q[1][1]) + (q[2][0] * q[3][1] - q[3][0] * q[2][1]) + (q[3][0] * q[0][1] - q[0][0] * q[3][1])) / 2
-  return a < 0.2 ? FULL() : q
+  return a < 0.2 || !isValidQuad(q) ? FULL() : q
 }
 
-/** Perspective-correct the quad (normalised TL,TR,BR,BL) into a flat rectangle. */
-export function warp(src, quad, maxSide = 2600) {
-  const W = src.width, H = src.height, P = quad.map(([x, y]) => [x * W, y * H]), dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1])
-  let ow = Math.max(dist(P[0], P[1]), dist(P[3], P[2])), oh = Math.max(dist(P[0], P[3]), dist(P[1], P[2])); const k = Math.min(1, maxSide / Math.max(ow, oh)); ow = Math.max(16, Math.round(ow * k)); oh = Math.max(16, Math.round(oh * k))
-  const isFull = quad.every(([x, y], i) => Math.abs(x - FULL()[i][0]) < 1e-4 && Math.abs(y - FULL()[i][1]) < 1e-4)
-  const out = document.createElement('canvas'); out.width = isFull ? W : ow; out.height = isFull ? H : oh
-  if (isFull) { out.getContext('2d').drawImage(src, 0, 0); return out }
-  const sd = src.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, W, H).data, od = new Uint8ClampedArray(ow * oh * 4)
-  const [[x0, y0], [x1, y1], [x2, y2], [x3, y3]] = P, dx1 = x1 - x2, dx2 = x3 - x2, dx3 = x0 - x1 + x2 - x3, dy1 = y1 - y2, dy2 = y3 - y2, dy3 = y0 - y1 + y2 - y3
-  let a, b, c, d, e, f, g, h
-  if (Math.abs(dx3) < 1e-9 && Math.abs(dy3) < 1e-9) { a = x1 - x0; b = x3 - x0; c = x0; d = y1 - y0; e = y3 - y0; f = y0; g = h = 0 }
-  else { const det = dx1 * dy2 - dx2 * dy1; g = (dx3 * dy2 - dx2 * dy3) / det; h = (dx1 * dy3 - dx3 * dy1) / det; a = x1 - x0 + g * x1; b = x3 - x0 + h * x3; c = x0; d = y1 - y0 + g * y1; e = y3 - y0 + h * y3; f = y0 }
-  for (let j = 0; j < oh; j++) {
-    const v = j / (oh - 1)
-    for (let i = 0; i < ow; i++) {
-      const u = i / (ow - 1), den = g * u + h * v + 1, sx = (a * u + b * v + c) / den, sy = (d * u + e * v + f) / den
-      const ix = Math.floor(sx), iy = Math.floor(sy), fx = sx - ix, fy = sy - iy, o = (j * ow + i) * 4
-      if (ix < 0 || iy < 0 || ix >= W - 1 || iy >= H - 1) { od[o] = od[o + 1] = od[o + 2] = 255; od[o + 3] = 255; continue }
-      const p = (iy * W + ix) * 4, q = p + W * 4
-      for (let ch = 0; ch < 3; ch++) od[o + ch] = (sd[p + ch] * (1 - fx) + sd[p + 4 + ch] * fx) * (1 - fy) + (sd[q + ch] * (1 - fx) + sd[q + 4 + ch] * fx) * fy
-      od[o + 3] = 255
+/** Perspective-correct the quad (normalised TL,TR,BR,BL) into a bounded flat rectangle. */
+export function warp(src, quad, maxSide = MAX_SCAN_SIDE) {
+  const W = Number(src?.width), H = Number(src?.height)
+  if (!Number.isInteger(W) || !Number.isInteger(H) || W < 2 || H < 2 || W * H > MAX_SCAN_PIXELS) throw new RangeError('Resize this page before correcting its perspective.')
+  if (!isValidQuad(quad)) throw new RangeError('The crop corners must form a valid four-sided shape.')
+  const P = quad.map(([x, y]) => [x * W, y * H]), dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1])
+  const full = quad.every(([x, y], i) => Math.abs(x - FULL()[i][0]) < 1e-4 && Math.abs(y - FULL()[i][1]) < 1e-4)
+  let ow = full ? W : Math.max(dist(P[0], P[1]), dist(P[3], P[2]))
+  let oh = full ? H : Math.max(dist(P[0], P[3]), dist(P[1], P[2]))
+  if (!Number.isFinite(ow) || !Number.isFinite(oh) || ow < 2 || oh < 2) throw new RangeError('The selected crop is too small to process.')
+  const size = fitScanSize(ow, oh, { maxSide: Math.min(MAX_SCAN_SIDE, Number(maxSide)), maxPixels: MAX_SCAN_PIXELS })
+  const out = document.createElement('canvas'); out.width = size.width; out.height = size.height
+  try {
+    const ctx = out.getContext('2d', { willReadFrequently: true })
+    if (!ctx) throw new Error('Could not create a canvas to correct the page.')
+    if (full) { ctx.drawImage(src, 0, 0, out.width, out.height); return out }
+    const input = src.getContext('2d', { willReadFrequently: true })
+    if (!input) throw new Error('Could not read this page image.')
+    const sd = input.getImageData(0, 0, W, H).data, im = ctx.createImageData(out.width, out.height), od = im.data
+    const [[x0, y0], [x1, y1], [x2, y2], [x3, y3]] = P, dx1 = x1 - x2, dx2 = x3 - x2, dx3 = x0 - x1 + x2 - x3, dy1 = y1 - y2, dy2 = y3 - y2, dy3 = y0 - y1 + y2 - y3
+    let a, b, c, d, e, f, g, h
+    if (Math.abs(dx3) < 1e-9 && Math.abs(dy3) < 1e-9) { a = x1 - x0; b = x3 - x0; c = x0; d = y1 - y0; e = y3 - y0; f = y0; g = h = 0 }
+    else {
+      const det = dx1 * dy2 - dx2 * dy1
+      if (!Number.isFinite(det) || Math.abs(det) < 1e-9) throw new RangeError('The crop corners are too close together.')
+      g = (dx3 * dy2 - dx2 * dy3) / det; h = (dx1 * dy3 - dx3 * dy1) / det
+      a = x1 - x0 + g * x1; b = x3 - x0 + h * x3; c = x0; d = y1 - y0 + g * y1; e = y3 - y0 + h * y3; f = y0
     }
-  }
-  out.getContext('2d').putImageData(new ImageData(od, ow, oh), 0, 0); return out
+    for (let j = 0; j < out.height; j++) {
+      const v = j / Math.max(1, out.height - 1)
+      for (let i = 0; i < out.width; i++) {
+        const u = i / Math.max(1, out.width - 1), den = g * u + h * v + 1
+        if (!Number.isFinite(den) || Math.abs(den) < 1e-8) throw new RangeError('The crop corners do not form a stable perspective.')
+        const sx = Math.min(W - 1, Math.max(0, (a * u + b * v + c) / den)), sy = Math.min(H - 1, Math.max(0, (d * u + e * v + f) / den))
+        const ix = Math.min(W - 2, Math.floor(sx)), iy = Math.min(H - 2, Math.floor(sy)), fx = sx - ix, fy = sy - iy, o = (j * out.width + i) * 4
+        const p = (iy * W + ix) * 4, q = p + W * 4
+        for (let ch = 0; ch < 3; ch++) od[o + ch] = (sd[p + ch] * (1 - fx) + sd[p + 4 + ch] * fx) * (1 - fy) + (sd[q + ch] * (1 - fx) + sd[q + 4 + ch] * fx) * fy
+        od[o + 3] = 255
+      }
+    }
+    ctx.putImageData(im, 0, 0)
+    return out
+  } catch (error) { out.width = out.height = 0; throw error }
 }
 
 function levels(d, lo = 0.01, hi = 0.99, perChannel = true) {
@@ -73,9 +135,17 @@ function levels(d, lo = 0.01, hi = 0.99, perChannel = true) {
 }
 /** filter: original | enhance | gray | bw ; bri/con in -100..100 */
 export function applyFilter(src, { filter = 'enhance', bri = 0, con = 0 } = {}) {
-  const w = src.width, h = src.height, out = document.createElement('canvas'); out.width = w; out.height = h
-  const ctx = out.getContext('2d', { willReadFrequently: true }); ctx.drawImage(src, 0, 0)
+  const w = Number(src?.width), h = Number(src?.height)
+  if (!Number.isInteger(w) || !Number.isInteger(h) || w < 1 || h < 1 || w * h > MAX_SCAN_PIXELS) throw new RangeError('Resize this page before applying clean-up filters.')
+  if (!['original', 'enhance', 'gray', 'bw'].includes(filter)) throw new RangeError('Choose a supported clean-up filter.')
+  bri = Number.isFinite(Number(bri)) ? Math.max(-60, Math.min(60, Number(bri))) : 0
+  con = Number.isFinite(Number(con)) ? Math.max(-60, Math.min(60, Number(con))) : 0
+  const out = document.createElement('canvas'); out.width = w; out.height = h
+  const ctx = out.getContext('2d', { willReadFrequently: true })
+  if (!ctx) { out.width = out.height = 0; throw new Error('Could not create a canvas to clean up this page.') }
+  try { ctx.drawImage(src, 0, 0) } catch (error) { out.width = out.height = 0; throw new Error('Could not read this page for clean-up.') }
   if (filter === 'original' && !bri && !con) return out
+  try {
   const im = ctx.getImageData(0, 0, w, h), d = im.data, n = w * h
   if (filter === 'enhance') { const r = levels(d, 0.012, 0.985, false); for (let i = 0; i < n; i++) for (let c = 0; c < 3; c++) { let v = ((d[i * 4 + c] - r[c][0]) / (r[c][1] - r[c][0])) * 255; v = 255 * Math.pow(Math.min(1, Math.max(0, v / 255)), 1.12); d[i * 4 + c] = v } }
   if (filter === 'gray' || filter === 'bw') {
@@ -89,19 +159,40 @@ export function applyFilter(src, { filter = 'enhance', bri = 0, con = 0 } = {}) 
   }
   if (filter !== 'bw' && (bri || con)) { const f = (259 * (con * 2.55 + 255)) / (255 * (259 - con * 2.55)), b = bri * 2.55; for (let i = 0; i < n * 4; i += 4) for (let c = 0; c < 3; c++) d[i + c] = f * (d[i + c] + b - 128) + 128 }
   ctx.putImageData(im, 0, 0); return out
+  } catch (error) { out.width = out.height = 0; throw error }
 }
 
 /* ---------- OCR ---------- */
-let worker = null, key = ''
+let worker = null, key = '', workerPromise = null, workerGeneration = 0
 export async function getWorker(lang, logger) {
+  if (typeof lang !== 'string' || !LANGS.some(([id]) => id === lang)) throw new RangeError('Choose a supported OCR language.')
   if (worker && key === lang) { worker._ref.fn = logger; return worker }
-  if (worker) { await worker.terminate().catch(() => {}); worker = null }
-  const T = await import('tesseract.js'), local = lang.split('+').every((l) => LOCAL_LANGS.includes(l)), ref = { fn: logger }
-  const w = await T.createWorker(lang.split('+'), 1, { workerPath: '/ocr/worker.min.js', corePath: '/ocr/core', ...(local ? { langPath: '/ocr/lang', gzip: true } : {}), logger: (m) => ref.fn?.(m) })
-  w._ref = ref; worker = w; key = lang; return w
+  if (workerPromise?.lang === lang) {
+    const current = await workerPromise.promise
+    if (worker === current && key === lang) { worker._ref.fn = logger; return worker }
+  }
+  if (worker || workerPromise) await stopOcr()
+  const generation = ++workerGeneration, ref = { fn: logger }
+  const promise = (async () => {
+    const T = await import('tesseract.js'), local = lang.split('+').every((l) => LOCAL_LANGS.includes(l))
+    const created = await T.createWorker(lang.split('+'), 1, { workerPath: `${import.meta.env?.BASE_URL || '/'}ocr/worker.min.js`, corePath: `${import.meta.env?.BASE_URL || '/'}ocr/core`, ...(local ? { langPath: `${import.meta.env?.BASE_URL || '/'}ocr/lang`, gzip: true } : {}), logger: (message) => ref.fn?.(message) })
+    created._ref = ref
+    if (generation !== workerGeneration) { await created.terminate().catch(() => {}); throw new Error('Cancelled') }
+    worker = created; key = lang; return created
+  })()
+  workerPromise = { lang, promise }
+  try { return await promise }
+  finally { if (workerPromise?.promise === promise) workerPromise = null }
 }
 export async function recognize(canvas, lang, logger, wantPdf = true) {
+  if (!canvas || !Number.isInteger(canvas.width) || !Number.isInteger(canvas.height) || canvas.width < 1 || canvas.height < 1 || canvas.width * canvas.height > MAX_SCAN_PIXELS) throw new RangeError('This page is too large for OCR. Resize it and try again.')
   const w = await getWorker(lang, logger), { data } = await w.recognize(canvas, {}, { text: true, pdf: wantPdf })
-  return { text: (data.text || '').replace(/\n{3,}/g, '\n\n').trim(), confidence: data.confidence, pdf: data.pdf ? new Uint8Array(data.pdf) : null, words: (data.words || []).length }
+  return { text: String(data.text || '').replace(/\n{3,}/g, '\n\n').trim(), confidence: Number.isFinite(Number(data.confidence)) ? Number(data.confidence) : 0, pdf: data.pdf ? new Uint8Array(data.pdf) : null, words: Array.isArray(data.words) ? data.words.length : 0 }
 }
-export async function stopOcr() { if (worker) { await worker.terminate().catch(() => {}); worker = null; key = '' } }
+export async function stopOcr() {
+  workerGeneration++
+  const current = worker, pending = workerPromise
+  worker = null; key = ''; workerPromise = null
+  if (pending) pending.promise.then((created) => { if (created !== current) return created.terminate?.() }).catch(() => {})
+  try { await current?.terminate?.() } catch {}
+}

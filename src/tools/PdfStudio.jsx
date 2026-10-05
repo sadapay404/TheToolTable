@@ -1,8 +1,8 @@
-import React, { useCallback, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Drop, Dock, Swap, KIco, Btn, SPRING, fmtSize, useToast, uid } from './kit/ui.jsx'
 import { ResultBar } from './pdf/shared.jsx'
-import { loadDoc, fromBytes, forget } from '../lib/pdf/engine.js'
+import { loadDoc, fromBytes, forget, MAX_PDF_BYTES, MAX_PDF_DOCS, MAX_WORKSPACE_PDF_BYTES, MAX_PDF_PAGES } from '../lib/pdf/engine.js'
 import { recentAction } from '../lib/utils.js'
 import Organize from './pdf/Organize.jsx'
 import Split from './pdf/Split.jsx'
@@ -17,29 +17,55 @@ const NEEDS_DOC = new Set(['organize', 'split', 'toimg', 'stamp', 'annotate', 'i
 
 export default function PdfStudio() {
   const [mode, setMode] = useState('organize'), [docs, setDocs] = useState([]), [pages, setPages] = useState([]), [active, setActive] = useState(null), [result, setResult] = useState(null), [busy, setBusy] = useState(false)
-  const [toast, toastNode] = useToast()
+  const [toast, toastNode] = useToast(), loadingRef = useRef(false), docsRef = useRef(docs)
+  docsRef.current = docs
+  useEffect(() => () => { for (const d of docsRef.current) forget(d.id) }, [])
   const addDocs = useCallback((list) => {
     setDocs((d) => [...d, ...list]); setActive((a) => a || list[0]?.id)
     setPages((p) => [...p, ...list.flatMap((d) => Array.from({ length: d.pages }, (_, i) => ({ id: uid(), docId: d.id, src: i, rot: 0 })))])
   }, [])
   const onFiles = async (files) => {
+    if (loadingRef.current) { toast('Please wait until the current PDFs finish loading.', 'err'); return }
     const pdfs = files.filter((f) => /pdf$/i.test(f.type) || /\.pdf$/i.test(f.name)), imgs = files.filter((f) => /^image\//.test(f.type))
     if (!pdfs.length) { if (imgs.length) { setMode('images'); toast('Drop images in the Images → PDF tab') } else toast('Only PDF files are supported here', 'err'); return }
-    setBusy(true); const ok = []
-    for (const f of pdfs) { try { ok.push(await loadDoc(f)) } catch (e) { toast(`${f.name}: ${e.message}`, 'err') } }
-    setBusy(false); if (ok.length) { addDocs(ok); recentAction(`Opened ${ok.length} PDF${ok.length > 1 ? 's' : ''}`) }
+    loadingRef.current = true; setBusy(true)
+    const ok = []
+    try {
+      const current = docsRef.current
+      let bytes = current.reduce((sum, d) => sum + d.size, 0), pageCount = current.reduce((sum, d) => sum + d.pages, 0)
+      for (const f of pdfs) {
+        if (current.length + ok.length >= MAX_PDF_DOCS) { toast(`You can work with up to ${MAX_PDF_DOCS} PDFs at a time.`, 'err'); break }
+        if (!Number.isFinite(Number(f.size)) || f.size <= 0 || f.size > MAX_PDF_BYTES) { toast(`${f.name || 'PDF'}: files must be smaller than 100 MB.`, 'err'); continue }
+        if (bytes + f.size > MAX_WORKSPACE_PDF_BYTES) { toast('Loaded PDFs are limited to 150 MB combined. Remove a file before adding more.', 'err'); continue }
+        try {
+          const doc = await loadDoc(f)
+          if (pageCount + doc.pages > MAX_PDF_PAGES) { forget(doc.id); toast(`The workspace is limited to ${MAX_PDF_PAGES.toLocaleString()} pages total.`, 'err'); continue }
+          ok.push(doc); bytes += doc.size; pageCount += doc.pages
+        } catch (e) { toast(`${String(f.name || 'PDF').slice(0, 80)}: ${e.message}`, 'err') }
+      }
+      if (imgs.length) toast('PDFs were added. Add images in the Images → PDF tab.')
+      if (ok.length) { addDocs(ok); recentAction(`Opened ${ok.length} PDF${ok.length > 1 ? 's' : ''}`) }
+    } finally { loadingRef.current = false; setBusy(false) }
   }
   const removeDoc = (id) => { forget(id); setDocs((d) => d.filter((x) => x.id !== id)); setPages((p) => p.filter((x) => x.docId !== id)); setActive((a) => (a === id ? null : a)) }
   const publish = useCallback((data, name, note, keep) => {
     const blob = data instanceof Blob ? data : new Blob([data], { type: /\.zip$/i.test(name) ? 'application/zip' : 'application/pdf' })
     setResult({ blob, name, note, keep: keep && /\.pdf$/i.test(name), k: Date.now() }); recentAction(`${name}`)
   }, [])
-  const keep = async () => { if (!result) return; const d = await fromBytes(new Uint8Array(await result.blob.arrayBuffer()), result.name); setDocs([d]); setActive(d.id); setPages(Array.from({ length: d.pages }, (_, i) => ({ id: uid(), docId: d.id, src: i, rot: 0 }))); setResult(null); toast('Loaded as your working document') }
+  const keep = async () => {
+    if (!result || busy || result.blob.size > MAX_PDF_BYTES) { if (result?.blob.size > MAX_PDF_BYTES) toast('This result is over the 100 MB working-file limit. Download it to continue.', 'err'); return }
+    setBusy(true)
+    try {
+      const d = await fromBytes(new Uint8Array(await result.blob.arrayBuffer()), result.name)
+      for (const old of docsRef.current) forget(old.id)
+      setDocs([d]); docsRef.current = [d]; setActive(d.id); setPages(Array.from({ length: d.pages }, (_, i) => ({ id: uid(), docId: d.id, src: i, rot: 0 }))); setResult(null); toast('Loaded as your working document')
+    } catch (e) { toast(e.message || 'Could not load this result.', 'err') } finally { setBusy(false) }
+  }
   const props = { docs, pages, setPages, active, setActive, publish, toast }
   const showTray = NEEDS_DOC.has(mode)
   return (
     <div className="space-y-6">
-      <Dock value={mode} onChange={(m) => { setMode(m); setResult(null) }} items={MODES} cols={7} />
+      <div className="overflow-x-auto no-scrollbar -mx-1 px-1"><div className="min-w-[620px] sm:min-w-0"><Dock value={mode} onChange={(m) => { setMode(m); setResult(null) }} items={MODES} cols={7} /></div></div>
       <AnimatePresence initial={false}>
         {showTray && (
           <motion.div key="tray" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">

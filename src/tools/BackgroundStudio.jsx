@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { normalize, randomDesign } from '../lib/wall/design.js'
+import { normalize, randomDesign, normalizeSavedDesigns, MAX_SAVED_DESIGNS } from '../lib/wall/design.js'
 import { thumbURL } from '../lib/wall/renderer.js'
 import { recentAction } from '../lib/utils.js'
 import { WallCtx, Ico, Btn, Chips, Toast, Panel, SPRING } from './wall/ui.jsx'
@@ -10,17 +10,18 @@ import { FinishPanel, TextPanel, CanvasPanel } from './wall/Tune.jsx'
 import { ExportPanel } from './wall/Export.jsx'
 import { Gallery, Saved } from './wall/Gallery.jsx'
 
-const ls = (k, d) => { try { return JSON.parse(localStorage.getItem('ttt.wall.' + k)) ?? d } catch { return d } }
-const lsSet = (k, v) => { try { localStorage.setItem('ttt.wall.' + k, JSON.stringify(v)) } catch {} }
+const MAX_WALL_STORAGE_CHARS = 4_000_000
+const ls = (k, d) => { try { const raw = localStorage.getItem('ttt.wall.' + k); return !raw || raw.length > MAX_WALL_STORAGE_CHARS ? d : JSON.parse(raw) ?? d } catch { return d } }
+const lsSet = (k, v) => { try { const raw = JSON.stringify(v); if (raw.length <= MAX_WALL_STORAGE_CHARS) localStorage.setItem('ttt.wall.' + k, raw) } catch {} }
 const TABS = [['look', 'Look', 'look', LookPanel], ['colour', 'Colour', 'palette', ColourPanel], ['finish', 'Finish', 'finish', FinishPanel], ['text', 'Text', 'type', TextPanel], ['canvas', 'Size', 'frame', CanvasPanel], ['export', 'Export', 'download', ExportPanel]]
 const VIEWS = [['studio', 'Studio'], ['gallery', 'Gallery'], ['saved', 'Saved']]
 
 export default function BackgroundStudio() {
   const [d, setD] = useState(() => normalize(ls('design', null)))
   const dRef = useRef(d), hist = useRef({ past: [], future: [], t: 0 })
-  const [view, setView] = useState('studio'), [tab, setTab] = useState(() => ls('tab', 'look')), [mode, setMode] = useState('flat'), [playing, setPlaying] = useState(true)
+  const [view, setView] = useState('studio'), [tab, setTab] = useState(() => { const stored = ls('tab', 'look'); return TABS.some(([key]) => key === stored) ? stored : 'look' }), [mode, setMode] = useState('flat'), [playing, setPlaying] = useState(true)
   const [keep, setKeep] = useState({ pal: false, style: false }), [spin, setSpin] = useState(0)
-  const [saved, setSaved] = useState(() => ls('saved', [])), [msg, setMsg] = useState(null), [fs, setFs] = useState(false)
+  const [saved, setSaved] = useState(() => normalizeSavedDesigns(ls('saved', []))), [msg, setMsg] = useState(null), [fs, setFs] = useState(false)
   const stageRef = useRef(null), mt = useRef(0)
 
   const toast = useCallback((t) => { setMsg({ t, k: Date.now() }); clearTimeout(mt.current); mt.current = setTimeout(() => setMsg(null), 2400) }, [])
@@ -36,16 +37,23 @@ export default function BackgroundStudio() {
   const surprise = useCallback(() => { apply(randomDesign(dRef.current, keep)); setSpin((s) => s + 1) }, [apply, keep])
   useEffect(() => { const t = setTimeout(() => lsSet('design', d), 400); return () => clearTimeout(t) }, [d])
   useEffect(() => lsSet('tab', tab), [tab])
-  useEffect(() => lsSet('saved', saved), [saved])
+  useEffect(() => lsSet('saved', normalizeSavedDesigns(saved)), [saved])
 
   const saveLook = useCallback(() => {
-    const thumb = thumbURL(dRef.current, 320, 200, 0.7), name = `Look ${saved.length + 1}`
-    setSaved((s) => [{ id: Date.now().toString(36), name, d: dRef.current, thumb, ts: Date.now() }, ...s]); recentAction('Saved a background look'); toast(`Saved “${name}” — find it under Saved`)
+    const thumb = thumbURL(dRef.current, 160, 100, 0.7), name = `Look ${saved.length + 1}`, full = saved.length >= MAX_SAVED_DESIGNS
+    const id = `look-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+    setSaved((s) => [{ id, name, d: dRef.current, thumb, ts: Date.now() }, ...s].slice(0, MAX_SAVED_DESIGNS)); recentAction('Saved a background look')
+    toast(full ? `Saved “${name}” — the oldest look was removed` : `Saved “${name}” — find it under Saved`)
   }, [saved.length, toast])
   const openSaved = useCallback((s) => { apply(s.d); setView('studio'); toast(`Opened “${s.name}”`) }, [apply, toast])
   const delSaved = useCallback((id) => setSaved((s) => s.filter((x) => x.id !== id)), [])
-  const renameSaved = useCallback((id, name) => setSaved((s) => s.map((x) => (x.id === id ? { ...x, name } : x))), [])
-  const dupSaved = useCallback((id) => setSaved((s) => { const x = s.find((y) => y.id === id); return x ? [{ ...x, id: Date.now().toString(36), name: x.name + ' copy' }, ...s] : s }), [])
+  const renameSaved = useCallback((id, name) => setSaved((s) => s.map((x) => (x.id === id ? { ...x, name: String(name).slice(0, 80).trim() || x.name } : x))), [])
+  const dupSaved = useCallback((id) => setSaved((s) => {
+    const x = s.find((y) => y.id === id)
+    if (!x) return s
+    const copy = { ...x, id: `look-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`, name: `${x.name} copy`.slice(0, 80) }
+    return [copy, ...s].slice(0, MAX_SAVED_DESIGNS)
+  }), [])
 
   const toggleFs = useCallback(() => { const el = stageRef.current; if (!el) return; if (document.fullscreenElement) document.exitFullscreen(); else el.requestFullscreen?.().catch(() => toast('Full screen was blocked by the browser')) }, [toast])
   useEffect(() => { const f = () => setFs(!!document.fullscreenElement); document.addEventListener('fullscreenchange', f); return () => document.removeEventListener('fullscreenchange', f) }, [])
@@ -64,7 +72,7 @@ export default function BackgroundStudio() {
   }, [undo, redo, surprise, toggleFs, view])
 
   const ctx = useMemo(() => ({ d, set, apply, toast, setView, saved, openSaved, delSaved, renameSaved, dupSaved }), [d, set, apply, toast, saved, openSaved, delSaved, renameSaved, dupSaved])
-  const Active = TABS.find((t) => t[0] === tab)[3]
+  const Active = TABS.find((t) => t[0] === tab)?.[3] || TABS[0][3]
   const h = hist.current
 
   return (

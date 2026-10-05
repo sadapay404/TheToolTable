@@ -5,6 +5,7 @@ import { blank, nextNumber, totals, money, TYPES } from '../lib/invoice/calc.js'
 import { layout } from '../lib/invoice/layout.js'
 import { drawPage, loadImg, toPdf } from '../lib/invoice/render.js'
 import { Details, Items, Style, Saved } from './invoice/forms.jsx'
+import { normalizeInvoice, normalizeInvoiceLibrary, normalizeInvoiceClients, parseInvoiceBackup, MAX_INVOICE_BACKUP_CHARS } from '../lib/invoice/normalize.js'
 
 const TABS = [['details', 'Details', 'user'], ['items', 'Items & totals', 'list'], ['style', 'Look', 'palette'], ['saved', 'Saved', 'folder']]
 function Page({ ops, size, imgs }) {
@@ -14,9 +15,15 @@ function Page({ ops, size, imgs }) {
 }
 
 export default function InvoiceStudio() {
-  const [tab, setTab] = useState('details'), [inv, setInv] = usePref('inv', 'draft', null), [lib, setLib] = usePref('inv', 'lib', []), [clients, setClients] = usePref('inv', 'clients', [])
+  const [tab, setTab] = useState('details'), [storedInv, setStoredInv] = usePref('inv', 'draft', null)
+  const [storedLib, setStoredLib] = usePref('inv', 'lib', []), [storedClients, setStoredClients] = usePref('inv', 'clients', [])
+  const inv = useMemo(() => storedInv ? normalizeInvoice(storedInv) : null, [storedInv])
+  const lib = useMemo(() => normalizeInvoiceLibrary(storedLib), [storedLib]), clients = useMemo(() => normalizeInvoiceClients(storedClients), [storedClients])
+  const setInv = useCallback((action) => setStoredInv((old) => normalizeInvoice(typeof action === 'function' ? action(old || blank()) : action)), [setStoredInv])
+  const setLib = useCallback((action) => setStoredLib((old) => normalizeInvoiceLibrary(typeof action === 'function' ? action(normalizeInvoiceLibrary(old)) : action)), [setStoredLib])
+  const setClients = useCallback((action) => setStoredClients((old) => normalizeInvoiceClients(typeof action === 'function' ? action(normalizeInvoiceClients(old)) : action)), [setStoredClients])
   const [imgs, setImgs] = useState({}), [toast, toastNode] = useToast(), [busy, setBusy] = useState(false), [pg, setPg] = useState(0)
-  const cur = inv || blank()
+  const cur = useMemo(() => inv || blank(), [inv])
   useEffect(() => { if (!inv) setInv(blank()) }, [])
   const set = useCallback((p) => setInv((x) => ({ ...(x || blank()), ...p })), [setInv])
   useEffect(() => { let dead = false; Promise.all([loadImg(cur.style.logo), loadImg(cur.style.sign)]).then(([logo, sign]) => !dead && setImgs({ logo, sign })); return () => { dead = true } }, [cur.style.logo, cur.style.sign])
@@ -26,7 +33,13 @@ export default function InvoiceStudio() {
   const t = res.totals, T = TYPES[cur.type]
   const name = `${T.label}_${(cur.number || 'draft').replace(/[^\w-]+/g, '_')}`
   const pdf = async () => { setBusy(true); try { save(await toPdf(res, imgs, { title: `${T.label} ${cur.number}` }), name + '.pdf'); toast('PDF saved') } catch (e) { toast('Could not build the PDF: ' + (e.message || e), 'err') } finally { setBusy(false) } }
-  const png = () => { const c = document.createElement('canvas'); drawPage(c, res.pages[0], res.size, imgs, 2.5); c.toBlob((b) => save(b, name + '.png')) }
+  const png = () => {
+    try {
+      const c = document.createElement('canvas')
+      drawPage(c, res.pages[0], res.size, imgs, 2.5)
+      c.toBlob((b) => b ? save(b, name + '.png') : toast('Could not create the PNG preview.', 'err'), 'image/png')
+    } catch (e) { toast('Could not create the PNG: ' + (e.message || e), 'err') }
+  }
   const doSave = (status) => {
     const d = { ...cur, status: status || cur.status }; setInv(d); setLib((l) => [d, ...l.filter((x) => x.id !== d.id)])
     if (d.to.name) setClients((c) => [d.to, ...c.filter((x) => x.name !== d.to.name)].slice(0, 20)); toast(status === 'paid' ? 'Saved and marked as paid' : 'Saved')
@@ -34,7 +47,15 @@ export default function InvoiceStudio() {
   const fresh = () => { const prev = lib.find((x) => x.id === cur.id) || cur; setInv(blank({ type: cur.type, number: nextNumber(prev.number), cur: cur.cur, decimals: cur.decimals, grouping: cur.grouping, from: cur.from, style: cur.style, payment: cur.payment, terms: cur.terms, notes: cur.notes, taxName: cur.taxName, taxRate: cur.taxRate, taxMode: cur.taxMode })); setTab('details'); toast('New document ready') }
   const dup = (i) => { setInv({ ...i, id: Math.random().toString(36).slice(2, 9), number: nextNumber(i.number), status: 'draft', created: Date.now() }); setTab('details'); toast('Duplicated as a new draft') }
   const exportAll = () => save(new Blob([JSON.stringify({ app: 'TheToolTable-invoices', lib, clients }, null, 1)], { type: 'application/json' }), 'invoices-backup.json')
-  const importAll = async (f) => { try { const j = JSON.parse(await f.text()); setLib((l) => [...(j.lib || []), ...l.filter((x) => !(j.lib || []).some((y) => y.id === x.id))]); setClients((c) => [...(j.clients || []), ...c].slice(0, 30)); toast('Backup restored') } catch { toast('That file is not a valid backup', 'err') } }
+  const importAll = async (f) => {
+    try {
+      if (!f || f.size > MAX_INVOICE_BACKUP_CHARS) throw new RangeError('Invoice backup must be 10 MB or smaller.')
+      const backup = parseInvoiceBackup(await f.text())
+      setLib((l) => [...backup.lib, ...l.filter((x) => !backup.lib.some((y) => y.id === x.id))])
+      setClients((c) => [...backup.clients, ...c])
+      toast('Backup restored')
+    } catch (e) { toast(e.message || 'That file is not a valid backup', 'err') }
+  }
 
   return (
     <div className="space-y-6">

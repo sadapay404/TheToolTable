@@ -1,9 +1,10 @@
 import React, { useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { download, recentAction } from '../../lib/utils.js'
-import { exportImage, exportPack, recordLoop, videoTypes, liveHTML, outSize, MAX_SIDE } from '../../lib/wall/exporters.js'
+import { exportImage, exportPack, recordLoop, videoTypes, liveHTML, outSize, MAX_SIDE, MAX_CANVAS_PIXELS, MAX_VIDEO_SIDE, MAX_VIDEO_PIXELS } from '../../lib/wall/exporters.js'
 import { cssFor, encodeDesign, decodeDesign } from '../../lib/wall/design.js'
 import { PACK_SETS } from '../../lib/wall/sizes.js'
+import { fitDimensions } from '../../lib/wall/bounds.js'
 import { Ico, Slider, Chips, Btn, Seg, Label, Bar, SPRING, useWall } from './ui.jsx'
 
 const fmtMB = (n) => (n > 1e6 ? (n / 1e6).toFixed(1) + ' MB' : Math.round(n / 1e3) + ' KB')
@@ -17,17 +18,28 @@ export function ExportPanel() {
   const [vsz, setVsz] = useState(1080), [fps, setFps] = useState(30), [loops, setLoops] = useState(1)
   const [sets, setSets] = useState({ desktop: true, phone: true, social: false, tablet: false, call: false, avatar: false })
   const [code, setCode] = useState('')
-  const ctl = useRef(null)
+  const ctl = useRef(null), running = useRef(false)
   const vt = videoTypes(), [vext, setVext] = useState(vt[0]?.ext)
   const { w, h } = outSize(d, mult), mp = (w * h) / 1e6
-  const busy = !!job
-  const run = async (label, fn) => { setJob({ label, p: 0 }); try { await fn((p) => setJob({ label, p })) } catch (e) { if (e.message !== 'Cancelled') toast('Export failed — ' + e.message) } finally { setJob(null) } }
+  const busy = !!job, capped = w < d.size.w * mult || h < d.size.h * mult
+  const run = async (label, fn) => {
+    if (running.current) return
+    running.current = true; setJob({ label, p: 0 })
+    try { await fn((p) => setJob({ label, p })) }
+    catch (e) { if (e.message !== 'Cancelled') toast('Export failed — ' + e.message) }
+    finally { ctl.current = null; running.current = false; setJob(null) }
+  }
 
   const doImage = () => run('Rendering ' + w + '×' + h, async (pg) => { const b = await exportImage(d, { fmt, W: w, H: h, quality: q, onProgress: pg }); download(b, `${base(d)}-${w}x${h}.${fmt}`); recentAction(`Exported ${fmt.toUpperCase()} background ${w}×${h}`); toast(`Saved ${fmtMB(b.size)} · ${w}×${h}`) })
-  const doCopy = () => run('Copying', async () => { const s = Math.min(1, 4096 / Math.max(d.size.w, d.size.h)); const b = await exportImage(d, { fmt: 'png', W: Math.round(d.size.w * s), H: Math.round(d.size.h * s) }); await navigator.clipboard.write([new ClipboardItem({ 'image/png': b })]); toast('Copied to clipboard') })
-  const doLoop = () => { const pick = vt.find((v) => v.ext === vext) || vt[0]; const a = d.size.w / d.size.h; const W = Math.max(2, Math.round((a >= 1 ? vsz * a : vsz) / 2) * 2), H = Math.max(2, Math.round((a >= 1 ? vsz : vsz / a) / 2) * 2)
+  const doCopy = () => run('Copying', async () => { const scale = Math.min(1, 4096 / Math.max(d.size.w, d.size.h)), size = outSize(d, scale), b = await exportImage(d, { fmt: 'png', W: size.w, H: size.h }); if (!navigator.clipboard?.write || typeof ClipboardItem === 'undefined') throw new Error('Image clipboard access is not available in this browser.'); await navigator.clipboard.write([new ClipboardItem({ 'image/png': b })]); toast('Copied to clipboard') })
+  const doLoop = () => {
+    if (running.current) return
+    const pick = vt.find((v) => v.ext === vext) || vt[0]
+    if (!pick) return toast('Video recording is not available in this browser.')
+    const a = d.size.w / d.size.h, rawW = Math.max(16, Math.round((a >= 1 ? vsz * a : vsz) / 2) * 2), rawH = Math.max(16, Math.round((a >= 1 ? vsz : vsz / a) / 2) * 2), { w: W, h: H } = fitDimensions(rawW, rawH, { maxSide: MAX_VIDEO_SIDE, maxPixels: MAX_VIDEO_PIXELS })
     ctl.current = new AbortController()
-    run(`Recording ${d.loop * loops}s loop · ${W}×${H}`, async (pg) => { const b = await recordLoop(d, { W, H, fps, loops, ext: pick.ext, mime: pick.mime }, pg, ctl.current.signal); download(b, `${base(d)}-loop-${W}x${H}.${pick.ext}`); recentAction(`Recorded ${d.loop * loops}s background loop`); toast(`Saved loop · ${fmtMB(b.size)}`) }) }
+    run(`Recording ${d.loop * loops}s loop · ${W}×${H}`, async (pg) => { const b = await recordLoop(d, { W, H, fps, loops, ext: pick.ext, mime: pick.mime }, pg, ctl.current.signal); download(b, `${base(d)}-loop-${W}x${H}.${pick.ext}`); recentAction(`Recorded ${d.loop * loops}s background loop`); toast(`Saved loop · ${fmtMB(b.size)}`) })
+  }
   const files = PACK_SETS.filter((s) => sets[s[0]]).flatMap((s) => s[2])
   const doPack = () => run(`Rendering ${files.length} sizes`, async (pg) => { const b = await exportPack(d, files, { fmt, quality: q, onProgress: pg }); download(b, `${base(d)}-wallpaper-pack.zip`); recentAction(`Exported wallpaper pack (${files.length} sizes)`); toast(`Pack ready · ${files.length} files`) })
   const css = cssFor(d)
@@ -42,11 +54,11 @@ export function ExportPanel() {
             <div><div className="text-[13px] font-semibold mb-2">Scale</div><Chips value={mult} onChange={setMult} options={[[0.5, '½×'], [1, '1×'], [1.5, '1.5×'], [2, '2×'], [3, '3×']]} /></div>
             {fmt !== 'png' && <Slider label="Quality" min={0.6} max={1} step={0.01} value={q} onChange={setQ} fmt={(v) => Math.round(v * 100) + '%'} />}
             <div className="rounded-2xl px-4 py-3 flex items-center justify-between" style={{ background: 'var(--surface2)', border: '1px solid var(--border)' }}>
-              <div><div className="mono text-[15px] font-bold">{w} × {h}</div><div className="text-[11.5px]" style={{ color: 'var(--muted)' }}>{mp.toFixed(1)} MP{mp > 70 ? ' · very large — may be slow' : ''}{(d.size.w * mult > MAX_SIDE || d.size.h * mult > MAX_SIDE) ? ' · capped at 16384' : ''}</div></div>
+              <div><div className="mono text-[15px] font-bold">{w} × {h}</div><div className="text-[11.5px]" style={{ color: 'var(--muted)' }}>{mp.toFixed(1)} MP{mp > 32 ? ' · large export' : ''}{capped ? ` · capped at ${MAX_SIDE.toLocaleString()} px / ${MAX_CANVAS_PIXELS / 1_000_000} MP` : ''}</div></div>
               <span className="text-[11px] font-bold px-2.5 py-1 rounded-full" style={{ background: 'var(--surface)', color: 'var(--copper)' }}>{d.text.on ? 'text included' : 'no text'}</span>
             </div>
             <div className="flex gap-2"><Btn primary icon="download" disabled={busy} onClick={doImage} className="flex-1">Download {fmt.toUpperCase()}</Btn><Btn icon="copy" disabled={busy} onClick={doCopy} title="Copy to clipboard">Copy</Btn></div>
-            <div className="text-[11.5px]" style={{ color: 'var(--muted)' }}>Big sizes are drawn in tiles on your GPU, so even 8K stays smooth. Nothing is ever compressed beyond the format you pick.</div>
+            <div className="text-[11.5px]" style={{ color: 'var(--muted)' }}>Large images are rendered in tiles. To avoid browser memory failures, exports are limited to {MAX_SIDE.toLocaleString()} pixels per side and {MAX_CANVAS_PIXELS / 1_000_000} megapixels.</div>
           </>}
           {tab === 'loop' && (vt.length ? <>
             <div className="text-[12.5px] leading-relaxed" style={{ color: 'var(--muted)' }}>Records the animation as one seamless <b>{d.loop}s</b> loop — set it to repeat on a website, a TV, or your phone's live wallpaper. Recording runs in real time.</div>
@@ -80,7 +92,7 @@ export function ExportPanel() {
               <div className="text-[11.5px] mt-1.5" style={{ color: 'var(--muted)' }}>One self-contained file running the exact same shader — works as a website hero, in Lively Wallpaper (Windows) or Wallpaper Engine.</div></div>
             <div><Label>Design code</Label>
               <div className="flex gap-2"><Btn small icon="copy" onClick={() => { navigator.clipboard.writeText(encodeDesign(d)); toast('Design code copied — send it to anyone') }}>Copy my code</Btn></div>
-              <textarea className="input w-full mt-2 mono text-[11px]" rows={2} placeholder="Paste a TTBG1:… code to load a design" value={code} onChange={(e) => setCode(e.target.value)} />
+              <textarea className="input w-full mt-2 mono text-[11px]" maxLength={50_000} rows={2} placeholder="Paste a TTBG1:… code to load a design" value={code} onChange={(e) => setCode(e.target.value)} />
               <Btn small icon="download" className="mt-2" disabled={!code.trim()} onClick={() => { const x = decodeDesign(code); if (x) { apply(x); setCode(''); toast('Design loaded') } else toast('That code is not valid') }}>Load</Btn>
             </div>
           </>}
@@ -93,7 +105,7 @@ export function ExportPanel() {
             <div className="rounded-2xl p-4" style={{ background: 'var(--surface2)', border: '1px solid var(--border)' }}>
               <div className="flex items-center justify-between mb-2 text-[12.5px] font-semibold"><span>{job.label}</span><span className="mono" style={{ color: 'var(--copper)' }}>{Math.round(job.p * 100)}%</span></div>
               <Bar value={job.p} />
-              {tab === 'loop' && <button type="button" className="mt-2 text-[11.5px] font-bold" style={{ color: 'var(--copper)' }} onClick={() => ctl.current?.abort()}>Cancel</button>}
+              {job.label.startsWith('Recording') && <button type="button" className="mt-2 text-[11.5px] font-bold" style={{ color: 'var(--copper)' }} onClick={() => ctl.current?.abort()}>Cancel recording</button>}
             </div>
           </motion.div>
         )}

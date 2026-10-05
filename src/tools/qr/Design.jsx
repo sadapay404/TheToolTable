@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { QIco, Tabs, Choice, TextIn, Switch, Seg, Btn, Range, Color, Drop, SPRING, Label, imageToDataUrl } from './ui.jsx'
+import { QIco, Tabs, Choice, TextIn, Switch, Seg, Btn, Range, Color, Drop, SPRING, Label, imageToDataUrl, useToast } from './ui.jsx'
 import { useQR, useStore, uid } from './store.js'
 import { Path } from '../../lib/qr/paths.js'
 import { addDot, addEyeFrame, addEyeBall, DOT_SHAPES, FRAME_SHAPES, BALL_SHAPES } from '../../lib/qr/shapes.js'
@@ -84,11 +84,15 @@ export function TemplatesPanel() {
 /* ---------- style ---------- */
 export function StylePanel() {
   const { style: s, setStyle } = useQR()
+  const [toastNode, toast] = useToast()
   const up = (sec, o) => setStyle((c) => ({ ...c, [sec]: { ...c[sec], ...o } }))
   const D = s.dots, E = s.eyes, B = s.bg
   const [part, setPart] = useState('dots')
   const up3 = (i, o) => up('eyes', { p: E.p.map((x, j) => (j === i ? { ...x, ...o } : x)) })
-  const photo = async (f, who) => { const u = await imageToDataUrl(f[0]); if (who === 'dots') up('dots', { image: u, fill: 'image' }); else up('bg', { image: u, type: 'image' }) }
+  const photo = async (f, who) => {
+    try { const u = await imageToDataUrl(f[0]); if (who === 'dots') up('dots', { image: u, fill: 'image' }); else up('bg', { image: u, type: 'image' }) }
+    catch (e) { toast(e.message || 'Could not load that image', true) }
+  }
   return (
     <div className="space-y-4">
       <Tabs small value={part} onChange={setPart} tabs={[['dots', 'Dots', 'grid'], ['eyes', 'Eyes', 'eye'], ['bg', 'Background', 'image'], ['code', 'Code', 'sliders']]} />
@@ -152,6 +156,7 @@ export function StylePanel() {
           </Sec>}
         </motion.div>
       </AnimatePresence>
+      {toastNode}
     </div>
   )
 }
@@ -162,6 +167,7 @@ function LogoGlyph({ logo, color }) {
 }
 export function LogoPanel() {
   const { style: s, setStyle } = useQR()
+  const [toastNode, toast] = useToast()
   const L = s.logo
   const up = (o) => setStyle((c) => ({ ...c, logo: { ...c.logo, ...o } }))
   const [g, setG] = useState('Essentials')
@@ -169,6 +175,10 @@ export function LogoPanel() {
   const [tab, setTab] = useState(mode === 'none' ? 'library' : mode)
   const sel = LOGOS.find((l) => l.id === L.id)
   const pick = (l) => up({ id: l.id, upload: null, ...(l.brand ? { badgeColor: l.brand[0], color: l.brand[1] } : { badgeColor: '#FFFFFF', color: '#1A1411' }) })
+  const upload = async (files) => {
+    try { up({ upload: await imageToDataUrl(files[0], 600), id: null }) }
+    catch (e) { toast(e.message || 'Could not load that logo', true) }
+  }
   return (
     <div className="space-y-4">
       <Seg small value={tab} onChange={setTab} options={[['library', 'Library'], ['upload', 'Upload']]} />
@@ -182,7 +192,7 @@ export function LogoPanel() {
               </motion.div>))}</AnimatePresence>
           </div>
         </> : <>
-          <Drop compact icon="upload" onFiles={async (f) => up({ upload: await imageToDataUrl(f[0], 600), id: null })} label={L.upload ? 'Replace logo' : 'Upload PNG, SVG or JPG'}>{L.upload && <img src={L.upload} alt="Your logo" className="w-14 h-14 object-contain rounded-xl border border-line mt-1" style={{ background: 'var(--surface)' }} />}</Drop>
+          <Drop compact icon="upload" onFiles={upload} label={L.upload ? 'Replace logo' : 'Upload PNG, SVG or JPG'}>{L.upload && <img src={L.upload} alt="Your logo" className="w-14 h-14 object-contain rounded-xl border border-line mt-1" style={{ background: 'var(--surface)' }} />}</Drop>
           <div className="text-[12px]" style={{ color: 'var(--muted)' }}>Transparent PNGs look best. The logo stays on this device.</div>
         </>}
       </Sec>
@@ -194,6 +204,7 @@ export function LogoPanel() {
         <Switch on={L.clear} onChange={(clear) => up({ clear })} label="Clear space behind logo" hint="Removes dots under the logo so it stays crisp" />
         {L.badge !== 'none' && <Switch on={L.border} onChange={(border) => up({ border })} label="Thin outline" />}
       </Sec>}
+      {toastNode}
     </div>
   )
 }

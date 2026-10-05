@@ -14,7 +14,7 @@ pure JS, no Node/DOM — and is shared by every runtime.
 |---|---|---|---|
 | Browser / Vercel | HTTP → companion engine | your machine or a server | run engine (or paste its address) |
 | **Windows (Tauri)** | `nativeEngine(tauriRunner)` | yt-dlp + ffmpeg sidecars when the installer is built with the sidecar config | none when bundled |
-| **Android** | runner injection is not implemented | no bundled yt-dlp engine yet | downloader unavailable offline |
+| **Android** | HTTP companion transport until a native plugin is added | no bundled yt-dlp engine yet | enter a network-reachable HTTPS companion-engine address |
 
 A native runner implements just: `version()`, `hasFfmpeg()`, `spawn(args, onChunk) → {done, kill}`,
 `downloadsDir()`, `sizeOf(path)`, optional `reveal(path)`. Verified: the generic native engine

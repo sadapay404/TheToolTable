@@ -2,6 +2,7 @@ import React, { useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Panel, Label, Chips, Btn, Field, KIco, SPRING, Switch, Empty } from '../kit/ui.jsx'
 import { TYPES, CURRENCIES, num, totals, money } from '../../lib/invoice/calc.js'
+import { MAX_INVOICE_ITEMS } from '../../lib/invoice/normalize.js'
 
 const I = ({ v, on, ph, type = 'text', cls = '', ...r }) => <input className={`input ${cls}`} type={type} value={v ?? ''} placeholder={ph} onChange={(e) => on(e.target.value)} {...r} />
 const T = ({ v, on, ph, rows = 3 }) => <textarea dir="auto" className="input w-full" rows={rows} value={v ?? ''} placeholder={ph} onChange={(e) => on(e.target.value)} />
@@ -60,7 +61,7 @@ export function Items({ inv, set }) {
               </motion.div>))}
           </AnimatePresence>
         </div>
-        <div className="flex gap-2 mt-4"><Btn icon="plus" onClick={() => set({ items: [...inv.items, { id: Math.random().toString(36).slice(2, 8), desc: '', qty: 1, price: 0 }] })}>Add line</Btn><Btn small icon="copy" onClick={() => { const l = inv.items.at(-1); set({ items: [...inv.items, { ...l, id: Math.random().toString(36).slice(2, 8) }] }) }}>Duplicate last</Btn></div>
+        <div className="flex gap-2 mt-4 flex-wrap"><Btn icon="plus" disabled={inv.items.length >= MAX_INVOICE_ITEMS} onClick={() => set({ items: [...inv.items, { id: Math.random().toString(36).slice(2, 8), desc: '', qty: 1, price: 0 }] })}>Add line</Btn><Btn small icon="copy" disabled={inv.items.length >= MAX_INVOICE_ITEMS} onClick={() => { const l = inv.items.at(-1); set({ items: [...inv.items, { ...l, id: Math.random().toString(36).slice(2, 8) }] }) }}>Duplicate last</Btn>{inv.items.length >= MAX_INVOICE_ITEMS && <span className="self-center text-[11px]" style={{ color: 'var(--muted)' }}>Maximum {MAX_INVOICE_ITEMS} lines</span>}</div>
       </Panel>
       <Panel delay={0.05}>
         <Label>Adjustments</Label>
@@ -95,11 +96,34 @@ function SignPad({ onDone }) {
     </div>
   )
 }
-const small = (file, max, type) => new Promise((res, rej) => { const u = URL.createObjectURL(file), i = new Image(); i.onload = () => { const s = Math.min(1, max / Math.max(i.width, i.height)), c = document.createElement('canvas'); c.width = Math.round(i.width * s); c.height = Math.round(i.height * s); c.getContext('2d').drawImage(i, 0, 0, c.width, c.height); URL.revokeObjectURL(u); res(c.toDataURL(type)) }; i.onerror = rej; i.src = u })
+const MAX_INVOICE_IMAGE_FILE_BYTES = 20 * 1024 * 1024
+const MAX_INVOICE_IMAGE_PIXELS = 40_000_000
+const small = (file, max, type) => new Promise((res, rej) => {
+  if (!file || file.size > MAX_INVOICE_IMAGE_FILE_BYTES) return rej(new RangeError('Choose an image smaller than 20 MB.'))
+  const u = URL.createObjectURL(file), i = new Image()
+  const release = () => URL.revokeObjectURL(u)
+  i.onload = () => {
+    release()
+    const w = i.naturalWidth, h = i.naturalHeight
+    if (!w || !h || w * h > MAX_INVOICE_IMAGE_PIXELS) return rej(new RangeError('That image is too large to use in a document.'))
+    try {
+      const s = Math.min(1, max / Math.max(w, h)), c = document.createElement('canvas')
+      c.width = Math.max(1, Math.round(w * s)); c.height = Math.max(1, Math.round(h * s))
+      c.getContext('2d').drawImage(i, 0, 0, c.width, c.height)
+      res(c.toDataURL(type))
+    } catch { rej(new Error('Could not process that image. Try a PNG or JPEG.')) }
+  }
+  i.onerror = () => { release(); rej(new Error('Could not read that image.')) }
+  i.src = u
+})
 const SW = ['#B4715A', '#1F4E79', '#0F766E', '#6D28D9', '#B91C1C', '#1D1A17', '#CA8A04', '#BE185D']
 export function Style({ inv, set }) {
-  const st = inv.style, ss = (p) => set({ style: { ...st, ...p } }), [pad, setPad] = useState(false)
-  const up = (k, max, type) => (e) => { const f = e.target.files[0]; if (f) small(f, max, type).then((d) => ss({ [k]: d })); e.target.value = '' }
+  const st = inv.style, ss = (p) => set({ style: { ...st, ...p } }), [pad, setPad] = useState(false), [uploadErr, setUploadErr] = useState('')
+  const up = (k, max, type) => (e) => {
+    const f = e.target.files[0]
+    if (f) small(f, max, type).then((d) => { setUploadErr(''); ss({ [k]: d }) }).catch((err) => setUploadErr(err.message || 'Could not use that image.'))
+    e.target.value = ''
+  }
   return (
     <div className="space-y-4">
       <Panel>
@@ -131,6 +155,7 @@ export function Style({ inv, set }) {
           <div><span className="eyebrow block mb-2">Logo</span>{st.logo ? <div className="flex items-center gap-3"><img src={st.logo} alt="" className="h-14 max-w-[130px] object-contain rounded-lg border border-line p-1 bg-white" /><Btn small danger icon="trash" onClick={() => ss({ logo: '' })}>Remove</Btn></div> : <label className="inline-flex"><input type="file" accept="image/*" hidden onChange={up('logo', 500, 'image/png')} /><span className="btn-like inline-flex items-center gap-2 rounded-full border border-line px-4 py-2 text-[13px] font-bold cursor-pointer" style={{ background: 'var(--surface)' }}><KIco n="image" s={15} />Upload logo</span></label>}</div>
           <div><span className="eyebrow block mb-2">Signature</span>{st.sign ? <div className="flex items-center gap-3"><img src={st.sign} alt="" className="h-12 max-w-[130px] object-contain rounded-lg border border-line p-1 bg-white" /><Btn small danger icon="trash" onClick={() => ss({ sign: '' })}>Remove</Btn></div> : <div className="flex gap-2"><Btn small icon="sign" onClick={() => setPad(!pad)}>Draw</Btn><label className="inline-flex"><input type="file" accept="image/*" hidden onChange={up('sign', 500, 'image/png')} /><span className="inline-flex items-center gap-2 rounded-full border border-line px-3.5 py-1.5 text-[12px] font-bold cursor-pointer" style={{ background: 'var(--surface)' }}><KIco n="upload" s={14} />Upload</span></label></div>}</div>
         </div>
+        {uploadErr && <div role="alert" className="text-[12px] font-semibold mt-3" style={{ color: '#C3423F' }}>{uploadErr}</div>}
         <AnimatePresence>{pad && !st.sign && <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden mt-4"><SignPad onDone={(d) => { ss({ sign: d }); setPad(false) }} /></motion.div>}</AnimatePresence>
       </Panel>
     </div>

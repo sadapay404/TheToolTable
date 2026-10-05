@@ -1,12 +1,21 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { engine, getBase, setBase } from '../src/lib/engine.js'
+import { engine, getBase, setBase, selectEngine } from '../src/lib/engine.js'
 
 const values = new Map()
 globalThis.localStorage = {
   getItem(key) { return values.has(key) ? values.get(key) : null },
   setItem(key, value) { values.set(key, String(value)) },
 }
+
+test('Android Tauri selects the configurable companion when no Android runner is bundled', () => {
+  const android = selectEngine({ tauri: true, android: true })
+  assert.equal(android.kind, 'http')
+  assert.equal(android.bundled, false)
+  const runner = { version: async () => 'test', hasFfmpeg: async () => true, spawn() {}, downloadsDir: async () => '', sizeOf: async () => 0 }
+  assert.equal(selectEngine({ tauri: true, android: true, androidRunner: runner }).kind, 'android')
+  assert.equal(selectEngine({ tauri: true, android: false, desktopRunner: () => runner }).kind, 'desktop')
+})
 
 test('downloader engine base persists and removes trailing slashes', () => {
   setBase('  https://media.example.test/api/ytdlp///  ')

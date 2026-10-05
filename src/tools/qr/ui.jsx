@@ -54,12 +54,12 @@ export function Btn({ children, onClick, icon, solid, copper, small, disabled, b
   )
 }
 
-export function TextIn({ label, value, onChange, ph, type = 'text', area, hint, mono, className = '', rows = 3 }) {
+export function TextIn({ label, value, onChange, ph, type = 'text', area, hint, mono, className = '', rows = 3, maxLength }) {
   const Tag = area ? 'textarea' : 'input'
   return (
     <label className={`block ${className}`}>
       {label && <span className="block text-[12.5px] font-semibold mb-1.5">{label}</span>}
-      <Tag className={`input ${mono ? 'mono' : ''}`} style={{ width: '100%', ...(area ? { resize: 'vertical', minHeight: rows * 26 } : {}) }} rows={area ? rows : undefined} type={area ? undefined : type} value={value ?? ''} placeholder={ph} onChange={(e) => onChange(e.target.value)} />
+      <Tag className={`input ${mono ? 'mono' : ''}`} style={{ width: '100%', ...(area ? { resize: 'vertical', minHeight: rows * 26 } : {}) }} rows={area ? rows : undefined} type={area ? undefined : type} maxLength={maxLength} value={value ?? ''} placeholder={ph} onChange={(e) => onChange(e.target.value)} />
       {hint && <span className="block text-[11.5px] mt-1" style={{ color: 'var(--muted)' }}>{hint}</span>}
     </label>
   )
@@ -74,9 +74,9 @@ export function Select({ label, value, onChange, options, className = '' }) {
   )
 }
 
-export function Switch({ on, onChange, label, hint }) {
+export function Switch({ on, onChange, label, hint, disabled = false }) {
   return (
-    <button type="button" role="switch" aria-checked={on} onClick={() => onChange(!on)} className="w-full flex items-center justify-between gap-3 text-left py-1">
+    <button type="button" role="switch" aria-checked={on} disabled={disabled} onClick={() => { if (!disabled) onChange(!on) }} className={`w-full flex items-center justify-between gap-3 text-left py-1 ${disabled ? 'cursor-not-allowed opacity-50' : ''}`}>
       <span><span className="block text-[13.5px] font-semibold">{label}</span>{hint && <span className="block text-[11.5px]" style={{ color: 'var(--muted)' }}>{hint}</span>}</span>
       <span className="relative shrink-0 w-11 h-6 rounded-full transition-colors" style={{ background: on ? 'var(--copper)' : 'var(--border)' }}>
         <motion.span className="absolute top-0.5 w-5 h-5 rounded-full bg-white" style={{ boxShadow: '0 2px 5px rgba(0,0,0,.3)' }} initial={false} animate={{ left: on ? 22 : 2 }} transition={SPRING} />
@@ -173,11 +173,19 @@ export function useToast() {
 export const fileToDataUrl = (file) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file) })
 /** downscale huge images so the SVG stays light */
 export async function imageToDataUrl(file, max = 1400) {
+  if (!file || (file.type && !file.type.startsWith('image/'))) throw new Error('Choose an image file.')
+  if (file.size > 25 * 1024 * 1024) throw new Error('Choose an image smaller than 25 MB.')
   const url = URL.createObjectURL(file)
   try {
-    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url })
-    const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight)), w = Math.round(img.naturalWidth * k), h = Math.round(img.naturalHeight * k)
-    const c = document.createElement('canvas'); c.width = w; c.height = h; c.getContext('2d').drawImage(img, 0, 0, w, h)
-    return c.toDataURL(file.type === 'image/jpeg' ? 'image/jpeg' : 'image/png', 0.92)
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('Could not open this image.')); i.src = url })
+    if (!img.naturalWidth || !img.naturalHeight || img.naturalWidth * img.naturalHeight > 60_000_000) throw new Error('This image is too large to process. Resize it and try again.')
+    const limit = Math.max(64, Math.min(2000, Number.isFinite(max) ? Math.round(max) : 1400))
+    const k = Math.min(1, limit / Math.max(img.naturalWidth, img.naturalHeight)), w = Math.max(1, Math.round(img.naturalWidth * k)), h = Math.max(1, Math.round(img.naturalHeight * k))
+    const c = document.createElement('canvas'); c.width = w; c.height = h
+    const context = c.getContext('2d'); if (!context) throw new Error('Image processing is not available in this browser.')
+    context.drawImage(img, 0, 0, w, h)
+    const data = c.toDataURL(file.type === 'image/jpeg' ? 'image/jpeg' : 'image/png', 0.92)
+    if (data.length > 4 * 1024 * 1024) throw new Error('This image is still too large after resizing. Try a smaller or more compressed image.')
+    return data
   } finally { URL.revokeObjectURL(url) }
 }

@@ -9,11 +9,31 @@ export default function Dictate({ toast }) {
   useEffect(() => () => { want.current = false; rec.current?.abort?.() }, [])
   if (!SR) return <Panel><Empty icon="mic" title="Live dictation isn't available here" sub="This browser has no built-in speech recognition. Use Chrome, Edge or Safari — or make subtitles from a recording instead." /></Panel>
   const start = () => {
-    const r = new SR(); r.lang = lang; r.continuous = true; r.interimResults = true; want.current = true
-    r.onresult = (e) => { let it = ''; for (let i = e.resultIndex; i < e.results.length; i++) { const t = e.results[i][0].transcript; if (e.results[i].isFinal) setText((x) => (x + (x && !/\s$/.test(x) ? ' ' : '') + t.trim() + (punct && !/[.!?۔]$/.test(t.trim()) ? '.' : '')).trimStart()); else it += t } setInterim(it) }
-    r.onerror = (e) => { if (e.error === 'not-allowed') { toast('Microphone permission was blocked', 'err'); want.current = false } else if (e.error === 'network') { toast('Live dictation needs an internet connection in this browser', 'err'); want.current = false } }
-    r.onend = () => { if (want.current) { try { r.start() } catch {} } else { setOn(false); setInterim('') } }
-    rec.current = r; r.start(); setOn(true)
+    try {
+      const r = new SR(); r.lang = lang; r.continuous = true; r.interimResults = true; want.current = true
+      r.onresult = (e) => {
+        let interimText = ''
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          const phrase = String(e.results[i][0]?.transcript || '').trim()
+          if (e.results[i].isFinal && phrase) setText((current) => (current + (current && !/\s$/.test(current) ? ' ' : '') + phrase + (punct && !/[.!?۔؟]$/.test(phrase) ? '.' : '')).trimStart().slice(0, 1_000_000))
+          else interimText += phrase
+        }
+        setInterim(interimText.slice(0, 2_000))
+      }
+      r.onerror = (event) => {
+        const terminal = ['not-allowed', 'service-not-allowed', 'audio-capture', 'network', 'language-not-supported'].includes(event.error)
+        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') toast('Microphone permission or speech service was blocked', 'err')
+        else if (event.error === 'audio-capture') toast('No microphone is available', 'err')
+        else if (event.error === 'network') toast('Live dictation needs an internet connection in this browser', 'err')
+        else if (terminal && event.error !== 'language-not-supported') toast('The speech recognizer stopped unexpectedly', 'err')
+        if (terminal) { want.current = false; setOn(false); setInterim('') }
+      }
+      r.onend = () => {
+        if (want.current) { try { r.start() } catch { want.current = false; setOn(false); setInterim(''); toast('Could not restart live dictation', 'err') } }
+        else { setOn(false); setInterim('') }
+      }
+      rec.current = r; r.start(); setOn(true)
+    } catch (error) { want.current = false; setOn(false); toast(error?.message || 'Could not start live dictation. Check microphone access.', 'err') }
   }
   const stop = () => { want.current = false; rec.current?.stop() }
   return (
@@ -26,7 +46,7 @@ export default function Dictate({ toast }) {
         </div>
         <textarea dir="auto" className="input w-full" rows={13} value={text} onChange={(e) => setText(e.target.value)} placeholder="Your words will appear here…" style={{ lineHeight: 1.75 }} />
         <AnimatePresence>{interim && <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} dir="auto" className="mt-2 text-[14px] italic" style={{ color: 'var(--muted)' }}>{interim}</motion.div>}</AnimatePresence>
-        <div className="flex flex-wrap gap-2 mt-4"><Btn icon="copy" disabled={!text} onClick={() => navigator.clipboard.writeText(text).then(() => toast('Copied'))}>Copy</Btn><Btn icon="file" disabled={!text} onClick={() => save(new Blob([text], { type: 'text/plain;charset=utf-8' }), 'dictation.txt')}>Save .txt</Btn><Btn icon="trash" danger disabled={!text} onClick={() => setText('')}>Clear</Btn></div>
+        <div className="flex flex-wrap gap-2 mt-4"><Btn icon="copy" disabled={!text} onClick={async () => { try { await navigator.clipboard.writeText(text); toast('Copied') } catch { toast('Copy blocked by the browser', 'err') } }}>Copy</Btn><Btn icon="file" disabled={!text} onClick={() => save(new Blob([text], { type: 'text/plain;charset=utf-8' }), 'dictation.txt')}>Save .txt</Btn><Btn icon="trash" danger disabled={!text} onClick={() => setText('')}>Clear</Btn></div>
       </Panel>
       <Panel delay={0.08}>
         <Label>Language</Label>

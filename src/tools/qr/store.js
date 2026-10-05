@@ -1,13 +1,16 @@
-import { createContext, useContext, useSyncExternalStore, useCallback } from 'react'
+import { createContext, useContext, useSyncExternalStore, useCallback, useRef } from 'react'
+import { normalizeQrState } from '../../lib/qr/state.js'
 const NS = 'ttt.qr.'
-const mem = {}, subs = {}
+const mem = Object.create(null), subs = Object.create(null)
 const read = (k, d) => { try { const s = localStorage.getItem(NS + k); return s ? JSON.parse(s) : d } catch { return d } }
 export function useStore(key, init) {
-  if (!(key in mem)) mem[key] = read(key, init)
+  const initRef = useRef(init)
+  if (!(key in mem)) mem[key] = normalizeQrState(key, read(key, initRef.current), initRef.current)
   const sub = useCallback((f) => { (subs[key] = subs[key] || new Set()).add(f); return () => subs[key].delete(f) }, [key])
   const v = useSyncExternalStore(sub, () => mem[key], () => mem[key])
   const set = useCallback((n) => {
-    const nv = typeof n === 'function' ? n(mem[key]) : n
+    const next = typeof n === 'function' ? n(mem[key]) : n
+    const nv = normalizeQrState(key, next, initRef.current)
     mem[key] = nv
     try { localStorage.setItem(NS + key, JSON.stringify(nv)) } catch {}
     subs[key]?.forEach((f) => f())

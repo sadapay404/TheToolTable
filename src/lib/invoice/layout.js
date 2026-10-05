@@ -1,4 +1,5 @@
 import { TYPES, totals, money, inWords, num } from './calc.js'
+import { normalizeInvoice } from './normalize.js'
 
 export const PAGE = { a4: [595, 842], letter: [612, 792] }
 const SANS = 'Helvetica, Arial, "Noto Sans", "Noto Naskh Arabic", sans-serif', SERIF = 'Times, "Times New Roman", "Noto Serif", serif'
@@ -7,11 +8,21 @@ export const fam = (inv) => (inv.style.serif || inv.style.tpl === 'minimal' ? SE
 export function measure(text, size, bold, family) { mctx ||= document.createElement('canvas').getContext('2d'); mctx.font = `${bold ? 'bold ' : ''}${size}px ${family}`; return mctx.measureText(text).width }
 function wrap(text, w, size, bold, family) {
   const out = []
+  const fits = (s) => measure(s, size, bold, family) <= w
   for (const para of String(text || '').split('\n')) {
     let line = ''
     for (const word of para.split(/\s+/)) {
-      const t = line ? line + ' ' + word : word
-      if (measure(t, size, bold, family) <= w || !line) line = t; else { out.push(line); line = word }
+      if (!word) continue
+      const candidate = line ? line + ' ' + word : word
+      if (fits(candidate)) { line = candidate; continue }
+      if (line) { out.push(line); line = '' }
+      if (fits(word)) { line = word; continue }
+      let part = ''
+      for (const char of Array.from(word)) {
+        if (part && !fits(part + char)) { out.push(part); part = char }
+        else part += char
+      }
+      line = part
     }
     out.push(line)
   }
@@ -20,7 +31,9 @@ function wrap(text, w, size, bold, family) {
 const fmtDate = (d) => { if (!d) return ''; const x = new Date(d + 'T00:00'); return isNaN(x) ? d : x.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) }
 
 /** returns { pages: Ops[][], size:[w,h] } — every op uses top-left origin points */
-export function layout(inv, imgs = {}) {
+export function layout(value, imgs = {}) {
+  const inv = normalizeInvoice(value)
+  imgs = imgs && typeof imgs === 'object' ? imgs : {}
   const [W, H] = PAGE[inv.style.size] || PAGE.a4, M = 44, ac = inv.style.accent, F = fam(inv), T = TYPES[inv.type] || TYPES.invoice, t = totals(inv)
   const ink = '#1d1a17', mute = '#6b645d', pages = [[]]
   let ops = pages[0], y = 0
@@ -63,14 +76,27 @@ export function layout(inv, imgs = {}) {
   }
   const newPage = () => { pages.push([]); ops = pages[pages.length - 1]; y = 50; head() }
   head()
-  inv.items.forEach((it, i) => {
-    const d = wrap(it.desc || ' ', dW, 10, false, F), h = Math.max(1, d.length) * 13 + 12
-    if (y + h > H - 150 && i < inv.items.length) { if (y + h > H - 70) newPage() }
-    d.forEach((l, k) => text(M + 8, y + 10 + k * 13, l, 10))
-    const a = num(it.qty) * num(it.price)
-    if (q) { text(xQty, y + 10, String(+num(it.qty).toFixed(3)), 10, { a: 'r', c: mute }); text(xRate, y + 10, money(num(it.price), inv, false), 10, { a: 'r', c: mute }); text(xAmt - 8, y + 10, money(a, inv, false), 10, { a: 'r', b: true }) }
-    else text(xRate, y + 10, money(a, inv, false), 10, { a: 'r', b: true })
-    y += h; line(M, y - 4, W - M, y - 4)
+  inv.items.forEach((it) => {
+    const d = wrap(it.desc || ' ', dW, 10, false, F), amount = num(it.qty) * num(it.price)
+    let cursor = 0, first = true
+    while (cursor < d.length) {
+      const available = Math.floor((H - 150 - y - 12) / 13)
+      if (available < 1) { newPage(); continue }
+      const end = Math.min(d.length, cursor + available), chunk = d.slice(cursor, end)
+      chunk.forEach((l, k) => text(M + 8, y + 10 + k * 13, l, 10))
+      if (first) {
+        if (q) {
+          text(xQty, y + 10, String(+num(it.qty).toFixed(3)), 10, { a: 'r', c: mute })
+          text(xRate, y + 10, money(num(it.price), inv, false), 10, { a: 'r', c: mute })
+          text(xAmt - 8, y + 10, money(amount, inv, false), 10, { a: 'r', b: true })
+        } else text(xRate, y + 10, money(amount, inv, false), 10, { a: 'r', b: true })
+        first = false
+      }
+      y += chunk.length * 13 + 12
+      line(M, y - 4, W - M, y - 4)
+      cursor = end
+      if (cursor < d.length) newPage()
+    }
   })
 
   /* ---- totals ---- */

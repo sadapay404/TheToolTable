@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Panel, Label, Seg, Stage, PrimaryBtn, Burst, Switch, Stepper, ChipRow, DIco, usePersist, useLog, rnd, rndf, sfx, SPRING } from './parts.jsx'
+import { Panel, Label, Seg, Stage, PrimaryBtn, Burst, Switch, Stepper, ChipRow, DIco, usePersist, useLog, useSafeTimeout, rnd, rndf, sfx, SPRING } from './parts.jsx'
 
 const TRUTHS = ['What is your most embarrassing moment?', 'What is a secret talent you have?', 'Who was your first celebrity crush?', 'What is the last lie you told?', 'What is your biggest fear?', 'Which habit of yours annoys others most?', 'What is the best gift you ever received?', 'What would you do with a million dollars?', 'What is the weirdest food you have eaten?', 'Who here would you swap lives with for a day?']
 const DARES = ['Do your best impression of someone here.', 'Sing the chorus of any song.', 'Speak in a funny accent for 3 rounds.', 'Do 10 jumping jacks.', 'Let the group pick a contact and text them “hello”.', 'Tell a joke — you must make someone laugh.', 'Balance a spoon on your nose for 10 seconds.', 'Dance with no music for 20 seconds.', 'Say the alphabet backwards.', 'Walk like a runway model across the room.']
@@ -9,6 +9,7 @@ const polar = (r, deg) => [100 + r * Math.sin((deg * Math.PI) / 180), 100 - r * 
 
 export default function Bottle() {
   const log = useLog()
+  const schedule = useSafeTimeout()
   const [o, setO] = usePersist('bottle', { names: ['', '', '', '', ''], td: false, dur: 4 })
   const upd = (p) => setO((s) => ({ ...s, ...p }))
   const n = o.names.length
@@ -25,7 +26,7 @@ export default function Bottle() {
     const k = rnd(n), slice = 360 / n, center = k * slice + (rndf() - 0.5) * slice * 0.5
     const cur = rot, delta = ((center - cur) % 360 + 360) % 360
     setRot(cur + (6 + rnd(3)) * 360 + delta)
-    setTimeout(() => {
+    schedule(() => {
       setBusy(false); setBurst(Date.now()); sfx('ding')
       const kind = o.td ? (rnd(2) ? 'Truth' : 'Dare') : null
       const prompt = kind ? (kind === 'Truth' ? TRUTHS : DARES)[rnd(10)] : null

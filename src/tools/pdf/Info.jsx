@@ -11,10 +11,16 @@ const paper = (w, h) => { const a = Math.min(mm(w), mm(h)), b = Math.max(mm(w), 
 export default function Info({ docs, active, setActive, publish, toast }) {
   const doc = docs.find((d) => d.id === active) || docs[0]
   const [info, setInfo] = useState(null), [sizes, setSizes] = useState([]), [busy, setBusy] = useState(false)
-  useEffect(() => { if (!doc) return; setInfo(null); readInfo(doc).then(setInfo); pageSizes(doc).then(setSizes) }, [doc?.id])
+  useEffect(() => {
+    if (!doc) return
+    let dead = false
+    setInfo(null); setSizes([])
+    Promise.all([readInfo(doc), pageSizes(doc)]).then(([metadata, pageInfo]) => { if (!dead) { setInfo(metadata); setSizes(pageInfo) } }).catch((e) => { if (!dead) toast(e.message || 'Could not read the PDF properties.', 'err') })
+    return () => { dead = true }
+  }, [doc?.id, toast])
   if (!doc) return <Panel><Empty icon="info" title="Add a PDF first" sub="See what's inside, edit the title and author, or wipe the metadata." /></Panel>
   const kinds = [...new Set(sizes.map((s) => paper(s.width, s.height) + (s.width > s.height ? ' landscape' : '')))]
-  const run = async (strip) => { setBusy(true); try { const b = await writeInfo(doc, info, strip); publish(b, doc.name.replace(/\.pdf$/i, '') + (strip ? '_clean.pdf' : '_info.pdf'), strip ? 'Document properties wiped' : 'Properties saved', true) } catch (e) { toast(e.message, 'err') } finally { setBusy(false) } }
+  const run = async (strip) => { if (busy || (!strip && !info)) return; setBusy(true); try { const b = await writeInfo(doc, info, strip); publish(b, doc.name.replace(/\.pdf$/i, '') + (strip ? '_clean.pdf' : '_info.pdf'), strip ? 'Document properties wiped' : 'Properties saved', true) } catch (e) { toast(e.message, 'err') } finally { setBusy(false) } }
   const set = (k) => (e) => setInfo((i) => ({ ...i, [k]: e.target.value }))
   return (
     <div className="grid gap-5 lg:grid-cols-[300px_minmax(0,1fr)] items-start">
@@ -25,9 +31,9 @@ export default function Info({ docs, active, setActive, publish, toast }) {
         <Panel delay={0.08}>
           <Label>Document properties</Label>
           {info && <div className="grid sm:grid-cols-2 gap-4">
-            {[['title', 'Title'], ['author', 'Author'], ['subject', 'Subject'], ['keywords', 'Keywords'], ['creator', 'Created with'], ['producer', 'PDF producer']].map(([k, l]) => <Field key={k} label={l}><input className="input" value={info[k]} onChange={set(k)} /></Field>)}
+            {[['title', 'Title'], ['author', 'Author'], ['subject', 'Subject'], ['keywords', 'Keywords'], ['creator', 'Created with'], ['producer', 'PDF producer']].map(([k, l]) => <Field key={k} label={l}><input className="input" maxLength={k === 'keywords' ? 2_000 : 500} value={info[k]} onChange={set(k)} disabled={busy} /></Field>)}
           </div>}
-          <div className="flex flex-wrap gap-2 mt-5"><Btn primary icon="save" busy={busy} onClick={() => run(false)}>Save properties</Btn><Btn icon="shield" disabled={busy} onClick={() => run(true)}>Wipe all properties</Btn></div>
+          <div className="flex flex-wrap gap-2 mt-5"><Btn primary icon="save" busy={busy} disabled={busy || !info} onClick={() => run(false)}>Save properties</Btn><Btn icon="shield" disabled={busy} onClick={() => run(true)}>Wipe all properties</Btn></div>
           <div className="text-[11.5px] mt-3" style={{ color: 'var(--muted)' }}>Wiping clears title, author, tool names and dates from the document info. Page contents are untouched.</div>
         </Panel>
       </div>

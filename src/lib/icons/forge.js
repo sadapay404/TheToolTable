@@ -8,6 +8,28 @@ export const SHAPES = [['rounded', 'Rounded'], ['squircle', 'Squircle'], ['circl
 export const FONTS = [['Fraunces', 'Serif'], ['Inter', 'Sans'], ['Georgia', 'Classic'], ['"Courier New"', 'Mono'], ['"Arial Black", Impact', 'Heavy']]
 export const PRESETS = [['#C9856B', '#8A4A36'], ['#1F2937', '#0B1220'], ['#2563EB', '#1E3A8A'], ['#10B981', '#065F46'], ['#F59E0B', '#B45309'], ['#EC4899', '#9D174D'], ['#8B5CF6', '#4C1D95'], ['#F5F1E8', '#E3DACB'], ['#111111', '#111111'], ['#FFFFFF', '#FFFFFF']]
 
+export function normalizeIconOptions(value) {
+  const raw = value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+  const clamp = (v, lo, hi, fallback) => Number.isFinite(Number(v)) ? Math.max(lo, Math.min(hi, Number(v))) : fallback
+  const color = (v, fallback) => typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v) ? v.toUpperCase() : fallback
+  const text = typeof raw.text === 'string' ? [...raw.text].slice(0, 3).join('') : DEFAULTS.text
+  const name = typeof raw.name === 'string' ? raw.name.replace(/[\x00-\x1f\x7f]/g, '').slice(0, 80) : DEFAULTS.name
+  return {
+    mode: ['mono', 'image'].includes(raw.mode) ? raw.mode : DEFAULTS.mode,
+    text, font: FONTS.some(([id]) => id === raw.font) ? raw.font : DEFAULTS.font,
+    weight: Math.round(clamp(raw.weight, 300, 900, DEFAULTS.weight) / 100) * 100,
+    symColor: color(raw.symColor, DEFAULTS.symColor), tint: raw.tint === true,
+    tintColor: color(raw.tintColor, DEFAULTS.tintColor),
+    bgType: ['gradient', 'solid', 'none'].includes(raw.bgType) ? raw.bgType : DEFAULTS.bgType,
+    bg1: color(raw.bg1, DEFAULTS.bg1), bg2: color(raw.bg2, DEFAULTS.bg2),
+    angle: clamp(raw.angle, 0, 360, DEFAULTS.angle),
+    shape: SHAPES.some(([id]) => id === raw.shape) ? raw.shape : DEFAULTS.shape,
+    radius: clamp(raw.radius, 0, 50, DEFAULTS.radius), pad: clamp(raw.pad, 0, 40, DEFAULTS.pad),
+    offY: clamp(raw.offY, -15, 15, DEFAULTS.offY), name,
+    theme: color(raw.theme, DEFAULTS.theme),
+  }
+}
+
 function squircle(ctx, S, n = 5) { ctx.beginPath(); const h = S / 2; for (let i = 0; i <= 160; i++) { const t = (i / 160) * Math.PI * 2, c = Math.cos(t), s = Math.sin(t), x = h + h * Math.sign(c) * Math.abs(c) ** (2 / n), y = h + h * Math.sign(s) * Math.abs(s) ** (2 / n); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y) } ctx.closePath() }
 function clipShape(ctx, S, shape, radius) {
   if (shape === 'square') { ctx.beginPath(); ctx.rect(0, 0, S, S) } else if (shape === 'circle') { ctx.beginPath(); ctx.arc(S / 2, S / 2, S / 2, 0, Math.PI * 2) } else if (shape === 'squircle') squircle(ctx, S)
@@ -37,7 +59,10 @@ function symbol(ctx, S, o, img, padPct, scale = 1) {
   }
 }
 /** variant: 'full' (shape from settings) | 'square' | 'circle' | 'maskable' | 'foreground' | 'opaque' */
-export function drawIcon(ctx, S, o, img, variant = 'full') {
+export function drawIcon(ctx, S, options, img, variant = 'full') {
+  if (!ctx || !Number.isSafeInteger(S) || S < 1 || S > 2_048) throw new RangeError('Icon dimensions must be between 1 and 2,048 pixels.')
+  const o = normalizeIconOptions(options)
+  if (!['full', 'square', 'circle', 'maskable', 'foreground', 'opaque'].includes(variant)) variant = 'full'
   ctx.clearRect(0, 0, S, S); ctx.save()
   if (variant === 'foreground') { symbol(ctx, S, o, img, o.pad, 0.61); ctx.restore(); return }
   const shape = variant === 'circle' ? 'circle' : variant === 'square' || variant === 'maskable' || variant === 'opaque' ? 'square' : o.shape
@@ -45,16 +70,29 @@ export function drawIcon(ctx, S, o, img, variant = 'full') {
   symbol(ctx, S, o, img, variant === 'maskable' ? Math.max(o.pad, 20) : o.pad, 1)
   ctx.restore()
 }
-export const iconCanvas = (S, o, img, variant) => { const c = document.createElement('canvas'); c.width = c.height = S; drawIcon(c.getContext('2d'), S, o, img, variant); return c }
-const png = async (S, o, img, v) => new Uint8Array(await (await new Promise((r) => iconCanvas(S, o, img, v).toBlob(r, 'image/png'))).arrayBuffer())
+export const iconCanvas = (S, o, img, variant) => {
+  if (!Number.isSafeInteger(S) || S < 1 || S > 2_048) throw new RangeError('Icon dimensions must be between 1 and 2,048 pixels.')
+  const c = document.createElement('canvas'); c.width = c.height = S
+  drawIcon(c.getContext('2d'), S, o, img, variant)
+  return c
+}
+const png = async (S, o, img, v) => {
+  const blob = await new Promise((resolve) => iconCanvas(S, o, img, v).toBlob(resolve, 'image/png'))
+  if (!blob) throw new Error('The browser could not render an icon PNG.')
+  return new Uint8Array(await blob.arrayBuffer())
+}
 
 export function makeIco(entries) { // [{size, bytes}]
+  if (!Array.isArray(entries) || entries.length < 1 || entries.length > 256 || entries.some((e) => !Number.isInteger(e?.size) || e.size < 1 || e.size > 256 || !(e.bytes instanceof Uint8Array))) throw new TypeError('ICO entries are invalid.')
   const n = entries.length, head = new Uint8Array(6 + 16 * n), dv = new DataView(head.buffer); dv.setUint16(2, 1, true); dv.setUint16(4, n, true)
   let off = head.length; entries.forEach((e, i) => { const p = 6 + i * 16; head[p] = e.size >= 256 ? 0 : e.size; head[p + 1] = e.size >= 256 ? 0 : e.size; dv.setUint16(p + 4, 1, true); dv.setUint16(p + 6, 32, true); dv.setUint32(p + 8, e.bytes.length, true); dv.setUint32(p + 12, off, true); off += e.bytes.length })
   const out = new Uint8Array(off); out.set(head); let q = head.length; for (const e of entries) { out.set(e.bytes, q); q += e.bytes.length } return out
 }
 export function makeIcns(entries) { // [{type, bytes}]
-  const total = 8 + entries.reduce((s, e) => s + 8 + e.bytes.length, 0), out = new Uint8Array(total), dv = new DataView(out.buffer); out.set([0x69, 0x63, 0x6e, 0x73]); dv.setUint32(4, total)
+  if (!Array.isArray(entries) || entries.length < 1 || entries.length > 256 || entries.some((e) => typeof e?.type !== 'string' || !/^[A-Za-z0-9]{4}$/.test(e.type) || !(e.bytes instanceof Uint8Array))) throw new TypeError('ICNS entries are invalid.')
+  const total = 8 + entries.reduce((s, e) => s + 8 + e.bytes.length, 0)
+  if (!Number.isSafeInteger(total) || total > 0xffffffff) throw new RangeError('ICNS file is too large.')
+  const out = new Uint8Array(total), dv = new DataView(out.buffer); out.set([0x69, 0x63, 0x6e, 0x73]); dv.setUint32(4, total)
   let p = 8; for (const e of entries) { out.set(strToU8(e.type), p); dv.setUint32(p + 4, 8 + e.bytes.length); out.set(e.bytes, p + 8); p += 8 + e.bytes.length } return out
 }
 
@@ -69,8 +107,9 @@ const AND = [['mdpi', 48, 108], ['hdpi', 72, 162], ['xhdpi', 96, 216], ['xxhdpi'
 const IOS = [[20, 2, 'iphone'], [20, 3, 'iphone'], [29, 2, 'iphone'], [29, 3, 'iphone'], [40, 2, 'iphone'], [40, 3, 'iphone'], [60, 2, 'iphone'], [60, 3, 'iphone'], [20, 1, 'ipad'], [20, 2, 'ipad'], [29, 1, 'ipad'], [29, 2, 'ipad'], [40, 1, 'ipad'], [40, 2, 'ipad'], [76, 1, 'ipad'], [76, 2, 'ipad'], [83.5, 2, 'ipad']]
 const hex6 = (h) => h.replace('#', '').toUpperCase()
 
-export async function buildPack(id, o, img) {
-  const f = {}, name = o.name || 'App', P = (S, v) => png(S, o, img, v)
+export async function buildPack(id, options, img) {
+  if (!PACKS.some((pack) => pack.id === id)) throw new TypeError('Choose a supported icon pack.')
+  const o = normalizeIconOptions(options), f = {}, name = o.name || 'App', P = (S, v) => png(S, o, img, v)
   if (id === 'web') {
     const s16 = await P(16), s32 = await P(32), s48 = await P(48)
     f['favicon.ico'] = makeIco([{ size: 16, bytes: s16 }, { size: 32, bytes: s32 }, { size: 48, bytes: s48 }]); f['favicon-16x16.png'] = s16; f['favicon-32x32.png'] = s32

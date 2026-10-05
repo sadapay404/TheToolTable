@@ -73,11 +73,26 @@ function Backup() {
   const [designs, setDesigns] = useStore('designs', []), [presets, setPresets] = useStore('presets', []), [scans, setScans] = useStore('scans', [])
   const [sure, setSure] = useState(false)
   const exp = () => { download(new Blob([JSON.stringify({ app: 'TheToolTable QR', v: 1, designs, presets, scans })], { type: 'application/json' }), 'qr-library-backup.json'); toast('Backup saved') }
-  const imp = async (fs) => {
+  const imp = async (files) => {
     try {
-      const j = JSON.parse(await fs[0].text()); if (j.app !== 'TheToolTable QR') throw new Error('Not a QR library backup')
-      const mix = (cur, inc) => { const ids = new Set(cur.map((x) => x.id)); return [...cur, ...(inc || []).filter((x) => !ids.has(x.id))] }
-      setDesigns((c) => mix(c, j.designs)); setPresets((c) => mix(c, j.presets)); setScans((c) => mix(c, j.scans).sort((a, b) => b.t - a.t))
+      const file = files?.[0]
+      if (!file) return
+      if (file.size > 20 * 1024 * 1024) throw new Error('Choose a backup file smaller than 20 MB.')
+      const j = JSON.parse(await file.text())
+      if (j.app !== 'TheToolTable QR') throw new Error('Not a QR library backup')
+      if (!Array.isArray(j.designs) || !Array.isArray(j.presets) || !Array.isArray(j.scans)) throw new Error('This backup is missing a valid library section.')
+      const mix = (cur, inc, limit, sort = false) => {
+        const ids = new Set(), merged = []
+        for (const item of [...inc, ...cur]) {
+          if (!item || typeof item.id !== 'string' || ids.has(item.id)) continue
+          ids.add(item.id); merged.push(item)
+        }
+        if (sort) merged.sort((a, b) => (Number(b.t) || 0) - (Number(a.t) || 0))
+        return merged.slice(0, limit)
+      }
+      setDesigns((current) => mix(current, j.designs, 60, true))
+      setPresets((current) => mix(current, j.presets, 100))
+      setScans((current) => mix(current, j.scans, 300, true))
       toast('Backup merged into your library')
     } catch (e) { toast(e.message || 'Could not read that file', true) }
   }

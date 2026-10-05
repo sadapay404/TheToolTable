@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Panel, Label, Seg, Btn, Drop, Bar, KIco, SPRING, Switch, fmtSize, usePref } from '../kit/ui.jsx'
 import { MODELS, WLANGS, transcribe } from '../../lib/voice/whisper.js'
@@ -6,9 +6,10 @@ import { resample } from '../../lib/voice/audio.js'
 import { fmtTime } from '../../lib/voice/subs.js'
 import { recentAction } from '../../lib/utils.js'
 
-export default function Transcribe({ media, loadFile, setSegs, go, toast }) {
+export default function Transcribe({ media, loadFile, setSegs, go, toast, busy: loading = false, loadStatus = '' }) {
   const [o, setO] = usePref('voice', 'opts', { model: MODELS[0][0], language: 'auto', task: 'transcribe', gpu: false })
   const [st, setSt] = useState(null), [live, setLive] = useState([]), ctl = useRef(null)
+  useEffect(() => () => ctl.current?.abort(), [])
   const run = async () => {
     ctl.current = new AbortController(); setLive([]); setSt({ stage: 'prep', pct: 3, note: 'Preparing the audio' })
     try {
@@ -17,8 +18,9 @@ export default function Transcribe({ media, loadFile, setSegs, go, toast }) {
       if (!segs.length) { toast('No speech was found in this file', 'err'); setSt(null); return }
       setSegs(segs); recentAction(`Transcribed ${segs.length} lines`); toast(`${segs.length} subtitle lines ready`); setSt(null); go('subs')
     } catch (e) { setSt(null); if (e.message !== 'Cancelled') toast(e.message.slice(0, 120), 'err') }
+    finally { ctl.current = null }
   }
-  const busy = !!st
+  const busy = !!st || loading
   return (
     <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_400px] items-start">
       <div className="space-y-5">
@@ -40,7 +42,8 @@ export default function Transcribe({ media, loadFile, setSegs, go, toast }) {
             </motion.div>)}
         </AnimatePresence>
         <AnimatePresence>
-          {busy && (
+          {loading && !st && <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}><Panel><Bar value={0} label={loadStatus || 'Reading audio…'} /></Panel></motion.div>}
+          {st && (
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }}>
               <Panel>
                 <Bar value={st.pct || 0} label={st.note || 'Working'} />

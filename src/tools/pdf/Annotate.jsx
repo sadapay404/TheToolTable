@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Panel, Label, Seg, Btn, Field, Empty, KIco, SPRING, uid, Range } from '../kit/ui.jsx'
 import { DocSelect } from './shared.jsx'
-import { renderCanvas, stampImages, redactPages } from '../../lib/pdf/engine.js'
+import { renderCanvas, stampImages, redactPages, MAX_IMAGE_BYTES, MAX_IMAGE_PIXELS } from '../../lib/pdf/engine.js'
 
 const FONTS = ['"Brush Script MT", "Segoe Script", "Snell Roundhand", cursive', '"Lucida Handwriting", "Apple Chancery", cursive', 'Georgia, serif italic']
 const dataBytes = async (u) => new Uint8Array(await (await fetch(u)).arrayBuffer())
@@ -42,22 +42,39 @@ export default function Annotate({ docs, active, setActive, publish, toast }) {
   useEffect(() => { if (sigTab !== 'type') return; const c = document.createElement('canvas'); c.width = 900; c.height = 260; const x = c.getContext('2d'); x.font = `110px ${FONTS[font]}`; x.fillStyle = '#111'; x.textBaseline = 'middle'; const w = Math.min(880, x.measureText(name).width + 20); c.width = Math.max(40, w); x.font = `110px ${FONTS[font]}`; x.fillStyle = '#111'; x.textBaseline = 'middle'; x.fillText(name, 10, 130); const t = document.createElement('canvas'); t.width = c.width; t.height = 260; t.getContext('2d').drawImage(c, 0, 0); setSig({ url: t.toDataURL('image/png'), ratio: t.width / 260 }) }, [sigTab, name, font])
   if (!doc) return <Panel><Empty icon="sign" title="Add a PDF first" sub="Sign it with a drawn, typed or uploaded signature — or black out sensitive text for good." /></Panel>
   const upload = async (f) => {
-    if (!f) return; const bm = await createImageBitmap(f), c = document.createElement('canvas'); c.width = bm.width; c.height = bm.height; const x = c.getContext('2d'); x.drawImage(bm, 0, 0)
-    if (rmBg) { const d = x.getImageData(0, 0, c.width, c.height), a = d.data; for (let i = 0; i < a.length; i += 4) { const l = 0.3 * a[i] + 0.59 * a[i + 1] + 0.11 * a[i + 2]; if (l > 225) a[i + 3] = 0; else if (l > 150) a[i + 3] = Math.round(((225 - l) / 75) * 255) } x.putImageData(d, 0, 0) }
-    setSig({ url: c.toDataURL('image/png'), ratio: c.width / c.height })
+    if (!f) return
+    if (!Number.isFinite(Number(f.size)) || f.size <= 0 || f.size > MAX_IMAGE_BYTES) return toast('Signature images must be smaller than 25 MB.', 'err')
+    let bm, c
+    try {
+      bm = await createImageBitmap(f)
+      if (!bm.width || !bm.height || bm.width * bm.height > MAX_IMAGE_PIXELS) throw new RangeError('Signature images must be 32 megapixels or smaller.')
+      c = document.createElement('canvas'); c.width = bm.width; c.height = bm.height
+      const x = c.getContext('2d')
+      if (!x) throw new Error('Could not create a canvas for the signature image.')
+      x.drawImage(bm, 0, 0)
+      if (rmBg) { const d = x.getImageData(0, 0, c.width, c.height), a = d.data; for (let i = 0; i < a.length; i += 4) { const l = 0.3 * a[i] + 0.59 * a[i + 1] + 0.11 * a[i + 2]; if (l > 225) a[i + 3] = 0; else if (l > 150) a[i + 3] = Math.round(((225 - l) / 75) * 255) } x.putImageData(d, 0, 0) }
+      setSig({ url: c.toDataURL('image/png'), ratio: c.width / c.height })
+    } catch (e) { toast(e.message || 'Could not load this signature image.', 'err') }
+    finally { bm?.close?.(); if (c) c.width = c.height = 0 }
   }
-  const addSig = () => { if (!sig) return toast('Create a signature first', 'err'); const w = 0.28, h = (w * (view?.ratio || 0.72)) / sig.ratio; setPlaces((p) => [...p, { id: uid(), page: pg, x: 0.6, y: 0.78, w, h, sig }]) }
+  const addSig = () => {
+    if (!sig) return toast('Create a signature first', 'err')
+    if (places.length >= 500) return toast('Place no more than 500 signatures in one PDF.', 'err')
+    const ratio = view?.ratio || 0.72, w = Math.min(0.28, 0.72 * sig.ratio / ratio), h = (w * ratio) / sig.ratio
+    setPlaces((p) => [...p, { id: uid(), page: pg, x: Math.min(0.6, 1 - w), y: Math.min(0.78, 1 - h), w, h, sig }])
+  }
   const rel = (e) => { const r = box.current.getBoundingClientRect(); return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height] }
   const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v))
   const startDrag = (e, id, kind) => {
     e.stopPropagation(); const it = places.find((p) => p.id === id), [sx, sy] = rel(e), o = { ...it }
-    const mv = (ev) => { const [x, y] = rel(ev); setPlaces((ps) => ps.map((p) => { if (p.id !== id) return p; if (kind === 'move') return { ...p, x: clamp(o.x + x - sx, 0, 1 - p.w), y: clamp(o.y + y - sy, 0, 1 - p.h) }; const w = clamp(o.w + (x - sx), 0.06, 1 - p.x); return { ...p, w, h: (w * (view?.ratio || 0.72)) / p.sig.ratio } })) }
+    const mv = (ev) => { const [x, y] = rel(ev); setPlaces((ps) => ps.map((p) => { if (p.id !== id) return p; if (kind === 'move') return { ...p, x: clamp(o.x + x - sx, 0, 1 - p.w), y: clamp(o.y + y - sy, 0, 1 - p.h) }; const ratio = view?.ratio || 0.72, maxW = Math.min(1 - p.x, (1 - p.y) * p.sig.ratio / ratio), w = clamp(o.w + (x - sx), Math.min(0.06, maxW), maxW); return { ...p, w, h: (w * ratio) / p.sig.ratio } })) }
     const up = () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up) }
     window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up)
   }
   const startDraw = (e) => { if (mode !== 'redact') return; const [x, y] = rel(e); const mv = (ev) => { const [a, b] = rel(ev); setDraft({ x: clamp(Math.min(x, a)), y: clamp(Math.min(y, b)), w: Math.abs(clamp(a) - x), h: Math.abs(clamp(b) - y) }) }; const up = (ev) => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); const [a, b] = rel(ev), r = { id: uid(), x: clamp(Math.min(x, a)), y: clamp(Math.min(y, b)), w: Math.abs(clamp(a) - x), h: Math.abs(clamp(b) - y) }; setDraft(null); if (r.w > 0.01 && r.h > 0.006) setBoxes((bs) => ({ ...bs, [pg]: [...(bs[pg] || []), r] })) }; window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up) }
   const nRed = Object.values(boxes).reduce((a, b) => a + b.length, 0)
   const run = async () => {
+    if (busy) return
     setBusy(true)
     try {
       let bytes = doc.bytes
@@ -98,8 +115,8 @@ export default function Annotate({ docs, active, setActive, publish, toast }) {
             <Seg small value={sigTab} onChange={(v) => { setSigTab(v); if (v !== 'type') setSig(null) }} options={[['draw', 'Draw'], ['type', 'Type'], ['upload', 'Upload']]} />
             <div className="mt-4">
               {sigTab === 'draw' && <SigPad onChange={setSig} />}
-              {sigTab === 'type' && <div className="space-y-3"><Field label="Name"><input className="input" value={name} onChange={(e) => setName(e.target.value)} /></Field><div className="grid grid-cols-3 gap-2">{FONTS.map((f, i) => <button key={i} type="button" onClick={() => setFont(i)} className="rounded-xl py-3 text-[22px] border" style={{ fontFamily: f, borderColor: font === i ? 'var(--copper)' : 'var(--border)', background: 'var(--surface)' }}>{name.slice(0, 7) || 'Sign'}</button>)}</div></div>}
-              {sigTab === 'upload' && <div className="space-y-3"><input type="file" accept="image/*" className="input" onChange={(e) => upload(e.target.files[0])} /><label className="flex items-center gap-2 text-[13px] font-semibold"><input type="checkbox" checked={rmBg} onChange={(e) => setRmBg(e.target.checked)} /> Remove white paper background</label></div>}
+              {sigTab === 'type' && <div className="space-y-3"><Field label="Name"><input className="input" maxLength={128} value={name} onChange={(e) => setName(e.target.value)} /></Field><div className="grid grid-cols-3 gap-2">{FONTS.map((f, i) => <button key={i} type="button" onClick={() => setFont(i)} className="rounded-xl py-3 text-[22px] border" style={{ fontFamily: f, borderColor: font === i ? 'var(--copper)' : 'var(--border)', background: 'var(--surface)' }}>{name.slice(0, 7) || 'Sign'}</button>)}</div></div>}
+              {sigTab === 'upload' && <div className="space-y-3"><input type="file" accept="image/*" className="input" onChange={(e) => { upload(e.target.files[0]); e.target.value = '' }} /><label className="flex items-center gap-2 text-[13px] font-semibold"><input type="checkbox" checked={rmBg} onChange={(e) => setRmBg(e.target.checked)} /> Remove white paper background</label></div>}
             </div>
             {sig && <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-4 rounded-xl p-3 grid place-items-center" style={{ background: '#fff', border: '1px dashed var(--border)' }}><img src={sig.url} alt="" style={{ maxHeight: 70 }} /></motion.div>}
             <Btn className="w-full mt-4" icon="plus" onClick={addSig} disabled={!sig}>Place on page {pg + 1}</Btn>
@@ -109,7 +126,7 @@ export default function Annotate({ docs, active, setActive, publish, toast }) {
         )}
         <Panel delay={0.12}>
           <div className="text-[12.5px] mb-3" style={{ color: 'var(--muted)' }}>{places.length} signature{places.length === 1 ? '' : 's'} · {nRed} redaction{nRed === 1 ? '' : 's'}</div>
-          <Btn primary className="w-full" icon="download" busy={busy} disabled={!places.length && !nRed} onClick={run}>Build PDF</Btn>
+          <Btn primary className="w-full" icon="download" busy={busy} disabled={busy || (!places.length && !nRed)} onClick={run}>Build PDF</Btn>
         </Panel>
       </div>
     </div>

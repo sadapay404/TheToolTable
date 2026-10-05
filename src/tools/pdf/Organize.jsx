@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Panel, Label, Btn, KIco, SPRING, Empty, Bar } from '../kit/ui.jsx'
 import { Thumb } from './shared.jsx'
-import { buildOrganized, extractPages } from '../../lib/pdf/engine.js'
+import { buildOrganized, extractPages, MAX_PDF_PAGES } from '../../lib/pdf/engine.js'
 
 export default function Organize({ docs, pages, setPages, publish, toast }) {
   const [sel, setSel] = useState(new Set()), [drag, setDrag] = useState(null), [busy, setBusy] = useState(0)
@@ -15,6 +15,16 @@ export default function Organize({ docs, pages, setPages, publish, toast }) {
   const drop = (to) => { if (drag == null || drag === to) return; upd((p) => { const a = [...p], [m] = a.splice(drag, 1); a.splice(to, 0, m); return a }); setDrag(null) }
   const uid = () => Math.random().toString(36).slice(2, 9)
   const run = async (fn, name, note) => { setBusy(0.02); try { const bytes = await fn(); publish(bytes, name, note, true) } catch (e) { toast(e.message || 'Failed', 'err') } finally { setBusy(0) } }
+  const duplicateSelected = () => {
+    const count = pages.filter((p) => sel.has(p.id)).length
+    if (!count) return
+    if (pages.length + count > MAX_PDF_PAGES) return toast(`A document can contain up to ${MAX_PDF_PAGES.toLocaleString()} pages.`, 'err')
+    upd((p) => p.flatMap((x) => (sel.has(x.id) ? [x, { ...x, id: uid() }] : [x]))); setSel(new Set())
+  }
+  const addBlank = () => {
+    if (pages.length >= MAX_PDF_PAGES) return toast(`A document can contain up to ${MAX_PDF_PAGES.toLocaleString()} pages.`, 'err')
+    upd((p) => { const i = p.findIndex((x) => sel.has(x.id)); const a = [...p]; a.splice(i < 0 ? a.length : i + 1, 0, { id: uid(), blank: true, rot: 0, w: 595.28, h: 841.89 }); return a })
+  }
   const exportAll = () => run(() => buildOrganized(docs, pages, setBusy), docs.length > 1 ? 'merged.pdf' : (docs[0]?.name || 'document').replace(/\.pdf$/i, '') + '_edited.pdf', `${pages.length} pages`)
   const exportSel = () => run(() => buildOrganized(docs, pages.filter((p) => sel.has(p.id)), setBusy), 'extracted_pages.pdf', `${sel.size} pages extracted`)
   if (!pages.length) return <Panel><Empty icon="layers" title="No pages yet" sub="Add PDFs above. Several files merge into one; drag pages to reorder." /></Panel>
@@ -24,14 +34,14 @@ export default function Organize({ docs, pages, setPages, publish, toast }) {
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-[12.5px] font-semibold mr-1" style={{ color: 'var(--muted)' }}>{sel.size ? `${sel.size} selected` : `${pages.length} pages`}</span>
           <Btn small icon="check" onClick={() => setSel(sel.size === pages.length ? new Set() : new Set(pages.map((p) => p.id)))}>{sel.size === pages.length ? 'None' : 'All'}</Btn>
-          <Btn small icon="rotate" onClick={() => act(ids, (x) => ({ ...x, rot: (x.rot + 90) % 360 }))}>Rotate</Btn>
-          <Btn small icon="copy" disabled={!sel.size} onClick={() => { upd((p) => p.flatMap((x) => (sel.has(x.id) ? [x, { ...x, id: uid() }] : [x]))); setSel(new Set()) }}>Duplicate</Btn>
-          <Btn small icon="plus" onClick={() => upd((p) => { const i = p.findIndex((x) => sel.has(x.id)); const a = [...p]; a.splice(i < 0 ? a.length : i + 1, 0, { id: uid(), blank: true, rot: 0, w: 595.28, h: 841.89 }); return a })}>Blank page</Btn>
-          <Btn small icon="arrowDown" onClick={() => upd((p) => [...p].reverse())}>Reverse</Btn>
-          <Btn small icon="trash" danger disabled={!sel.size} onClick={() => { upd((p) => p.filter((x) => !sel.has(x.id))); setSel(new Set()) }}>Delete</Btn>
+          <Btn small icon="rotate" disabled={busy > 0} onClick={() => act(ids, (x) => ({ ...x, rot: (x.rot + 90) % 360 }))}>Rotate</Btn>
+          <Btn small icon="copy" disabled={!sel.size || busy > 0} onClick={duplicateSelected}>Duplicate</Btn>
+          <Btn small icon="plus" disabled={pages.length >= MAX_PDF_PAGES || busy > 0} onClick={addBlank}>Blank page</Btn>
+          <Btn small icon="arrowDown" disabled={busy > 0} onClick={() => upd((p) => [...p].reverse())}>Reverse</Btn>
+          <Btn small icon="trash" danger disabled={!sel.size || busy > 0} onClick={() => { upd((p) => p.filter((x) => !sel.has(x.id))); setSel(new Set()) }}>Delete</Btn>
           <span className="flex-1" />
-          <Btn small icon="scissors" disabled={!sel.size} onClick={exportSel}>Extract selected</Btn>
-          <Btn primary icon="download" busy={busy > 0} onClick={exportAll} disabled={!pages.length}>Build PDF</Btn>
+          <Btn small icon="scissors" disabled={!sel.size || busy > 0} onClick={exportSel}>Extract selected</Btn>
+          <Btn primary icon="download" busy={busy > 0} onClick={exportAll} disabled={!pages.length || busy > 0}>Build PDF</Btn>
         </div>
         {busy > 0 && <div className="mt-3"><Bar value={busy * 100} label="Assembling pages — originals are copied, never recompressed" /></div>}
       </Panel>

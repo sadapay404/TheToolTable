@@ -23,16 +23,10 @@ jobs:
       - uses: swatinem/rust-cache@v2
         with: { workspaces: src-tauri }
       - run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Fetch yt-dlp + ffmpeg sidecars (bundled so users install nothing)
-        id: sidecars
-        continue-on-error: true
+      - name: Fetch yt-dlp + ffmpeg sidecars (required for the Windows downloader)
         run: node scripts/fetch-sidecars.mjs
-      - name: Build installer (with bundled downloader)
-        if: steps.sidecars.outcome == 'success'
+      - name: Build installer with the bundled downloader
         run: npx tauri build --config src-tauri/tauri.sidecars.conf.json
-      - name: Build installer (downloader sidecars unavailable)
-        if: steps.sidecars.outcome != 'success'
-        run: npx tauri build
       - uses: actions/upload-artifact@v4
         with:
           name: TheToolTable-Windows

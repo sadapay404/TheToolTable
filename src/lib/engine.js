@@ -166,9 +166,21 @@ function tauriRunner() {
 
 /* ====================================== selection ====================================== */
 
-const isTauri = typeof window !== 'undefined' && !!(window.__TAURI_INTERNALS__ || window.__TAURI__)
-const isAndroidNative = typeof window !== 'undefined' && !!window.__TTT_ANDROID_RUNNER__ // injected by the Android shell (Phase 2)
+export function selectEngine({ tauri = false, android = false, androidRunner, desktopRunner = tauriRunner } = {}) {
+  if (android && androidRunner) return nativeEngine(androidRunner, 'android')
+  // Android builds do not bundle the desktop sidecars. Use the configurable HTTP companion
+  // instead of reporting a nonexistent yt-dlp binary as a built-in engine.
+  if (tauri && !android) return nativeEngine(desktopRunner(), 'desktop')
+  return httpEngine
+}
 
-export const engine = isAndroidNative
-  ? nativeEngine(window.__TTT_ANDROID_RUNNER__, 'android')
-  : isTauri ? nativeEngine(tauriRunner(), 'desktop') : httpEngine
+const isTauri = typeof window !== 'undefined' && !!(window.__TAURI_INTERNALS__ || window.__TAURI__)
+const userAgent = typeof navigator !== 'undefined' ? navigator.userAgent || '' : ''
+export const isAndroidPlatform = /android/i.test(userAgent)
+export const isAndroidTauri = isTauri && (isAndroidPlatform || !!window.__TTT_ANDROID_RUNNER__)
+
+export const engine = selectEngine({
+  tauri: isTauri,
+  android: isAndroidTauri,
+  androidRunner: isAndroidTauri ? window.__TTT_ANDROID_RUNNER__ : undefined,
+})

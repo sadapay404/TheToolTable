@@ -24,23 +24,35 @@ export const blank = (over = {}) => ({
   status: 'draft', created: Date.now(),
   ...over,
 })
-export const num = (v) => { const n = parseFloat(String(v).replace(/,/g, '')); return Number.isFinite(n) ? n : 0 }
+export const num = (v) => {
+  if (v == null || String(v).trim() === '') return 0
+  const raw = typeof v === 'string' ? v.replace(/,/g, '').trim() : v
+  const n = Number(raw)
+  return Number.isFinite(n) ? n : 0
+}
 export function totals(inv) {
-  const sub = inv.items.reduce((s, it) => s + num(it.qty) * num(it.price), 0)
-  const disc = inv.discType === 'pct' ? (sub * Math.min(100, num(inv.disc))) / 100 : Math.min(sub, num(inv.disc))
-  const base = sub - disc, r = num(inv.taxRate) / 100
-  const tax = inv.taxMode === 'included' ? base - base / (1 + r) : base * r
-  const total = (inv.taxMode === 'included' ? base : base + tax) + num(inv.shipping)
-  const isReceipt = inv.type === 'receipt', paid = isReceipt && !num(inv.paid) ? total : num(inv.paid)
-  const balance = ['invoice', 'proforma'].includes(inv.type) ? total - paid : total
+  const items = Array.isArray(inv?.items) ? inv.items.slice(0, 200) : []
+  const sub = items.reduce((s, it) => s + Math.min(1_000_000, Math.max(0, num(it?.qty))) * Math.min(1e12, Math.max(0, num(it?.price))), 0)
+  const discount = Math.min(1e20, Math.max(0, num(inv?.disc)))
+  const disc = inv?.discType === 'pct' ? (sub * Math.min(100, discount)) / 100 : Math.min(sub, discount)
+  const base = sub - disc, r = Math.min(100, Math.max(0, num(inv?.taxRate))) / 100
+  const tax = inv?.taxMode === 'included' ? base - base / (1 + r) : base * r
+  const total = (inv?.taxMode === 'included' ? base : base + tax) + Math.min(1e20, Math.max(0, num(inv?.shipping)))
+  const isReceipt = inv?.type === 'receipt', paidInput = Math.min(1e20, Math.max(0, num(inv?.paid))), paid = isReceipt && !paidInput ? total : paidInput
+  const balance = ['invoice', 'proforma'].includes(inv?.type) ? total - paid : total
   return { sub, disc, tax, total, paid, balance }
 }
 const grp = (s, mode) => (mode === 'sa' ? s.replace(/\B(?=(\d{2})+(?!\d))/g, ',') : s.replace(/\B(?=(\d{3})+(?!\d))/g, ','))
-export function money(n, inv, symbol = true) {
-  const d = inv.decimals, neg = n < 0, [i, f] = Math.abs(n).toFixed(d).split('.')
-  const body = (inv.grouping === 'sa' ? grp(i.length > 3 ? i.slice(0, -3).replace(/\B(?=(\d{2})+(?!\d))/g, ',') + ',' + i.slice(-3) : i, 'x') : grp(i, 'intl')) + (f ? '.' + f : '')
-  const sym = CURRENCIES.find((c) => c[0] === inv.cur)?.[1] || inv.cur
-  return (neg ? '-' : '') + (symbol ? sym + (sym.length > 1 || /[A-Z]/.test(sym) ? ' ' : '') : '') + body
+export function money(n, inv = {}, symbol = true) {
+  const d = Number.isInteger(Number(inv.decimals)) ? Math.min(4, Math.max(0, Number(inv.decimals))) : 2
+  const value = Number.isFinite(Number(n)) ? Number(n) : 0
+  const neg = value < 0, [i, f] = Math.abs(value).toFixed(d).split('.')
+  const integer = inv.grouping === 'sa'
+    ? (i.length > 3 ? i.slice(0, -3).replace(/\B(?=(\d{2})+(?!\d))/g, ',') + ',' + i.slice(-3) : i)
+    : grp(i, 'intl')
+  const body = integer + (f ? '.' + f : '')
+  const sym = CURRENCIES.find((c) => c[0] === inv.cur)?.[1] || (typeof inv.cur === 'string' ? inv.cur.slice(0, 12) : '')
+  return (neg ? '-' : '') + (symbol && sym ? sym + (sym.length > 1 || /[A-Z]/.test(sym) ? ' ' : '') : '') + body
 }
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1)
 export function inWords(n, inv) {

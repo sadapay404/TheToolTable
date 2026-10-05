@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Panel, Label, Stage, Stepper, PrimaryBtn, Burst, ChipRow, Switch, Range, usePersist, useLog, rnd, weighted, sfx, SPRING, CountText } from './parts.jsx'
+import { Panel, Label, Stage, Stepper, PrimaryBtn, Burst, ChipRow, Switch, Range, usePersist, useLog, useSafeTimeout, rnd, weighted, sfx, SPRING, CountText } from './parts.jsx'
 
 const PIPS = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] }
 // rotation that brings face v to the front: [rx, ry]
@@ -37,6 +37,7 @@ function Token({ value, faces, rolling, size, delay }) {
 
 export default function Dice() {
   const log = useLog()
+  const schedule = useSafeTimeout()
   const [o, setO] = usePersist('dice', { n: 2, faces: 6, mod: 0, loaded: false, fav: 6, power: 3 })
   const upd = (p) => setO((s) => ({ ...s, ...p }))
   const [dice, setDice] = useState([{ v: 5, rot: { x: 0, y: 90 } }, { v: 3, rot: { x: -90, y: 0 } }])
@@ -58,7 +59,7 @@ export default function Dice() {
       return { v, rot: { x: Math.ceil(d.rot.x / 360) * 360 + 720 + rnd(2) * 360 + bx, y: Math.ceil(d.rot.y / 360) * 360 + 720 + rnd(2) * 360 + by }, rolling: true }
     })
     setDice(next)
-    setTimeout(() => {
+    schedule(() => {
       sfx('thud'); setBusy(false); setDice((ds) => ds.map((d) => ({ ...d, rolling: false })))
       const sum = next.reduce((a, d) => a + d.v, 0) + o.mod
       setBurst(Date.now()); sfx('ding')

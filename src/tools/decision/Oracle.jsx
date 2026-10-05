@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Panel, Label, Seg, Stage, PrimaryBtn, Burst, Switch, usePersist, useLog, rnd, sfx, SPRING } from './parts.jsx'
+import { Panel, Label, Seg, Stage, PrimaryBtn, Burst, Switch, usePersist, useLog, useSafeTimeout, rnd, sfx, SPRING } from './parts.jsx'
 
 const BALL = [
   ['It is certain.', 'y'], ['Without a doubt.', 'y'], ['Yes — definitely.', 'y'], ['You may rely on it.', 'y'], ['Most likely.', 'y'], ['Outlook good.', 'y'], ['Signs point to yes.', 'y'], ['Yes.', 'y'],
@@ -11,6 +11,7 @@ const TONE = { y: '#2F9C6B', m: '#C98A1C', n: '#C3423F' }
 
 export default function Oracle() {
   const log = useLog()
+  const schedule = useSafeTimeout()
   const [o, setO] = usePersist('oracle', { mode: 'yn', q: '', maybe: false })
   const upd = (p) => setO((s) => ({ ...s, ...p }))
   const [yn, setYn] = useState({ rot: 0, ans: null })
@@ -25,13 +26,13 @@ export default function Oracle() {
     const a = o.maybe ? rnd(3) : rnd(2) // 0 yes,1 no,2 maybe
     const cur = yn.rot, base = Math.ceil(cur / 360) * 360
     setYn({ rot: base + 1080 + [0, 180, 90][a], ans: null })
-    setTimeout(() => { setYn((s) => ({ ...s, ans: ['Yes', 'No', 'Maybe'][a] })); setBusy(false); setBurst(Date.now()); sfx('ding'); log('oracle', `${o.q.trim() ? o.q.trim() + ' → ' : 'Oracle → '}${['Yes', 'No', 'Maybe'][a]}`) }, 1800)
+    schedule(() => { setYn((s) => ({ ...s, ans: ['Yes', 'No', 'Maybe'][a] })); setBusy(false); setBurst(Date.now()); sfx('ding'); log('oracle', `${o.q.trim() ? o.q.trim() + ' → ' : 'Oracle → '}${['Yes', 'No', 'Maybe'][a]}`) }, 1800)
   }
   const askBall = () => {
     if (busy) return
     setBusy(true); setBall(null); setShake((s) => s + 1); sfx('thud')
     const a = BALL[rnd(BALL.length)]
-    setTimeout(() => { setBall({ t: a[0], c: TONE[a[1]], k: Date.now() }); setBusy(false); sfx('ding'); log('oracle', `${o.q.trim() ? o.q.trim() + ' → ' : '8-ball → '}${a[0]}`) }, 1500)
+    schedule(() => { setBall({ t: a[0], c: TONE[a[1]], k: Date.now() }); setBusy(false); sfx('ding'); log('oracle', `${o.q.trim() ? o.q.trim() + ' → ' : '8-ball → '}${a[0]}`) }, 1500)
   }
   const faceBg = (c1, c2) => `radial-gradient(circle at 34% 28%, ${c1}, ${c2})`
 

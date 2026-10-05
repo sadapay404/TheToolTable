@@ -6,16 +6,32 @@ import { stats, fleschLabel, CASES, CLEAN, EXTRACT, ENCODE, findRe, diff, romanT
 const TABS = [['write', 'Write & count', 'text'], ['tools', 'Transform', 'wand'], ['find', 'Find & replace', 'search'], ['diff', 'Compare', 'layers'], ['urdu', 'Urdu · Roman', 'lang']]
 const SAMPLE = 'Writing is thinking made visible. Paste or type anything here and the table will count it, tidy it, and turn it into whatever shape you need.\n\nاردو بھی بالکل ٹھیک چلتی ہے — دائیں سے بائیں۔'
 
+const MAX_TEXT_FILE_BYTES = 5 * 1024 * 1024
+async function copyText(value, toast, label = 'Copied') {
+  try { if (!navigator.clipboard?.writeText) throw new Error(); await navigator.clipboard.writeText(value); toast(label) }
+  catch { toast('Clipboard access is unavailable. Select the text and copy it manually.', 'err') }
+}
+async function pasteText(setText, toast) {
+  try { if (!navigator.clipboard?.readText) throw new Error(); setText(await navigator.clipboard.readText()) }
+  catch { toast('Paste with Ctrl+V or allow clipboard access.', 'err') }
+}
+
 function Editor({ text, setText, undo, canUndo, rtl, toast }) {
   const ref = useRef(null)
   return (
     <Panel className="!p-4 sm:!p-5">
       <textarea ref={ref} dir="auto" value={text} onChange={(e) => setText(e.target.value, true)} placeholder="Type, paste, or drop a .txt file here…" spellCheck rows={16} className="input w-full" style={{ lineHeight: 1.75, fontSize: 15.5, minHeight: 320, textAlign: rtl ? 'right' : undefined, fontFamily: rtl ? '"Noto Nastaliq Urdu","Noto Naskh Arabic",Inter,sans-serif' : undefined }}
-        onDrop={async (e) => { const f = e.dataTransfer.files[0]; if (f) { e.preventDefault(); setText(await f.text()) } }} onDragOver={(e) => e.preventDefault()} />
+        onDrop={async (e) => {
+          e.preventDefault()
+          const f = e.dataTransfer.files[0]
+          if (!f) return
+          if (f.size > MAX_TEXT_FILE_BYTES) return toast('Choose a text file smaller than 5 MB.', 'err')
+          try { setText(await f.text()) } catch { toast('Could not read that text file.', 'err') }
+        }} onDragOver={(e) => e.preventDefault()} />
       <div className="flex flex-wrap gap-2 mt-3">
         <Btn small icon="undo" disabled={!canUndo} onClick={undo}>Undo</Btn>
-        <Btn small icon="copy" disabled={!text} onClick={() => navigator.clipboard.writeText(text).then(() => toast('Copied'))}>Copy</Btn>
-        <Btn small icon="file" onClick={() => navigator.clipboard.readText().then((t) => setText(t)).catch(() => toast('Paste with Ctrl+V', 'err'))}>Paste</Btn>
+        <Btn small icon="copy" disabled={!text} onClick={() => copyText(text, toast)}>Copy</Btn>
+        <Btn small icon="file" onClick={() => pasteText(setText, toast)}>Paste</Btn>
         <Btn small icon="download" disabled={!text} onClick={() => save(new Blob([text], { type: 'text/plain;charset=utf-8' }), 'text.txt')}>Save .txt</Btn>
         <Btn small icon="trash" danger disabled={!text} onClick={() => setText('')}>Clear</Btn>
         {!text && <Btn small icon="wand" onClick={() => setText(SAMPLE)}>Try sample</Btn>}
@@ -61,7 +77,7 @@ function Tools({ text, setText, toast }) {
       <Panel delay={0.15}>
         <Label>Pull out</Label>
         <Chips small value={ext?.[0]} onChange={(k) => setExt(EXTRACT.find((x) => x[0] === k))} options={EXTRACT.map(([k, l]) => [k, l])} />
-        <AnimatePresence>{ext && <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden"><div className="pt-4"><div className="text-[12.5px] font-semibold mb-2">{found.length} found</div>{found.length > 0 && <><div className="max-h-40 overflow-auto rounded-xl border border-line p-3 text-[13px] mono" style={{ background: 'var(--surface2)' }}>{found.map((f) => <div key={f}>{f}</div>)}</div><div className="flex gap-2 mt-3"><Btn small icon="copy" onClick={() => navigator.clipboard.writeText(found.join('\n')).then(() => toast('Copied list'))}>Copy list</Btn><Btn small icon="text" onClick={() => setText(found.join('\n'))}>Replace text with list</Btn></div></>}</div></motion.div>}</AnimatePresence>
+        <AnimatePresence>{ext && <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden"><div className="pt-4"><div className="text-[12.5px] font-semibold mb-2">{found.length} found</div>{found.length > 0 && <><div className="max-h-40 overflow-auto rounded-xl border border-line p-3 text-[13px] mono" style={{ background: 'var(--surface2)' }}>{found.map((f) => <div key={f}>{f}</div>)}</div><div className="flex gap-2 mt-3"><Btn small icon="copy" onClick={() => copyText(found.join('\n'), toast, 'Copied list')}>Copy list</Btn><Btn small icon="text" onClick={() => setText(found.join('\n'))}>Replace text with list</Btn></div></>}</div></motion.div>}</AnimatePresence>
       </Panel>
     </div>
   )
@@ -104,7 +120,7 @@ function Diff({ toast }) {
             <div className="flex gap-4 mb-3 text-[13px] font-semibold"><span style={{ color: '#2F9E6B' }}>+{add} added</span><span style={{ color: '#C3423F' }}>−{del} removed</span>{!add && !del && <span style={{ color: 'var(--muted)' }}>Identical</span>}</div>
             <div dir="auto" className="rounded-xl border border-line p-4 text-[14px] leading-[1.9] whitespace-pre-wrap max-h-[420px] overflow-auto" style={{ background: 'var(--surface2)' }}>{d.map((x, i) => x.t === '=' ? <span key={i}>{x.s}</span> : x.t === '+' ? <ins key={i} className="rounded px-0.5 no-underline" style={{ background: 'rgba(47,158,107,.22)' }}>{x.s}</ins> : <del key={i} className="rounded px-0.5" style={{ background: 'rgba(195,66,63,.2)', color: '#9b2f2d' }}>{x.s}</del>)}</div>
           </>
-        ) : <Empty icon="layers" title="Paste two versions" sub="Added words are green, removed words are red." />}
+        ) : <Empty icon="layers" title={a || b ? 'Text is too large to compare' : 'Paste two versions'} sub={a || b ? 'Reduce the input to 250,000 characters and fewer than 12,000 lines for a bounded diff.' : 'Added words are green, removed words are red.'} />}
       </Panel>
     </div>
   )
@@ -121,7 +137,7 @@ function Urdu({ toast }) {
         <div className="text-[12px] mt-3" style={{ color: 'var(--muted)' }}>Roman Urdu has no fixed spelling, so this is a smart guess: about 150 common words are exact, the rest follow sound rules. Always proofread.</div>
       </Panel>
       <Panel delay={0.08}>
-        <Label right={<div className="flex gap-2"><Btn small icon="copy" disabled={!out} onClick={() => navigator.clipboard.writeText(out).then(() => toast('Copied'))}>Copy</Btn><Btn small icon="arrowUp" disabled={!out} onClick={() => { setT(out); setDir(dir === 'r2u' ? 'u2r' : 'r2u') }}>Use as input</Btn></div>}>{dir === 'r2u' ? 'Urdu script' : 'Roman Urdu'}</Label>
+        <Label right={<div className="flex gap-2"><Btn small icon="copy" disabled={!out} onClick={() => copyText(out, toast)}>Copy</Btn><Btn small icon="arrowUp" disabled={!out} onClick={() => { setT(out); setDir(dir === 'r2u' ? 'u2r' : 'r2u') }}>Use as input</Btn></div>}>{dir === 'r2u' ? 'Urdu script' : 'Roman Urdu'}</Label>
         <div dir="auto" className="rounded-xl border border-line p-4 min-h-[240px] whitespace-pre-wrap text-[18px]" style={{ background: 'var(--surface2)', lineHeight: 2.1, fontFamily: dir === 'r2u' ? '"Noto Nastaliq Urdu","Noto Naskh Arabic",Inter,sans-serif' : undefined }}>{out || <span style={{ color: 'var(--muted)' }}>Your conversion appears here</span>}</div>
       </Panel>
     </div>

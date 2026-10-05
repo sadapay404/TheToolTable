@@ -1,7 +1,14 @@
 /* Content types → QR payload strings. */
 const t = (s) => (s ?? '').toString().trim()
-const digits = (s) => t(s).replace(/[^\d+]/g, '')
-const urlish = (s) => { s = t(s); if (!s) return ''; return /^[a-z][a-z0-9+.-]*:/i.test(s) ? s : 'https://' + s }
+const digits = (s) => { const raw = t(s); return (raw.startsWith('+') ? '+' : '') + raw.replace(/\D/g, '') }
+const urlish = (s) => {
+  s = t(s)
+  if (!s) return ''
+  if (/^https?:\/\//i.test(s)) return s
+  // Website fields must not turn script, local-file, or arbitrary app URIs into openable links.
+  if (/^[a-z][a-z0-9+.-]*:/i.test(s)) return ''
+  return 'https://' + s
+}
 const wifiEsc = (s) => t(s).replace(/([\\;,:"])/g, '\\$1')
 const vEsc = (s) => t(s).replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\\;')
 const pad2 = (n) => String(n).padStart(2, '0')
@@ -21,7 +28,16 @@ export const GROUPS = [['web', 'Web'], ['contact', 'People'], ['place', 'Place &
 
 export const TYPES = [
   { id: 'url', g: 'web', label: 'Website', icon: 'link', hint: 'Any web address.', fields: [{ k: 'url', label: 'Web address', ph: 'example.com/menu', req: 1 }, { k: 'utm', label: 'Add campaign tracking (UTM)', type: 'check' }, { k: 'src', label: 'Source', ph: 'poster', show: (v) => v.utm }, { k: 'med', label: 'Medium', ph: 'qr', show: (v) => v.utm }, { k: 'cam', label: 'Campaign', ph: 'spring-sale', show: (v) => v.utm }], def: { url: 'https://thetooltable.app', utm: false, src: '', med: 'qr', cam: '' },
-    build: (v) => { let u = urlish(v.url); if (u && v.utm) { const q = qs({ utm_source: v.src || 'qr', utm_medium: v.med || 'qr', utm_campaign: v.cam }); u += (u.includes('?') ? '&' : '?') + q } return u } },
+    build: (v) => {
+      let u = urlish(v.url)
+      if (u && v.utm) {
+        const hashAt = u.indexOf('#'), hash = hashAt >= 0 ? u.slice(hashAt) : ''
+        const base = hashAt >= 0 ? u.slice(0, hashAt) : u
+        const q = qs({ utm_source: v.src || 'qr', utm_medium: v.med || 'qr', utm_campaign: v.cam })
+        if (q) u = base + (/\?$|&$/.test(base) ? '' : base.includes('?') ? '&' : '?') + q + hash
+      }
+      return u
+    } },
   { id: 'youtube', g: 'web', label: 'YouTube', icon: 'play', fields: [{ k: 'kind', label: 'Type', type: 'seg', opts: [['video', 'Video'], ['channel', 'Channel'], ['playlist', 'Playlist']] }, { k: 'id', label: 'Video ID / handle / link', ph: 'dQw4w9WgXcQ', req: 1 }, { k: 'start', label: 'Start at (seconds)', ph: '0', show: (v) => v.kind === 'video' }], def: { kind: 'video', id: 'dQw4w9WgXcQ', start: '' },
     build: (v) => { const s = t(v.id); if (/^https?:/i.test(s)) return s; if (v.kind === 'channel') return 'https://youtube.com/@' + s.replace(/^@/, ''); if (v.kind === 'playlist') return 'https://youtube.com/playlist?list=' + s; return 'https://www.youtube.com/watch?v=' + s + (t(v.start) ? '&t=' + t(v.start) + 's' : '') } },
   { id: 'social', g: 'web', label: 'Social profile', icon: 'user', fields: [{ k: 'net', label: 'Network', type: 'select', opts: Object.entries(SOCIALS).map(([k, x]) => [k, x[0]]) }, { k: 'user', label: 'Username', ph: 'yourname', req: 1 }], def: { net: 'instagram', user: 'mubashir' },

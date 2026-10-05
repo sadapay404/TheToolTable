@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Panel, Label, Seg, Btn, Drop, Range, Field, Bar, KIco, SPRING, Empty, save, baseName, usePref } from '../kit/ui.jsx'
-import { fmtTime, parseTime, toSrt, toVtt, toTxt, parseSubs, newId } from '../../lib/voice/subs.js'
-import { getFFmpeg } from '../../lib/ffmpeg.js'
+import { fmtTime, parseTime, toSrt, toVtt, toTxt, parseSubs, newId, MAX_SUBTITLE_SECONDS, MAX_SUBTITLE_FILE_CHARS } from '../../lib/voice/subs.js'
+import { getFFmpeg, runFFmpegJob } from '../../lib/ffmpeg.js'
 import { fetchFile } from '@ffmpeg/util'
 
 function TimeInput({ value, onCommit }) {
@@ -15,28 +15,64 @@ export default function Subtitles({ media, segs, setSegs, toast }) {
   useEffect(() => { let id; const tick = () => { if (el.current) setNow(el.current.currentTime); id = requestAnimationFrame(tick) }; id = requestAnimationFrame(tick); return () => cancelAnimationFrame(id) }, [media?.url])
   const activeIdx = segs.findIndex((s) => now >= s.start && now < s.end)
   useEffect(() => { if (activeIdx >= 0 && listRef.current && !el.current?.paused) listRef.current.children[activeIdx]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }) }, [activeIdx])
-  const upd = (id, p) => setSegs((s) => s.map((x) => (x.id === id ? { ...x, ...p } : x)))
-  const seek = (t) => { if (el.current) { el.current.currentTime = t; el.current.play?.() } }
-  const del = (id) => setSegs((s) => s.filter((x) => x.id !== id))
-  const merge = (i) => setSegs((s) => { const a = [...s]; if (!a[i + 1]) return a; a.splice(i, 2, { ...a[i], end: a[i + 1].end, text: (a[i].text + ' ' + a[i + 1].text).trim() }); return a })
-  const split = (i) => setSegs((s) => { const a = [...s], x = a[i], words = x.text.split(/\s+/), h = Math.ceil(words.length / 2), mid = x.start + ((x.end - x.start) * h) / words.length; if (words.length < 2) return a; a.splice(i, 1, { ...x, end: mid, text: words.slice(0, h).join(' ') }, { id: newId(), start: mid, end: x.end, text: words.slice(h).join(' ') }); return a })
-  const add = () => setSegs((s) => [...s, { id: newId(), start: now, end: now + 2.5, text: '' }].sort((a, b) => a.start - b.start))
-  const doShift = () => { setSegs((s) => s.map((x) => ({ ...x, start: Math.max(0, x.start + shift), end: Math.max(0.2, x.end + shift) }))); toast(`Shifted by ${shift > 0 ? '+' : ''}${shift}s`) }
+  const maxTime = Math.max(0.1, Math.min(MAX_SUBTITLE_SECONDS, Number(media?.duration) || MAX_SUBTITLE_SECONDS))
+  const upd = (id, patch) => setSegs((rows) => rows.map((x) => (x.id === id ? { ...x, ...patch } : x)))
+  const commitTime = (segment, field, value) => {
+    if (field === 'start') {
+      const end = Math.min(maxTime, segment.end), start = Math.max(0, Math.min(value, maxTime - 0.05, end - 0.05))
+      upd(segment.id, { start, end: Math.max(start + 0.05, end) })
+    } else upd(segment.id, { end: Math.min(maxTime, Math.max(value, segment.start + 0.05)) })
+  }
+  const seek = (time) => { if (el.current) { el.current.currentTime = Math.max(0, Math.min(Number(time) || 0, Number(media?.duration) || Number(time) || 0)); el.current.play?.().catch?.(() => {}) } }
+  const del = (id) => setSegs((rows) => rows.filter((x) => x.id !== id))
+  const merge = (i) => setSegs((rows) => { const next = [...rows], first = next[i], second = next[i + 1]; if (!first || !second) return next; const start = Math.max(0, Math.min(first.start, maxTime - 0.05)), end = Math.max(start + 0.05, Math.min(maxTime, second.end)); next.splice(i, 2, { ...first, start, end, text: (first.text + ' ' + second.text).trim() }); return next })
+  const split = (i) => setSegs((rows) => { const next = [...rows], segment = next[i], words = String(segment?.text || '').split(/\s+/).filter(Boolean); if (!segment || words.length < 2 || segment.end - segment.start < 0.1) return next; const half = Math.ceil(words.length / 2), middle = segment.start + ((segment.end - segment.start) * half) / words.length; next.splice(i, 1, { ...segment, end: middle, text: words.slice(0, half).join(' ') }, { id: newId(), start: middle, end: segment.end, text: words.slice(half).join(' ') }); return next })
+  const add = () => setSegs((rows) => { const start = Math.min(maxTime - 0.05, Math.max(0, now)), end = Math.min(maxTime, start + 2.5); return [...rows, { id: newId(), start, end, text: '' }].sort((a, b) => a.start - b.start) })
+  const doShift = () => { setSegs((rows) => rows.map((x) => { const span = Math.min(maxTime, Math.max(0.05, x.end - x.start)), start = Math.min(maxTime - span, Math.max(0, x.start + shift)); return { ...x, start, end: start + span } })); toast(`Shifted by ${shift > 0 ? '+' : ''}${shift}s`) }
   const doRep = () => { if (!find) return; let n = 0; setSegs((s) => s.map((x) => { const t = x.text.split(find).join(rep); if (t !== x.text) n++; return { ...x, text: t } })); toast(`${n} line${n === 1 ? '' : 's'} changed`) }
   const body = useMemo(() => (fmt === 'srt' ? toSrt(segs, max) : fmt === 'vtt' ? toVtt(segs, max) : fmt === 'txt' ? toTxt(segs) : JSON.stringify(segs.map(({ start, end, text }) => ({ start, end, text })), null, 2)), [segs, fmt, max])
   const name = baseName(media?.name || 'subtitles')
   const download = () => save(new Blob(['\uFEFF' + body], { type: 'text/plain;charset=utf-8' }), `${name}.${fmt}`)
+  const copy = async () => { try { await navigator.clipboard.writeText(body); toast('Copied to clipboard') } catch { toast('Copy blocked by the browser', 'err') } }
   const doMux = async () => {
+    if (!media?.file || !segs.length || mux > 0) return
+    const subtitleText = toSrt(segs, max)
+    if (!subtitleText.trim()) return toast('Fix the subtitle time ranges before adding them to the video.', 'err')
     setMux(0.02)
     try {
-      const ff = await getFFmpeg(), ext = (media.name.split('.').pop() || 'mp4').toLowerCase(), mp4 = ['mp4', 'm4v', 'mov'].includes(ext), vin = 'in.' + ext, outn = mp4 ? 'out.mp4' : 'out.mkv', h = ({ progress }) => setMux(Math.max(0.03, progress))
-      ff.on('progress', h); await ff.writeFile(vin, await fetchFile(media.file)); await ff.writeFile('subs.srt', new TextEncoder().encode(toSrt(segs, max)))
-      await ff.exec(['-i', vin, '-i', 'subs.srt', '-map', '0:v', '-map', '0:a?', '-map', '1', '-c', 'copy', '-c:s', mp4 ? 'mov_text' : 'srt', outn]); ff.off('progress', h)
-      const d = await ff.readFile(outn); await ff.deleteFile(vin); await ff.deleteFile('subs.srt'); await ff.deleteFile(outn)
-      save(new Blob([d.buffer], { type: mp4 ? 'video/mp4' : 'video/x-matroska' }), `${name}_subtitled.${mp4 ? 'mp4' : 'mkv'}`); toast('Video saved — subtitles are a selectable track, video untouched')
-    } catch (e) { toast('Could not add the subtitle track: ' + String(e.message || e).slice(0, 80), 'err') } finally { setMux(0) }
+      const result = await runFFmpegJob(async () => {
+        const ff = await getFFmpeg(), id = globalThis.crypto?.randomUUID?.().replace(/-/g, '') || `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`
+        const ext = String(media.name || '').match(/\.([a-z0-9]{1,10})$/i)?.[1]?.toLowerCase() || 'bin'
+        const mp4 = ['mp4', 'm4v', 'mov'].includes(ext), vin = `ttt-${id}-in.${ext}`, sin = `ttt-${id}-subs.srt`, outn = `ttt-${id}-out.${mp4 ? 'mp4' : 'mkv'}`
+        const progress = ({ progress }) => { if (Number.isFinite(progress)) setMux(Math.max(0.03, Math.min(0.98, progress))) }
+        ff.on('progress', progress)
+        try {
+          await ff.writeFile(vin, await fetchFile(media.file))
+          await ff.writeFile(sin, new TextEncoder().encode(subtitleText))
+          await ff.exec(['-nostdin', '-v', 'error', '-i', vin, '-i', sin, '-map', '0:v:0', '-map', '0:a?', '-map', '1:0', '-c', 'copy', '-c:s', mp4 ? 'mov_text' : 'srt', outn])
+          const data = await ff.readFile(outn)
+          return { data: new Uint8Array(data).slice(), mp4 }
+        } finally {
+          ff.off('progress', progress)
+          await Promise.all([vin, sin, outn].map(async (path) => { try { await ff.deleteFile(path) } catch {} }))
+        }
+      })
+      const mime = result.mp4 ? 'video/mp4' : 'video/x-matroska', ext = result.mp4 ? 'mp4' : 'mkv'
+      save(new Blob([result.data], { type: mime }), `${name}_subtitled.${ext}`)
+      toast('Video saved — subtitles are a selectable track, video untouched')
+    } catch (error) { toast('Could not add the subtitle track: ' + String(error?.message || error).slice(0, 100), 'err') }
+    finally { setMux(0) }
   }
-  const importFile = async (f) => { const t = await f[0].text(), p = parseSubs(t); if (!p.length) return toast('No subtitle lines found in that file', 'err'); setSegs(p); toast(`${p.length} lines imported`) }
+  const importFile = async (files) => {
+    const file = files?.[0]
+    if (!file) return
+    if (Number(file.size) > MAX_SUBTITLE_FILE_CHARS) return toast('Subtitle files must be 5 MB or smaller.', 'err')
+    try {
+      const parsed = parseSubs(await file.text())
+      if (!parsed.length) return toast('No valid subtitle lines found in that file', 'err')
+      setSegs(parsed); toast(`${parsed.length} lines imported`)
+    } catch (error) { toast(error?.message || 'Could not read that subtitle file.', 'err') }
+  }
   const cur = activeIdx >= 0 ? segs[activeIdx].text : ''
   return (
     <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px] items-start">
@@ -56,7 +92,7 @@ export default function Subtitles({ media, segs, setSegs, toast }) {
               <AnimatePresence initial={false}>{segs.map((s, i) => { const on = i === activeIdx; return (
                 <motion.div key={s.id} layout="position" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, x: -30 }} transition={SPRING} className="rounded-2xl border p-3 flex flex-wrap items-start gap-3" style={{ borderColor: on ? 'var(--copper)' : 'var(--border)', background: on ? 'color-mix(in srgb, var(--copper) 9%, var(--surface))' : 'var(--surface)' }}>
                   <div className="flex items-center gap-2"><button type="button" aria-label="Play from here" onClick={() => seek(s.start)} className="w-8 h-8 rounded-full grid place-items-center shrink-0" style={{ background: on ? 'var(--copper)' : 'var(--surface2)', color: on ? '#fff' : 'var(--copper)' }}><KIco n="play" s={13} /></button><span className="mono text-[11px] font-bold w-5" style={{ color: 'var(--muted)' }}>{i + 1}</span></div>
-                  <div className="flex gap-1.5 shrink-0"><TimeInput value={s.start} onCommit={(v) => upd(s.id, { start: v })} /><TimeInput value={s.end} onCommit={(v) => upd(s.id, { end: v })} /></div>
+                  <div className="flex gap-1.5 shrink-0"><TimeInput value={s.start} onCommit={(v) => commitTime(s, 'start', v)} /><TimeInput value={s.end} onCommit={(v) => commitTime(s, 'end', v)} /></div>
                   <textarea dir="auto" rows={Math.max(1, Math.ceil(s.text.length / 46))} className="input flex-1 basis-full order-last !py-2 resize-none" value={s.text} onChange={(e) => upd(s.id, { text: e.target.value })} placeholder="Subtitle text" />
                   <div className="flex gap-1 shrink-0"><Btn small icon="split" onClick={() => split(i)} title="Split in two" /><Btn small icon="merge" disabled={i >= segs.length - 1} onClick={() => merge(i)} title="Merge with next" /><Btn small icon="trash" danger onClick={() => del(s.id)} title="Delete" /></div>
                 </motion.div>) })}</AnimatePresence>
@@ -68,7 +104,7 @@ export default function Subtitles({ media, segs, setSegs, toast }) {
           <Label>Export</Label>
           <Seg small value={fmt} onChange={setFmt} options={[['srt', 'SRT'], ['vtt', 'VTT'], ['txt', 'Text'], ['json', 'JSON']]} />
           {(fmt === 'srt' || fmt === 'vtt') && <div className="mt-4"><Range label="Characters per line" min={0} max={70} value={max} onChange={setMax} fmt={(v) => (v < 10 ? 'No wrapping' : v)} /></div>}
-          <div className="flex gap-2 mt-4"><Btn primary className="flex-1" icon="download" disabled={!segs.length} onClick={download}>Download .{fmt}</Btn><Btn icon="copy" disabled={!segs.length} onClick={() => navigator.clipboard.writeText(body).then(() => toast('Copied'))} /></div>
+          <div className="flex gap-2 mt-4"><Btn primary className="flex-1" icon="download" disabled={!segs.length} onClick={download}>Download .{fmt}</Btn><Btn icon="copy" disabled={!segs.length} onClick={copy} /></div>
           {media?.kind === 'video' && <div className="mt-4 pt-4 border-t border-line">{mux > 0 && <div className="mb-3"><Bar value={mux * 100} label="Adding the subtitle track" /></div>}<Btn className="w-full" icon="play" disabled={!segs.length || mux > 0} onClick={doMux}>Save video with subtitles</Btn><div className="text-[11.5px] mt-2" style={{ color: 'var(--muted)' }}>Adds a selectable subtitle track. The video is copied, not re-encoded.</div></div>}
         </Panel>
         <Panel delay={0.09}>

@@ -22,7 +22,8 @@ export default function QRStudio() {
   const [media, setMedia] = useState({ dots: null, bg: null, logo: null })
   const style = useMemo(() => { const s = withDefaults(styleRaw); return { ...s, dots: { ...s.dots, image: media.dots }, bg: { ...s.bg, image: media.bg }, logo: { ...s.logo, upload: media.logo } } }, [styleRaw, media])
   const setStyle = useCallback((fn) => {
-    const next = typeof fn === 'function' ? fn(style) : fn
+    const candidate = typeof fn === 'function' ? fn(style) : fn
+    const next = withDefaults(candidate)
     setMedia({ dots: next.dots.image || null, bg: next.bg.image || null, logo: next.logo.upload || null })
     setStyleRaw(lightStyle(next))
   }, [style, setStyleRaw])

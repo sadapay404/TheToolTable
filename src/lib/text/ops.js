@@ -50,17 +50,29 @@ export const ENCODE = [
 ]
 
 /* ---------- find & replace ---------- */
-export function findRe(q, { regex, cs, whole }) {
+export function findRe(q, { regex = false, cs = false, whole = false } = {}) {
   if (!q) return null
-  let src = regex ? q : q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); if (whole) src = `(?<![\\p{L}\\p{N}_])(?:${src})(?![\\p{L}\\p{N}_])`
+  if (typeof q !== 'string' || q.length > 1_024) throw new RangeError('Search patterns must be 1,024 characters or shorter.')
+  if (regex && /\([^)]*[+*{][^)]*\)\s*[+*{]/.test(q)) throw new RangeError('Nested repetition can make a regular expression freeze the editor. Simplify that pattern.')
+  let src = regex ? q : q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  if (whole) src = `(?<![\\p{L}\\p{N}_])(?:${src})(?![\\p{L}\\p{N}_])`
   return new RegExp(src, 'gu' + (cs ? '' : 'i'))
 }
 
 /* ---------- diff (word level, LCS) ---------- */
+export const MAX_DIFF_CHARS = 250_000
+export const MAX_DIFF_CELLS = 9_000_000
+const countLines = (s) => { let n = 1; for (let i = 0; i < s.length; i++) if (s.charCodeAt(i) === 10) n++; return n }
 export function diff(a, b, mode = 'words') {
+  if (typeof a !== 'string' || typeof b !== 'string' || a.length + b.length > MAX_DIFF_CHARS) return null
+  if (a === b) return a ? [{ t: '=', s: a }] : []
+  if (!a) return [{ t: '+', s: b }]
+  if (!b) return [{ t: '-', s: a }]
+  if (mode === 'lines' && countLines(a) + countLines(b) > 12_000) return null
   const tok = (s) => (mode === 'lines' ? s.split('\n').map((x, i, arr) => x + (i < arr.length - 1 ? '\n' : '')) : s.match(/\s+|[^\s]+/g) || [])
   const A = tok(a), B = tok(b), n = A.length, m = B.length
-  if (n * m > 9e6) return mode === 'lines' ? null : diff(a, b, 'lines')
+  if (n + m > 100_000) return mode === 'lines' ? null : diff(a, b, 'lines')
+  if (n * m > MAX_DIFF_CELLS) return mode === 'lines' ? null : diff(a, b, 'lines')
   const w = m + 1, dp = new Uint16Array((n + 1) * w)
   for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) dp[i * w + j] = A[i] === B[j] ? dp[(i + 1) * w + j + 1] + 1 : Math.max(dp[(i + 1) * w + j], dp[i * w + j + 1])
   const out = []; let i = 0, j = 0

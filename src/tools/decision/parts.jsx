@@ -1,23 +1,15 @@
-import React, { createContext, useContext, useEffect, useRef, useState } from 'react'
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { normalizeDecisionState, randomFraction, randomIndex, shuffleSecure, weightedIndex } from '../../lib/decision.js'
 export { SPRING } from '../exchange/parts.jsx'
 export { Panel, Label, Seg, CountText } from '../exchange/parts.jsx'
 import { SPRING } from '../exchange/parts.jsx'
 
 /* ------------------------------------------------ randomness (crypto-grade, unbiased) ------------------------------------------------ */
-export function rnd(n) {
-  if (n <= 1) return 0
-  const lim = Math.floor(0x100000000 / n) * n, a = new Uint32Array(1)
-  do { crypto.getRandomValues(a) } while (a[0] >= lim)
-  return a[0] % n
-}
-export const rndf = () => { const a = new Uint32Array(1); crypto.getRandomValues(a); return a[0] / 0x100000000 }
-export function weighted(weights) {
-  const tot = weights.reduce((a, b) => a + b, 0); let x = rndf() * tot
-  for (let i = 0; i < weights.length; i++) { x -= weights[i]; if (x < 0) return i }
-  return weights.length - 1
-}
-export const shuffle = (arr) => { const a = [...arr]; for (let i = a.length - 1; i > 0; i--) { const j = rnd(i + 1);[a[i], a[j]] = [a[j], a[i]] } return a }
+export const rnd = randomIndex
+export const rndf = randomFraction
+export const weighted = weightedIndex
+export const shuffle = shuffleSecure
 
 /* ------------------------------------------------ sound ------------------------------------------------ */
 let ac = null, soundOn = true
@@ -40,10 +32,36 @@ export function sfx(kind = 'tick', pitch = 1) {
 /* ------------------------------------------------ persistence + shared log ------------------------------------------------ */
 const lsGet = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v ?? d } catch { return d } }
 export function usePersist(key, init) {
-  const [v, setV] = useState(() => { const s = lsGet('ttt.dh.' + key, null); return s && typeof s === 'object' && !Array.isArray(s) && init && typeof init === 'object' && !Array.isArray(init) ? { ...init, ...s } : s ?? init })
+  const initRef = useRef(init)
+  const [v, setV] = useState(() => {
+    const saved = lsGet('ttt.dh.' + key, null)
+    const merged = saved && typeof saved === 'object' && !Array.isArray(saved) && init && typeof init === 'object' && !Array.isArray(init) ? { ...init, ...saved } : saved ?? init
+    return normalizeDecisionState(key, merged, initRef.current)
+  })
+  const setSafe = useCallback((action) => {
+    setV((current) => normalizeDecisionState(key, typeof action === 'function' ? action(current) : action, initRef.current))
+  }, [key])
   useEffect(() => { try { localStorage.setItem('ttt.dh.' + key, JSON.stringify(v)) } catch {} }, [key, v])
-  return [v, setV]
+  return [v, setSafe]
 }
+
+/** Timers owned by a game are cleared when its tab is closed or the game unmounts. */
+export function useSafeTimeout() {
+  const timers = useRef(new Set())
+  useEffect(() => () => {
+    timers.current.forEach((id) => clearTimeout(id))
+    timers.current.clear()
+  }, [])
+  return useCallback((callback, delay) => {
+    const id = setTimeout(() => {
+      timers.current.delete(id)
+      callback()
+    }, Math.max(0, Number.isFinite(delay) ? delay : 0))
+    timers.current.add(id)
+    return id
+  }, [])
+}
+
 export const LogCtx = createContext(() => {})
 export const useLog = () => useContext(LogCtx)
 
@@ -85,9 +103,9 @@ export function Stage({ children, className = '', h = 440, glow = 'var(--copper)
   )
 }
 
-export function Switch({ on, onChange, label, hint }) {
+export function Switch({ on, onChange, label, hint, disabled = false }) {
   return (
-    <button type="button" role="switch" aria-checked={on} onClick={() => { sfx('click'); onChange(!on) }} className="w-full flex items-center justify-between gap-3 text-left py-1">
+    <button type="button" role="switch" aria-checked={on} disabled={disabled} onClick={() => { if (!disabled) { sfx('click'); onChange(!on) } }} className={`w-full flex items-center justify-between gap-3 text-left py-1 ${disabled ? 'cursor-not-allowed opacity-50' : ''}`}>
       <span><span className="block text-[13.5px] font-semibold">{label}</span>{hint && <span className="block text-[11.5px]" style={{ color: 'var(--muted)' }}>{hint}</span>}</span>
       <span className="relative shrink-0 w-11 h-6 rounded-full transition-colors" style={{ background: on ? 'var(--copper)' : 'var(--border)' }}>
         <motion.span className="absolute top-0.5 w-5 h-5 rounded-full bg-white" style={{ boxShadow: '0 2px 5px rgba(0,0,0,.3)' }} initial={false} animate={{ left: on ? 22 : 2 }} transition={SPRING} />

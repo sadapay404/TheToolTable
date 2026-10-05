@@ -19,62 +19,111 @@ export const TAX_TABLES = {
     surcharge: { salaried: [10000000, 9], business: [10000000, 10] },
   },
 }
-export function incomeTax(income, slabs, sur = [0, 0]) {
-  const s = [...slabs].sort((a, b) => a[0] - b[0]), rows = []; let tax = 0, marginal = 0
-  s.forEach(([from, rate], i) => {
-    const to = i + 1 < s.length ? s[i + 1][0] : Infinity, inSlab = Math.max(0, Math.min(income, to) - from), t = (inSlab * rate) / 100
-    rows.push({ from, to, rate, inSlab, tax: t }); tax += t; if (income > from) marginal = rate
-  })
-  const surcharge = sur[1] && income > sur[0] ? (tax * sur[1]) / 100 : 0
-  return { rows, tax, surcharge, total: tax + surcharge, marginal, effective: income > 0 ? ((tax + surcharge) / income) * 100 : 0 }
+const finiteRange = (value, min, max, fallback = 0) => {
+  const n = Number(value)
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback
 }
-export function grossForNet(netAnnual, slabs, sur) {
-  let lo = netAnnual, hi = netAnnual * 3 + 1e6
-  for (let i = 0; i < 60; i++) { const m = (lo + hi) / 2; if (m - incomeTax(m, slabs, sur).total < netAnnual) lo = m; else hi = m }
+const MAX_ANNUAL_AMOUNT = 1e15
+
+export function incomeTax(income, slabs, sur = [0, 0]) {
+  const annual = finiteRange(income, 0, MAX_ANNUAL_AMOUNT)
+  const source = Array.isArray(slabs) ? slabs.slice(0, 100) : []
+  let normalized = source.filter((row) => Array.isArray(row) && row.length >= 2).map(([from, rate]) => [finiteRange(from, 0, MAX_ANNUAL_AMOUNT), finiteRange(rate, 0, 100)]).sort((a, b) => a[0] - b[0])
+  if (!normalized.length) normalized = [[0, 0]]
+  if (normalized[0][0] !== 0) normalized.unshift([0, 0])
+  const s = []
+  for (const row of normalized) {
+    if (s.length && s[s.length - 1][0] === row[0]) s[s.length - 1] = row
+    else s.push(row)
+  }
+  const rows = []; let tax = 0, marginal = 0
+  s.forEach(([from, rate], i) => {
+    const to = i + 1 < s.length ? s[i + 1][0] : Infinity
+    const inSlab = Math.max(0, Math.min(annual, to) - from), t = (inSlab * rate) / 100
+    rows.push({ from, to, rate, inSlab, tax: t }); tax += t
+    if (annual > from) marginal = rate
+  })
+  const threshold = finiteRange(sur?.[0], 0, MAX_ANNUAL_AMOUNT), surchargeRate = finiteRange(sur?.[1], 0, 100)
+  const surcharge = surchargeRate && annual > threshold ? (tax * surchargeRate) / 100 : 0
+  return { rows, tax, surcharge, total: tax + surcharge, marginal, effective: annual > 0 ? ((tax + surcharge) / annual) * 100 : 0 }
+}
+export function grossForNet(netAnnual, slabs, sur = [0, 0]) {
+  const target = finiteRange(netAnnual, 0, MAX_ANNUAL_AMOUNT)
+  if (!target) return 0
+  let lo = target, hi = Math.min(MAX_ANNUAL_AMOUNT, target * 3 + 1e6)
+  for (let i = 0; i < 64; i++) {
+    const m = (lo + hi) / 2
+    if (m - incomeTax(m, slabs, sur).total < target) lo = m
+    else hi = m
+  }
   return (lo + hi) / 2
 }
 
-export function loan({ principal, rate, months, method = 'reducing', extra = 0, feePct = 0 }) {
-  const r = rate / 1200, P = principal
-  let emi = 0
-  if (method === 'flat') emi = (P + (P * rate * months) / 1200) / months
-  else emi = r === 0 ? P / months : (P * r * (1 + r) ** months) / ((1 + r) ** months - 1)
-  const rows = []; let bal = P, totalInt = 0, m = 0
-  while (bal > 0.005 && m < months + 1) {
-    m++
-    const interest = method === 'flat' ? (P * rate) / 1200 : bal * r
-    let princ = method === 'flat' ? P / months : emi - interest
-    princ = Math.min(bal, princ + extra); const pay = interest + princ
-    bal -= princ; totalInt += interest; rows.push({ m, pay, princ, interest, bal: Math.max(0, bal) })
-    if (m > 1200) break
+export function loan({ principal, rate, months, method = 'reducing', extra = 0, feePct = 0 } = {}) {
+  const P = finiteRange(principal, 0, MAX_ANNUAL_AMOUNT)
+  const annualRate = finiteRange(rate, 0, 1_000)
+  const n = Math.round(finiteRange(months, 1, 1_200, 1))
+  const addOn = finiteRange(extra, 0, MAX_ANNUAL_AMOUNT)
+  const feeRate = finiteRange(feePct, 0, 100)
+  const flat = method === 'flat', r = annualRate / 1200
+  if (!P) return { emi: 0, rows: [], totalInt: 0, total: 0, months: 0, fee: 0, saved: n }
+  const emi = flat
+    ? (P + (P * annualRate * n) / 1200) / n
+    : r === 0 ? P / n : (P * r) / (1 - (1 + r) ** -n)
+  const rows = []; let bal = P, totalInt = 0
+  for (let m = 1; m <= n && bal > 0.005; m++) {
+    const interest = flat ? (P * annualRate) / 1200 : bal * r
+    let princ = flat ? P / n : emi - interest
+    princ = Math.min(bal, Math.max(0, princ + addOn))
+    // In pathological custom settings, never leave a balance unchanged forever.
+    if (!princ && !interest) princ = Math.min(bal, P / n)
+    const pay = interest + princ
+    bal = Math.max(0, bal - princ); totalInt += interest
+    rows.push({ m, pay, princ, interest, bal })
   }
-  const fee = (P * feePct) / 100
-  return { emi, rows, totalInt, total: P + totalInt, months: rows.length, fee, saved: months - rows.length }
+  const fee = (P * feeRate) / 100
+  return { emi, rows, totalInt, total: P + totalInt, months: rows.length, fee, saved: Math.max(0, n - rows.length) }
 }
 
-export function profit({ principal, monthly = 0, rate, years, comp = 12, wht = 15 }) {
-  const n = Math.round(years * 12), pts = []; let bal = principal, dep = principal, gross = 0
-  const mr = comp === 0 ? 0 : null
+export function profit({ principal, monthly = 0, rate, years, comp = 12, wht = 20 } = {}) {
+  const initial = finiteRange(principal, 0, MAX_ANNUAL_AMOUNT)
+  const contribution = finiteRange(monthly, 0, MAX_ANNUAL_AMOUNT)
+  const annualRate = finiteRange(rate, 0, 100)
+  const duration = finiteRange(years, 0, 100)
+  const frequency = [0, 1, 4, 12].includes(Number(comp)) ? Number(comp) : 12
+  const taxRate = finiteRange(wht, 0, 100)
+  const n = Math.round(duration * 12), pts = []; let bal = initial, dep = initial, gross = 0
+  if (!n) return { maturity: bal, deposited: dep, gross: 0, tax: 0, net: 0, netMaturity: dep, pts }
   for (let i = 1; i <= n; i++) {
-    bal += monthly; dep += monthly
-    const g = comp === 0 ? (principal + monthly * (i - 1)) * (rate / 1200) : bal * ((1 + rate / 100 / comp) ** (comp / 12) - 1)
+    bal += contribution; dep += contribution
+    const g = frequency === 0
+      ? (initial + contribution * (i - 1)) * (annualRate / 1200)
+      : bal * ((1 + annualRate / 100 / frequency) ** (frequency / 12) - 1)
     bal += g; gross += g
     if (i % Math.max(1, Math.round(n / 48)) === 0 || i === n) pts.push({ m: i, v: bal, dep })
   }
-  const tax = (gross * wht) / 100
+  const tax = (gross * taxRate) / 100
   return { maturity: bal, deposited: dep, gross, tax, net: gross - tax, netMaturity: dep + gross - tax, pts }
 }
 
 /** lakh/crore grouping, as written in Pakistan */
 export function pk(n, d = 0) {
-  if (!Number.isFinite(n)) return '–'
-  const neg = n < 0, [i, f] = Math.abs(n).toFixed(d).split('.'), body = i.length > 3 ? i.slice(0, -3).replace(/\B(?=(\d{2})+(?!\d))/g, ',') + ',' + i.slice(-3) : i
+  if (!Number.isFinite(Number(n))) return '–'
+  const value = Number(n), places = Math.trunc(finiteRange(d, 0, 6)), neg = value < 0, a = Math.abs(value)
+  if (a >= 1e21) return (neg ? '-' : '') + a.toExponential(2)
+  const [i, f] = a.toFixed(places).split('.'), body = i.length > 3 ? i.slice(0, -3).replace(/\B(?=(\d{2})+(?!\d))/g, ',') + ',' + i.slice(-3) : i
   return (neg ? '-' : '') + body + (f ? '.' + f : '')
 }
 export const rs = (n, d = 0) => 'Rs ' + pk(n, d)
 export function short(n) {
-  const a = Math.abs(n), s = n < 0 ? '-' : ''
+  if (!Number.isFinite(Number(n))) return '–'
+  const value = Number(n), a = Math.abs(value), s = value < 0 ? '-' : ''
   if (a >= 1e7) return `${s}${+(a / 1e7).toFixed(2)} crore`; if (a >= 1e5) return `${s}${+(a / 1e5).toFixed(2)} lakh`; if (a >= 1e3) return `${s}${+(a / 1e3).toFixed(1)} thousand`; return s + Math.round(a)
 }
-export const parseNum = (s) => { const v = parseFloat(String(s).replace(/[^\d.]/g, '')); return Number.isFinite(v) ? v : 0 }
-export const csv = (rows) => 'Month,Payment,Principal,Interest,Balance\n' + rows.map((r) => [r.m, r.pay, r.princ, r.interest, r.bal].map((x, i) => (i ? x.toFixed(2) : x)).join(',')).join('\n')
+export const parseNum = (s) => {
+  const raw = String(s).trim().replace(/,/g, '')
+  if (!raw || !/^\d*(?:\.\d*)?$/.test(raw)) return 0
+  const value = Number(raw)
+  return Number.isFinite(value) ? Math.min(MAX_ANNUAL_AMOUNT, value) : 0
+}
+export const csv = (rows) => 'Month,Payment,Principal,Interest,Balance\n' + (Array.isArray(rows) ? rows.slice(0, 1_200) : []).map((r) => [r.m, r.pay, r.princ, r.interest, r.bal].map((x, i) => (i ? Number.isFinite(Number(x)) ? Number(x).toFixed(2) : '0.00' : Math.trunc(finiteRange(x, 0, 1_200)))).join(',')).join('\n')

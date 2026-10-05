@@ -9,6 +9,11 @@ on:
   push:
     branches: ['arena/01a10743-thetooltable']
     tags: ['v*']
+    paths:
+      - '**'
+      - '!docs/**'
+      - '!README.md'
+      - '!.github/workflows/native.yml'
 
 permissions:
   contents: write

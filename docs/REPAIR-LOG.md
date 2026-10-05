@@ -22,6 +22,9 @@ The requested 20-tool repair is tracked in ten parts, two consecutively numbered
 - `git diff --check`: clean.
 - The Vite preview remains available on port 5173.
 
-## Still outstanding
+## Final release
 
-- Build and verify the final Android and Windows packages, then publish them on the GitHub Releases page. Earlier `v1.1.0-rc1` packages exist, but they predate the completed repairs and are not the final release.
+- Published **v1.1.0** on [GitHub Releases](https://github.com/sadapay404/TheToolTable/releases/tag/v1.1.0).
+- Release assets: signed Android APK, Windows NSIS installer, and Windows MSI. The Windows installers require and include yt-dlp/FFmpeg/FFprobe sidecars.
+- Android’s Downloader uses a network-reachable HTTPS companion engine; the APK does not bundle yt-dlp. This limitation is stated on the release page and in the Android UI.
+- The repository is private; release downloads are restricted to accounts with repository access. The older `v1.1.0-rc1` remains a prerelease; use stable `v1.1.0`.

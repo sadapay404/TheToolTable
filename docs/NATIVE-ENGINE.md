@@ -13,8 +13,8 @@ pure JS, no Node/DOM — and is shared by every runtime.
 | Runtime | Transport | Where yt-dlp lives | User setup |
 |---|---|---|---|
 | Browser / Vercel | HTTP → companion engine | your machine or a server | run engine (or paste its address) |
-| **Windows (Tauri)** | `nativeEngine(tauriRunner)` | `yt-dlp.exe` + `ffmpeg.exe` + `ffprobe.exe` **inside the installer** | **none** |
-| **Android** | `nativeEngine(androidRunner)` | yt-dlp + Python + ffmpeg **inside the APK** | **none** |
+| **Windows (Tauri)** | `nativeEngine(tauriRunner)` | yt-dlp + ffmpeg sidecars when the installer is built with the sidecar config | none when bundled |
+| **Android** | runner injection is not implemented | no bundled yt-dlp engine yet | downloader unavailable offline |
 
 A native runner implements just: `version()`, `hasFfmpeg()`, `spawn(args, onChunk) → {done, kill}`,
 `downloadsDir()`, `sizeOf(path)`, optional `reveal(path)`. Verified: the generic native engine
@@ -58,9 +58,7 @@ so it doesn't remove the packaging problem; it only moves it.
    (+ the matching Rust plugins). `engine.js` auto-selects the sidecar transport when running inside Tauri.
 5. yt-dlp finds `ffmpeg`/`ffprobe` next to its own executable, which is where Tauri places sidecars.
 
-**Status:** the shared core + generic native engine are tested; the Tauri runner (`tauriRunner` in
-`engine.js`) and the steps above are written to Tauri 2's documented sidecar API but **not yet run**,
-because no Tauri shell exists in the repo yet. Expect one debugging pass when it's first built.
+**Status:** the shared core + generic native engine have test coverage. The Tauri 2 shell and sidecar permissions now exist, but the Windows sidecar transport still needs an end-to-end packaged-app test before release. The Android runner/plugin described below is not implemented or injected yet; do not advertise bundled Android downloads until that is completed and tested.
 
 ## Android setup (Phase 2)
 

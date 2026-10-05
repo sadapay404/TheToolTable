@@ -4,21 +4,21 @@ import { Icon, Slider, SPRING } from '../studio/controls.jsx'
 import { AnimatedNumber } from '../../components/ui.jsx'
 import { TimeField, clock } from '../../components/RangeTrack.jsx'
 import { fmtBytes } from '../../lib/utils.js'
-import { tc, gifPlan, MAX_GIF_FRAMES } from '../../lib/frames.js'
+import { tc, gifPlan, frameSeriesPlan } from '../../lib/frames.js'
 
 export function Chip({ on, onClick, children, disabled }) {
   return (
     <motion.button type="button" disabled={disabled} whileHover={{ y: -2 }} whileTap={{ scale: 0.9 }} onClick={onClick}
-      className="relative px-3.5 py-1.5 rounded-full text-[12px] font-semibold border border-line whitespace-nowrap" style={{ color: on ? 'var(--bg)' : 'var(--ink)', background: 'var(--surface)', opacity: disabled ? 0.5 : 1 }}>
-      <motion.span className="absolute inset-0 rounded-full" style={{ background: 'var(--ink)' }} initial={false} animate={{ opacity: on ? 1 : 0, scale: on ? 1 : 0.6 }} transition={SPRING} />
+      className="relative min-h-9 px-3.5 py-1.5 rounded-full text-[12px] font-medium border border-line whitespace-nowrap" style={{ color: on ? 'var(--on-primary)' : 'var(--ink)', background: 'var(--surface)', opacity: disabled ? 0.5 : 1 }}>
+      <motion.span className="absolute inset-0 rounded-full" style={{ background: 'var(--primary)' }} initial={false} animate={{ opacity: on ? 1 : 0, scale: on ? 1 : 0.6 }} transition={SPRING} />
       <span className="relative">{children}</span>
     </motion.button>
   )
 }
 
-export function Switch({ on, onChange, label, hint }) {
+export function Switch({ on, onChange, label, hint, disabled = false }) {
   return (
-    <button type="button" className="flex items-center gap-3 w-full text-left" onClick={() => onChange(!on)}>
+    <button type="button" disabled={disabled} className="flex items-center gap-3 w-full text-left disabled:opacity-50" onClick={() => onChange(!on)}>
       <span className="relative w-11 h-6 rounded-full border border-line shrink-0" style={{ background: on ? 'var(--copper)' : 'var(--surface2)' }}>
         <motion.span className="absolute top-[2px] w-[18px] h-[18px] rounded-full" style={{ background: '#fff', boxShadow: '0 1px 4px rgba(0,0,0,.35)' }} initial={false} animate={{ left: on ? 22 : 3 }} transition={SPRING} />
       </span>
@@ -63,6 +63,7 @@ function Result({ r, onSave, onClear, children }) {
 export function SnapshotPanel({ c }) {
   const { cfg, set, meta, t, fps, start, end } = c
   const every = cfg.count > 1 ? (end - start) / (cfg.count - 1) : 0
+  const seriesPlan = frameSeriesPlan(meta.w, meta.h, cfg.count)
   return (
     <div className="p-5 space-y-6">
       <Block i={0}>
@@ -79,28 +80,30 @@ export function SnapshotPanel({ c }) {
       <Block i={1}>
         <Label>Format</Label>
         <div className="flex gap-2 flex-wrap">
-          <Chip on={cfg.fmt === 'png'} onClick={() => set({ fmt: 'png' })}>PNG · lossless</Chip>
-          <Chip on={cfg.fmt === 'jpg'} onClick={() => set({ fmt: 'jpg' })}>JPG · quality 1.0</Chip>
+          <Chip disabled={c.jobBusy} on={cfg.fmt === 'png'} onClick={() => set({ fmt: 'png' })}>PNG · lossless</Chip>
+          <Chip disabled={c.jobBusy} on={cfg.fmt === 'jpg'} onClick={() => set({ fmt: 'jpg' })}>JPG · quality 1.0</Chip>
         </div>
         <div className="grid grid-cols-2 gap-2.5 mt-4">
-          <motion.button whileHover={{ y: -2 }} whileTap={{ scale: 0.95 }} className="btn btn-primary btn-sheen !py-3 col-span-2 text-[13.5px]" onClick={c.onSnap}><Icon n="camera" s={16} w={2} /> Save this frame <span className="kbd !bg-transparent !border-white/40 !text-white/80 ml-1">S</span></motion.button>
-          <motion.button whileHover={{ y: -2 }} whileTap={{ scale: 0.95 }} className="btn text-[12.5px]" onClick={c.onCopy}><Icon n="copy" s={14} w={2} /> Copy image</motion.button>
-          <motion.button whileHover={{ y: -2 }} whileTap={{ scale: 0.95 }} className="btn text-[12.5px]" onClick={c.onTray}><Icon n="plus" s={14} w={2.2} /> Add to tray</motion.button>
+          <motion.button disabled={c.jobBusy} whileHover={{ y: -2 }} whileTap={{ scale: 0.95 }} className="btn btn-primary btn-sheen !py-3 col-span-2 text-[13.5px]" onClick={c.onSnap}><Icon n="camera" s={16} w={2} /> Save this frame <span className="kbd !bg-transparent !border-white/40 !text-white/80 ml-1">S</span></motion.button>
+          <motion.button disabled={c.jobBusy} whileHover={{ y: -2 }} whileTap={{ scale: 0.95 }} className="btn text-[12.5px]" onClick={c.onCopy}><Icon n="copy" s={14} w={2} /> Copy image</motion.button>
+          <motion.button disabled={c.jobBusy} whileHover={{ y: -2 }} whileTap={{ scale: 0.95 }} className="btn text-[12.5px]" onClick={c.onTray}><Icon n="plus" s={14} w={2.2} /> Add to tray</motion.button>
         </div>
       </Block>
 
       <Block i={2}>
         <Label>Frame series</Label>
         <div className="rounded-2xl p-4 space-y-4" style={{ background: 'var(--surface2)', border: '1px solid var(--border)' }}>
-          <Slider label="Frames to extract" value={cfg.count} min={2} max={120} step={1} def={12} onChange={(v) => set({ count: v })} />
+          <Slider disabled={c.jobBusy} label="Frames to extract" value={cfg.count} min={2} max={120} step={1} def={12} onChange={(v) => set({ count: v })} />
           <div className="text-[11.5px] leading-snug" style={{ color: 'var(--muted)' }}>
-            <b style={{ color: 'var(--ink)' }}><AnimatedNumber value={cfg.count} /> {cfg.fmt.toUpperCase()}s</b> spread evenly across the selection ({clock(start)} → {clock(end)}), one every <span className="mono">{every.toFixed(2)} s</span>. Stored in a ZIP with no extra compression.
+            <b style={{ color: 'var(--ink)' }}><AnimatedNumber value={cfg.count} /> {cfg.fmt.toUpperCase()}s</b> spread evenly across the selection ({clock(start)} → {clock(end)}), one every <span className="mono">{every.toFixed(2)} s</span>. ZIP frames are {seriesPlan.w}×{seriesPlan.h}{seriesPlan.capped ? ' (scaled to stay within a safe memory budget)' : ''}.
           </div>
           <AnimatePresence mode="wait" initial={false}>
             {c.series.busy ? (
               <motion.div key="b" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}><Bar value={c.series.prog} label="Extracting frames" /></motion.div>
+            ) : c.series.result ? (
+              <Result key="result" r={c.series.result} onSave={c.onSaveSeries} onClear={c.onClearSeries}><span className="w-10 h-10 rounded-xl grid place-items-center shrink-0" style={{ background: 'var(--surface)', color: 'var(--primary)' }}><Icon n="zip" s={19} /></span></Result>
             ) : (
-              <motion.button key="g" whileHover={{ y: -2 }} whileTap={{ scale: 0.96 }} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="btn w-full text-[12.5px]" onClick={c.onSeries}><Icon n="zip" s={15} /> Export {cfg.count} frames as ZIP</motion.button>
+              <motion.button key="g" disabled={c.jobBusy} whileHover={{ y: -2 }} whileTap={{ scale: 0.96 }} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="btn w-full text-[12.5px]" onClick={c.onSeries}><Icon n="zip" s={15} /> Export {cfg.count} frames as ZIP</motion.button>
             )}
           </AnimatePresence>
         </div>
@@ -127,15 +130,15 @@ export function TrimPanel({ c }) {
         <Label>In and out points</Label>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <TimeField label="In" value={start} onCommit={(v) => onRange(Math.min(v, end - 1 / fps), end)} />
-            <motion.button whileTap={{ scale: 0.94 }} whileHover={{ y: -2 }} className="btn w-full !py-1.5 mt-2 text-[11.5px]" onClick={() => onRange(Math.min(t, end - 1 / fps), end)}><Icon n="flagIn" s={13} w={2} /> Set to playhead <span className="kbd ml-1">I</span></motion.button>
+            <TimeField label="In" value={start} disabled={c.jobBusy} onCommit={(v) => onRange(Math.min(v, end - Math.min(1 / fps, duration)), end)} />
+            <motion.button disabled={c.jobBusy} whileTap={{ scale: 0.94 }} whileHover={{ y: -2 }} className="btn w-full !py-1.5 mt-2 text-[11.5px]" onClick={() => onRange(Math.min(t, end - Math.min(1 / fps, duration)), end)}><Icon n="flagIn" s={13} w={2} /> Set to playhead <span className="kbd ml-1">I</span></motion.button>
           </div>
           <div>
-            <TimeField label="Out" value={end} onCommit={(v) => onRange(start, Math.max(v, start + 1 / fps))} />
-            <motion.button whileTap={{ scale: 0.94 }} whileHover={{ y: -2 }} className="btn w-full !py-1.5 mt-2 text-[11.5px]" onClick={() => onRange(start, Math.max(t, start + 1 / fps))}><Icon n="flagIn" s={13} w={2} /> Set to playhead <span className="kbd ml-1">O</span></motion.button>
+            <TimeField label="Out" value={end} disabled={c.jobBusy} onCommit={(v) => onRange(start, Math.max(v, start + Math.min(1 / fps, duration)))} />
+            <motion.button disabled={c.jobBusy} whileTap={{ scale: 0.94 }} whileHover={{ y: -2 }} className="btn w-full !py-1.5 mt-2 text-[11.5px]" onClick={() => onRange(start, Math.max(t, start + Math.min(1 / fps, duration)))}><Icon n="flagIn" s={13} w={2} /> Set to playhead <span className="kbd ml-1">O</span></motion.button>
           </div>
         </div>
-        <button className="text-[11.5px] font-semibold underline mt-3" style={{ color: 'var(--muted)' }} onClick={() => onRange(0, duration)}>Select the whole video</button>
+        <button disabled={c.jobBusy} className="text-[11.5px] font-semibold underline mt-3 disabled:opacity-50" style={{ color: 'var(--muted)' }} onClick={() => onRange(0, duration)}>Select the whole video</button>
       </Block>
 
       <Block i={2}>
@@ -148,9 +151,9 @@ export function TrimPanel({ c }) {
       <Block i={3} className="space-y-3">
         <AnimatePresence mode="wait" initial={false}>
           {trim.busy ? (
-            <motion.div key="b" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}><Bar value={trim.prog} label={trim.phase} sub={trim.phase.startsWith('Loading') ? 'One-time download of the trimming engine, then it is cached.' : undefined} /></motion.div>
+            <motion.div key="b" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}><Bar value={trim.prog} label={trim.phase} sub={trim.phase.startsWith('Loading') ? 'The bundled WASM engine is loading; no separate engine install is needed.' : undefined} /></motion.div>
           ) : (
-            <motion.button key="g" whileHover={{ y: -2 }} whileTap={{ scale: 0.96 }} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="btn btn-primary btn-sheen w-full !py-3 text-[13.5px]" onClick={c.onTrim}><Icon n="scissors" s={16} w={2} /> Trim selection</motion.button>
+            <motion.button key="g" disabled={c.jobBusy} whileHover={{ y: -2 }} whileTap={{ scale: 0.96 }} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="btn btn-primary btn-sheen w-full !py-3 text-[13.5px]" onClick={c.onTrim}><Icon n="scissors" s={16} w={2} /> Trim selection</motion.button>
           )}
         </AnimatePresence>
         {trim.error && <div className="text-[12px] font-semibold rounded-xl px-3.5 py-2.5" style={{ background: 'rgba(208,72,65,.1)', color: '#B8493F' }}>{trim.error}</div>}
@@ -165,27 +168,27 @@ export function TrimPanel({ c }) {
 /* =============================================== GIF =============================================== */
 export function GifPanel({ c }) {
   const { cfg, set, start, end, gif } = c
-  const plan = gifPlan(start, end, cfg.gifFps)
+  const plan = gifPlan(start, end, cfg.gifFps, cfg.gifW, c.meta.w / c.meta.h)
   const previewRef = c.gifCanvasRef
-  const h = Math.round((c.meta.h / c.meta.w) * cfg.gifW)
+  const h = plan.h
   return (
     <div className="p-5 space-y-6">
       <Block i={0}>
         <div className="relative rounded-2xl overflow-hidden grid place-items-center" style={{ background: 'conic-gradient(#d9d3c6 25%, #f3efe6 0 50%, #d9d3c6 0 75%, #f3efe6 0) 0 0 / 14px 14px', aspectRatio: `${c.meta.w} / ${c.meta.h}`, maxHeight: 190, margin: '0 auto', boxShadow: '0 18px 30px -18px rgba(0,0,0,.55), 0 0 0 1px var(--border)' }}>
           <canvas ref={previewRef} className="absolute inset-0 w-full h-full" style={{ display: gif.busy ? 'block' : 'none' }} />
           {!gif.busy && gif.result && <motion.img key={gif.result.url} src={gif.result.url} alt="GIF preview" initial={{ opacity: 0, scale: 1.06 }} animate={{ opacity: 1, scale: 1 }} className="absolute inset-0 w-full h-full object-contain" />}
-          {!gif.busy && !gif.result && <div className="text-center px-4 relative"><div className="text-[12px] font-semibold">Your GIF appears here</div><div className="text-[11px] mt-0.5 mono" style={{ color: 'var(--muted)' }}>{cfg.gifW}×{h}</div></div>}
+          {!gif.busy && !gif.result && <div className="text-center px-4 relative"><div className="text-[12px] font-semibold">Your GIF appears here</div><div className="text-[11px] mt-0.5 mono" style={{ color: 'var(--muted)' }}>{plan.w}×{h}</div></div>}
         </div>
       </Block>
 
       <Block i={1} className="space-y-4">
         <Label>Size and speed</Label>
         <div className="flex gap-2 flex-wrap">
-          {[320, 480, 720, 1080].map((w) => <Chip key={w} on={cfg.gifW === w} onClick={() => set({ gifW: w })}>{w}px</Chip>)}
+          {[320, 480, 720, 1080].map((w) => <Chip key={w} disabled={c.jobBusy} on={cfg.gifW === w} onClick={() => set({ gifW: w })}>{w}px</Chip>)}
         </div>
-        <Slider label="Width" value={cfg.gifW} min={160} max={1080} step={40} def={480} onChange={(v) => set({ gifW: v })} suffix="px" />
-        <Slider label="Frame rate" value={cfg.gifFps} min={4} max={30} step={1} def={12} onChange={(v) => set({ gifFps: v })} suffix=" fps" />
-        <Switch on={cfg.gifLoop} onChange={(v) => set({ gifLoop: v })} label="Loop forever" hint="Off plays through once" />
+        <Slider disabled={c.jobBusy} label="Width" value={cfg.gifW} min={160} max={1080} step={40} def={480} onChange={(v) => set({ gifW: v })} suffix="px" />
+        <Slider disabled={c.jobBusy} label="Frame rate" value={cfg.gifFps} min={4} max={30} step={1} def={12} onChange={(v) => set({ gifFps: v })} suffix=" fps" />
+        <Switch disabled={c.jobBusy} on={cfg.gifLoop} onChange={(v) => set({ gifLoop: v })} label="Loop forever" hint="Off plays through once" />
       </Block>
 
       <Block i={2}>
@@ -196,7 +199,10 @@ export function GifPanel({ c }) {
           </div>
           <div className="text-right text-[11.5px] mono" style={{ color: 'var(--muted)' }}>{plan.seconds.toFixed(1)} s<br />{clock(start)} → {clock(end)}</div>
         </div>
-        {plan.capped && <div className="text-[11.5px] mt-2 font-semibold" style={{ color: 'var(--accent)' }}>GIFs are capped at {MAX_GIF_FRAMES} frames — only the first {plan.seconds.toFixed(1)} s of the selection is used. Lower the frame rate to fit more.</div>}
+        {plan.capped && <div className="text-[11.5px] mt-2 font-semibold space-y-1" style={{ color: 'var(--accent)' }}>
+          {plan.frames < plan.wanted && <div>The frame and pixel limits keep GIF encoding memory-safe; only the first {plan.seconds.toFixed(1)} s is used. Lower width or frame rate to include more of the selection.</div>}
+          {plan.scaled && <div>The GIF canvas is scaled to {plan.w}×{plan.h} to stay within safe browser limits.</div>}
+        </div>}
       </Block>
 
       <Block i={3} className="space-y-3">
@@ -204,7 +210,7 @@ export function GifPanel({ c }) {
           {gif.busy ? (
             <motion.div key="b" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}><Bar value={gif.prog} label="Encoding GIF" sub={`Frame ${gif.n} of ${gif.total}`} /></motion.div>
           ) : (
-            <motion.button key="g" whileHover={{ y: -2 }} whileTap={{ scale: 0.96 }} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="btn btn-primary btn-sheen w-full !py-3 text-[13.5px]" onClick={c.onGif}><Icon n="gif" s={16} w={2} /> Make GIF</motion.button>
+            <motion.button key="g" disabled={c.jobBusy} whileHover={{ y: -2 }} whileTap={{ scale: 0.96 }} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="btn btn-primary btn-sheen w-full !py-3 text-[13.5px]" onClick={c.onGif}><Icon n="gif" s={16} w={2} /> Make GIF</motion.button>
           )}
         </AnimatePresence>
         {gif.error && <div className="text-[12px] font-semibold rounded-xl px-3.5 py-2.5" style={{ background: 'rgba(208,72,65,.1)', color: '#B8493F' }}>{gif.error}</div>}

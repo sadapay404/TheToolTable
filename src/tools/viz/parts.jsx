@@ -115,10 +115,11 @@ const PeakBars = memo(function PeakBars({ peaks, color, grow }) {
 export function WaveScrubber({ peaks, loading, time, dur, range, onSeek, onRange, disabled }) {
   const box = useRef(null), drag = useRef(null)
   const fake = useMemo(() => Array.from({ length: 120 }, (_, i) => 0.25 + 0.5 * Math.abs(Math.sin(i * 0.37) * Math.cos(i * 0.11))), [])
-  const pos = (e) => { const r = box.current.getBoundingClientRect(); return Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * dur }
-  const frac = dur ? Math.min(1, time / dur) : 0
-  const a = range ? range[0] / dur : 0, b = range ? range[1] / dur : 1
-  const down = (e) => { if (disabled || !dur) return; e.currentTarget.setPointerCapture(e.pointerId); drag.current = 'seek'; onSeek(pos(e)) }
+  const validDur = Number.isFinite(dur) && dur > 0
+  const pos = (e) => { const r = box.current.getBoundingClientRect(); return (validDur ? Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * dur : 0) }
+  const frac = validDur ? Math.min(1, Math.max(0, time / dur)) : 0
+  const a = range && validDur ? Math.min(1, Math.max(0, range[0] / dur)) : 0, b = range && validDur ? Math.min(1, Math.max(0, range[1] / dur)) : 1
+  const down = (e) => { if (disabled || !validDur) return; e.currentTarget.setPointerCapture(e.pointerId); drag.current = 'seek'; onSeek(pos(e)) }
   const move = (e) => {
     if (!drag.current) return
     const t = pos(e)
@@ -141,7 +142,7 @@ export function WaveScrubber({ peaks, loading, time, dur, range, onSeek, onRange
       <div className="absolute inset-y-0 left-0 overflow-hidden" style={{ width: `${frac * 100}%`, transition: 'width 70ms linear' }}>
         <div className="absolute inset-y-0 left-0" style={{ width: box.current ? box.current.clientWidth : 600 }}><PeakBars peaks={arr} color="var(--copper)" /></div>
       </div>
-      {range && <>
+      {range && validDur && <>
         <div className="absolute inset-y-0 left-0 rounded-l-md" style={{ width: `${a * 100}%`, background: 'rgba(14,12,11,.62)' }} />
         <div className="absolute inset-y-0 right-0 rounded-r-md" style={{ width: `${(1 - b) * 100}%`, background: 'rgba(14,12,11,.62)' }} />
         <div className="absolute inset-y-0 pointer-events-none" style={{ left: `${a * 100}%`, width: `${(b - a) * 100}%`, borderTop: '2px solid var(--copper)', borderBottom: '2px solid var(--copper)', opacity: 0.8 }} />

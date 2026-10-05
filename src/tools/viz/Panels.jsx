@@ -335,10 +335,17 @@ export function ExportPanel({ c }) {
           <div className="rounded-xl p-3" style={{ background: 'var(--surface2)', border: '1px solid var(--border)' }}><div className="eyebrow !text-[9.5px]">Bitrate</div><div className="mono font-semibold text-[13px] mt-1 tabular-nums"><AnimatedNumber value={c.mbps} format={(n) => n.toFixed(1)} /> Mb/s</div></div>
           <div className="rounded-xl p-3" style={{ background: 'var(--surface2)', border: '1px solid var(--border)' }}><div className="eyebrow !text-[9.5px]">≈ Size</div><div className="mono font-semibold text-[13px] mt-1 tabular-nums"><AnimatedNumber value={c.estBytes} format={(n) => fmtBytes(n)} /></div></div>
         </div>
+        {!c.canRender && (
+          <p role="status" className="text-[11.5px] leading-relaxed mt-3" style={{ color: c.estBytes > c.maxExportBytes ? '#b4432f' : 'var(--muted)' }}>
+            {c.estBytes > c.maxExportBytes
+              ? `Estimated size exceeds the ${fmtBytes(c.maxExportBytes)} in-memory limit. Shorten the range or lower the resolution/quality.`
+              : 'Wait for a valid media duration before rendering.'}
+          </p>
+        )}
       </Block>
 
       <Block i={4} className="space-y-3">
-        <motion.button type="button" whileHover={{ y: busy ? 0 : -3 }} whileTap={{ scale: 0.97 }} onClick={busy ? c.cancelExport : c.renderVideo} className="btn btn-primary btn-sheen w-full !py-3.5 relative overflow-hidden text-[14px]">
+        <motion.button type="button" disabled={!busy && !c.canRender} whileHover={{ y: busy || !c.canRender ? 0 : -3 }} whileTap={{ scale: 0.97 }} onClick={busy ? c.cancelExport : c.renderVideo} className="btn btn-primary btn-sheen w-full !py-3.5 relative overflow-hidden text-[14px] disabled:opacity-45 disabled:cursor-not-allowed">
           <AnimatePresence mode="wait" initial={false}>
             {busy ? (
               <motion.span key="b" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="flex items-center justify-center gap-3">

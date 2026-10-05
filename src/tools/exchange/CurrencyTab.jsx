@@ -9,16 +9,33 @@ export function useRates() {
   const [r, setR] = useState(() => loadRates())
   const [busy, setBusy] = useState(false)
   const ref = useRef(r); ref.current = r
-  const run = useCallback(async () => {
+  const inFlight = useRef(null), mounted = useRef(false)
+  const run = useCallback(() => {
+    if (inFlight.current) return inFlight.current
     setBusy(true)
-    try { setR(await refreshAll(ref.current)) } catch { setR((x) => ({ ...x, error: 'offline' })) }
-    setBusy(false)
+    const task = (async () => {
+      try {
+        const next = await refreshAll(ref.current)
+        if (mounted.current) { ref.current = next; setR(next) }
+        return next
+      } catch {
+        if (mounted.current) setR((x) => ({ ...x, error: 'offline' }))
+        return null
+      } finally {
+        inFlight.current = null
+        if (mounted.current) setBusy(false)
+      }
+    })()
+    inFlight.current = task
+    return task
   }, [])
   useEffect(() => {
-    const stale = () => !ref.current.cryptoAt || Date.now() - ref.current.cryptoAt > 10 * 60e3 || !ref.current.fiatAt || Date.now() - ref.current.fiatAt > 6 * 3600e3
-    if (stale()) run()
-    const id = setInterval(() => { if (!document.hidden && Date.now() - (ref.current.cryptoAt || 0) > 5 * 60e3) run() }, 60e3)
-    return () => clearInterval(id)
+    mounted.current = true
+    const age = (ts) => ts > 0 ? Date.now() - ts : Infinity
+    const stale = (cryptoLimit) => age(ref.current.cryptoAt) > cryptoLimit || age(ref.current.fiatAt) > 6 * 3600e3
+    if (stale(10 * 60e3)) run()
+    const id = setInterval(() => { if (!document.hidden && stale(5 * 60e3)) run() }, 60e3)
+    return () => { mounted.current = false; clearInterval(id) }
   }, [run])
   return { r, busy, run }
 }
@@ -62,7 +79,8 @@ export default function CurrencyTab() {
   const [more, setMore] = useState('compare')
   const upd = (p) => setSt((s) => ({ ...s, ...p }))
   const a = by.get(st.from) || by.get('f:USD'), b = by.get(st.to) || by.get('f:PKR')
-  const amt = parseFloat(String(st.amount).replace(/,/g, ''))
+  const amount = typeof st.amount === 'string' || (typeof st.amount === 'number' && Number.isFinite(st.amount)) ? String(st.amount) : '1'
+  const amt = parseFloat(amount.replace(/,/g, ''))
   const val = Number.isFinite(amt) ? convertMoney(amt, a, b) : NaN
   const unit = convertMoney(1, a, b), inv = convertMoney(1, b, a)
   const sid = useId().replace(/:/g, '')
@@ -77,10 +95,11 @@ export default function CurrencyTab() {
   const change = pairChange(a, b)
   const text = fmtMoney(val, b.kind)
   const sym = fiatSymbol(a.code)
-  const swap = () => upd({ from: st.to, to: st.from, amount: Number.isFinite(val) ? String(Number(val.toPrecision(10))) : st.amount })
+  const swap = () => upd({ from: a.key, to: b.key, amount: Number.isFinite(val) ? String(Number(val.toPrecision(10))) : amount })
   const setAmt = (v) => { if (/^[0-9,]*\.?[0-9]*$/.test(v)) upd({ amount: v }) }
   const trig = (it) => ({ open, selected, onClick }) => <SelectChip open={open} onClick={onClick} icon={<ItemIcon item={by.get(it)} size={36} />} title={selected?.title} sub={selected?.sub} />
-  const extras = (st.extras || []).map((k) => by.get(k)).filter(Boolean)
+  const extraKeys = Array.isArray(st.extras) ? [...new Set(st.extras.filter((k) => typeof k === 'string' && by.has(k)))].slice(0, 8) : []
+  const extras = extraKeys.map((k) => by.get(k)).filter(Boolean)
   const size = text.length > 17 ? 26 : text.length > 13 ? 32 : text.length > 10 ? 38 : 46
 
   return (
@@ -92,9 +111,9 @@ export default function CurrencyTab() {
           <div className="flex items-center gap-3">
             <div className="flex-1 min-w-0 flex items-baseline gap-2 border-b-2 pb-1 transition-colors focus-within:border-[var(--copper)] border-line">
               {sym && <span className="display text-[28px] opacity-40">{sym}</span>}
-              <input value={fmtAmt(st.amount)} onChange={(e) => setAmt(e.target.value.replace(/,/g, ''))} inputMode="decimal" aria-label="Amount" className="display font-semibold bg-transparent outline-none w-full min-w-0" style={{ fontSize: 'clamp(30px,4.6vw,46px)', letterSpacing: '-0.03em' }} />
+              <input value={fmtAmt(amount)} onChange={(e) => setAmt(e.target.value.replace(/,/g, ''))} inputMode="decimal" aria-label="Amount" className="display font-semibold bg-transparent outline-none w-full min-w-0" style={{ fontSize: 'clamp(30px,4.6vw,46px)', letterSpacing: '-0.03em' }} />
             </div>
-            <Picker items={pickItems} value={st.from} onChange={(k) => upd({ from: k })} storeId="cur" filters={filters} defaultPins={FAVOURITES} placeholder="Search currencies & coins…" trigger={trig(st.from)} />
+            <Picker items={pickItems} value={a.key} onChange={(k) => upd({ from: k })} storeId="cur" filters={filters} defaultPins={FAVOURITES} placeholder="Search currencies & coins…" trigger={trig(a.key)} />
           </div>
 
           <div className="flex items-center gap-3 my-6"><span className="flex-1 h-px" style={{ background: 'var(--border)' }} /><SwapButton onClick={swap} /><span className="flex-1 h-px" style={{ background: 'var(--border)' }} /></div>
@@ -104,7 +123,7 @@ export default function CurrencyTab() {
             <div className="flex-1 min-w-0 overflow-hidden">
               <CountText value={val} format={(v) => fmtMoney(v, b.kind)} className="display font-semibold block leading-tight tabular-nums" style={{ fontSize: `max(18px, min(${size}px, ${(100 / Math.max(text.length, 4)).toFixed(2)}vw))`, letterSpacing: '-0.03em', color: 'var(--copper)', whiteSpace: 'nowrap' }} />
             </div>
-            <Picker items={pickItems} value={st.to} onChange={(k) => upd({ to: k })} storeId="cur" filters={filters} defaultPins={FAVOURITES} placeholder="Search currencies & coins…" trigger={trig(st.to)} />
+            <Picker items={pickItems} value={b.key} onChange={(k) => upd({ to: k })} storeId="cur" filters={filters} defaultPins={FAVOURITES} placeholder="Search currencies & coins…" trigger={trig(b.key)} />
           </div>
 
           <div className="mt-6 pt-5 flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-line">
@@ -128,7 +147,7 @@ export default function CurrencyTab() {
         <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
           <Seg value={more} onChange={setMore} options={[['compare', 'Compare'], ['popular', 'Popular routes']]} />
           {more === 'compare' && extras.length < 8 && (
-            <Picker items={pickItems.filter((p) => !(st.extras || []).includes(p.key))} value="" onChange={(k) => upd({ extras: [...(st.extras || []), k] })} storeId="cur" filters={filters} defaultPins={FAVOURITES} placeholder="Add a currency or coin…" width={360}
+            <Picker items={pickItems.filter((p) => !extraKeys.includes(p.key))} value="" onChange={(k) => upd({ extras: [...extraKeys, k] })} storeId="cur" filters={filters} defaultPins={FAVOURITES} placeholder="Add a currency or coin…" width={360}
               trigger={({ onClick }) => <motion.button type="button" onClick={onClick} whileHover={{ y: -2 }} whileTap={{ scale: 0.92 }} className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 border border-line text-[12.5px] font-semibold" style={{ background: 'var(--surface2)' }}><Ico n="plus" s={14} w={2.4} />Add</motion.button>} />
           )}
         </div>
@@ -144,7 +163,7 @@ export default function CurrencyTab() {
                       <motion.div key={e.key} layout initial={{ opacity: 0, scale: 0.85, y: 14 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.8 }} transition={{ ...SPRING, delay: i * 0.04 }} whileHover={{ y: -3 }} className="group relative rounded-2xl p-3.5 border border-line" style={{ background: 'var(--surface2)' }}>
                         <div className="flex items-center gap-2"><ItemIcon item={e} size={26} /><span className="text-[12px] font-bold">{e.code}</span></div>
                         <CountText value={v} format={(x) => fmtMoney(x, e.kind)} className="display block font-semibold text-[20px] mt-2 truncate tabular-nums" />
-                        <button type="button" aria-label={'Remove ' + e.code} onClick={() => upd({ extras: st.extras.filter((k) => k !== e.key) })} className="absolute top-2 right-2 w-5 h-5 grid place-items-center rounded-full opacity-0 group-hover:opacity-70 hover:!opacity-100 transition-opacity" style={{ background: 'var(--border)' }}><Ico n="x" s={10} w={3} /></button>
+                        <button type="button" aria-label={'Remove ' + e.code} onClick={() => upd({ extras: extraKeys.filter((k) => k !== e.key) })} className="absolute top-2 right-2 w-5 h-5 grid place-items-center rounded-full opacity-0 group-hover:opacity-70 hover:!opacity-100 transition-opacity" style={{ background: 'var(--border)' }}><Ico n="x" s={10} w={3} /></button>
                       </motion.div>
                     )
                   })}

@@ -122,6 +122,7 @@ export function DownloadPanel({ c }) {
         <div>
           <div className="label mb-2">Resolution</div>
           <div className="flex gap-1.5 flex-wrap">{[1, 0.5, 0.25].map((s) => <Chip key={s} on={c.scale === s} onClick={() => c.setScale(s)}>{s === 1 ? 'Original' : `${s * 100}%`}</Chip>)}</div>
+          <p className="text-[11px] mt-2 leading-relaxed" style={{ color: 'var(--muted)' }}>For memory safety, source canvases and exports are capped at 8192 px on the long edge.</p>
         </div>
         <div>
           <div className="label mb-2">Framing</div>

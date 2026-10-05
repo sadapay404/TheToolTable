@@ -14,8 +14,8 @@ export default {
         accent2: 'var(--accent2)',
       },
       fontFamily: {
-        sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
-        serif: ['Fraunces', 'Georgia', 'serif'],
+        sans: ['Roboto', 'Noto Sans', 'Arial', 'sans-serif'],
+        serif: ['Roboto', 'Noto Sans', 'Arial', 'sans-serif'],
         mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
       },
     },

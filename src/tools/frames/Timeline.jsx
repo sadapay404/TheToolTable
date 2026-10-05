@@ -21,7 +21,7 @@ export default function Timeline({ duration, fps, t, start, end, thumbs, slots, 
   const pct = (x) => (duration ? (x / duration) * 100 : 0)
   const snap = (x) => clamp(Math.round(x * fps) / fps, 0, duration)
   const at = (e) => { const r = ref.current.getBoundingClientRect(); return clamp(((e.clientX - r.left) / r.width) * duration, 0, duration) }
-  const minGap = 1 / fps
+  const minGap = Math.min(1 / Math.max(1, fps), duration)
 
   const apply = (k, x) => {
     const v = snap(x)

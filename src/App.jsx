@@ -1,10 +1,10 @@
 import Footer from './components/Footer.jsx'
 import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import ReactDOM from 'react-dom'
-import { AnimatePresence, MotionConfig, motion, useMotionValue, useSpring, useTransform } from 'framer-motion'
+import { AnimatePresence, MotionConfig, motion } from 'framer-motion'
 import { usePerf, setPerfMode, runBenchmark } from './lib/perf.js'
 import { TOOLS } from './toolsRegistry.jsx'
-import { THEMES, THEME_ORDER, applyTheme } from './themes.js'
+import { THEMES, THEME_ORDER, applyTheme, savedTheme } from './themes.js'
 import CommandPalette from './components/CommandPalette.jsx'
 import { Logo } from './components/Logo.jsx'
 
@@ -39,53 +39,38 @@ function SearchIcon() {
 }
 
 function TiltCard({ tool, onOpen, i }) {
-  const ref = useRef(null)
-  const px = useMotionValue(0)
-  const py = useMotionValue(0)
-  const rx = useSpring(useTransform(py, [-0.5, 0.5], [7, -7]), SPRING)
-  const ry = useSpring(useTransform(px, [-0.5, 0.5], [-9, 9]), SPRING)
-
   return (
     <motion.div
-      initial={{ opacity: 0, y: 22 }}
+      initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ ...SPRING, delay: 0.05 * i }}
-      className="tilt-stage h-full"
+      transition={{ ...SPRING, delay: 0.035 * i }}
+      className="h-full"
     >
-      <motion.div
-        ref={ref}
-        className="card3d"
-        style={{ rotateX: rx, rotateY: ry }}
+      <motion.button
+        type="button"
+        className="card3d block w-full text-left"
+        whileHover={{ y: -2 }}
+        whileTap={{ scale: 0.99 }}
         onPointerEnter={() => tool.comp.preload?.()}
         onFocus={() => tool.comp.preload?.()}
-        onMouseMove={(e) => {
-          const r = ref.current.getBoundingClientRect()
-          const x = (e.clientX - r.left) / r.width
-          const y = (e.clientY - r.top) / r.height
-          px.set(x - 0.5)
-          py.set(y - 0.5)
-          ref.current.style.setProperty('--mx', `${x * 100}%`)
-          ref.current.style.setProperty('--my', `${y * 100}%`)
-        }}
-        onMouseLeave={() => { px.set(0); py.set(0) }}
         onClick={() => onOpen(tool)}
       >
         <div className="sheen" />
-        <div className="inner relative p-7 flex flex-col gap-5">
+        <div className="inner relative p-5 sm:p-7 flex flex-col gap-4 sm:gap-5">
           <div className="flex items-start justify-between">
             <span className="eyebrow">{tool.tag}</span>
             <span className="ghost-num">{String(tool.n).padStart(2, '0')}</span>
           </div>
           <div>
-            <h3 className="display font-semibold text-[21px] leading-snug">{tool.name}</h3>
+            <h3 className="display font-semibold text-[19px] sm:text-[21px] leading-snug">{tool.name}</h3>
             <p className="text-[13.5px] leading-relaxed mt-2" style={{ color: 'var(--muted)' }}>{tool.desc}</p>
           </div>
           <div className="mt-auto">
             <div className="rule" />
-            <div className="text-[11px] font-semibold tracking-[0.14em] uppercase mt-3" style={{ color: 'var(--muted)' }}>Open tool</div>
+            <div className="text-[11px] font-semibold tracking-[0.08em] uppercase mt-3" style={{ color: 'var(--muted)' }}>Open tool</div>
           </div>
         </div>
-      </motion.div>
+      </motion.button>
     </motion.div>
   )
 }
@@ -122,9 +107,9 @@ function ThemePicker({ theme, setTheme }) {
 
   return (
     <>
-      <button ref={ref} className="btn" onClick={toggle} aria-haspopup="menu" aria-expanded={open}>
-        <span className="w-3 h-3 rounded-full border border-[var(--border)]" style={{ background: THEMES[theme].vars['--bg'] }} />
-        {THEMES[theme].name}
+      <button ref={ref} className="btn !px-2 sm:!px-3" onClick={toggle} aria-haspopup="menu" aria-expanded={open} aria-label={`Theme: ${THEMES[theme].name}`} title={`Theme: ${THEMES[theme].name}`}>
+        <span className="w-3.5 h-3.5 rounded-full border border-[var(--border)]" style={{ background: THEMES[theme].vars['--accent'] }} />
+        <span className="hidden sm:inline">{THEMES[theme].name}</span>
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }}><path d="m6 9 6 6 6-6" /></svg>
       </button>
       {open && ReactDOM.createPortal(
@@ -182,7 +167,7 @@ function PerfPicker() {
   const bars = p.level === 'lite' ? 1 : p.level === 'balanced' ? 2 : 3
   return (
     <>
-      <button ref={ref} className="btn !px-3" onClick={toggle} aria-haspopup="menu" aria-expanded={open} title={`Performance: ${LEVEL_NAME[p.level]}${p.mode === 'auto' ? ' (auto)' : ''}`} aria-label="Performance profile">
+      <button ref={ref} className="btn !px-2 sm:!px-3" onClick={toggle} aria-haspopup="menu" aria-expanded={open} title={`Performance: ${LEVEL_NAME[p.level]}${p.mode === 'auto' ? ' (auto)' : ''}`} aria-label="Performance profile">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
           {[0, 1, 2].map((i) => <path key={i} d={`M${6 + i * 6} 19V${15 - i * 4}`} opacity={i < bars ? 1 : 0.28} />)}
         </svg>
@@ -214,7 +199,7 @@ function ToolLoading() {
 }
 
 export default function App() {
-  const [theme, setThemeState] = useState(() => { try { return localStorage.getItem('ttt-theme') || 'creamy' } catch { return 'creamy' } })
+  const [theme, setThemeState] = useState(() => savedTheme())
   const [active, setActive] = useState(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
 
@@ -240,49 +225,51 @@ export default function App() {
       <div className="hero-tint" />
 
       {/* Top bar */}
-      <header className="sticky top-0 z-40 backdrop-blur-xl border-b border-line" style={{ background: 'color-mix(in srgb, var(--bg) 82%, transparent)' }}>
-        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center gap-5">
-          <motion.button className="flex items-center gap-3.5 shrink-0" whileTap={{ scale: 0.96 }} onClick={() => setActive(null)}>
-            <Logo className="w-9 h-9 rounded-[10px]" shadow />
+      <header className="sticky top-0 z-40 backdrop-blur-xl border-b border-line" style={{ background: 'color-mix(in srgb, var(--bg) 92%, transparent)' }}>
+        <div className="max-w-6xl mx-auto px-3 sm:px-6 min-h-16 py-2 flex items-center gap-2 sm:gap-5">
+          <motion.button type="button" aria-label="Back to TheToolTable home" className="flex items-center gap-2 sm:gap-3.5 shrink-0" whileTap={{ scale: 0.97 }} onClick={() => setActive(null)}>
+            <Logo className="w-8 h-8 sm:w-9 sm:h-9 rounded-[10px]" shadow />
             <span className="text-left leading-none">
-              <span className="display block font-semibold text-[19px] tracking-tight">TheToolTable</span>
-              <span className="eyebrow block mt-1" style={{ letterSpacing: '0.24em' }}>By Mubashir</span>
+              <span className="display block font-semibold text-[16px] sm:text-[19px] tracking-tight">TheToolTable</span>
+              <span className="eyebrow hidden sm:block mt-1" style={{ letterSpacing: '0.12em' }}>By Mubashir</span>
             </span>
           </motion.button>
 
-          <motion.button
-            className="btn btn-ghost flex-1 max-w-xs ml-auto justify-start gap-2.5 text-[13px] font-medium"
-            style={{ color: 'var(--muted)', background: 'var(--surface)', border: '1px solid var(--border)' }}
-            whileTap={{ scale: 0.97 }}
-            onClick={() => setPaletteOpen(true)}
-          >
-            <SearchIcon /> Search the table
-            <span className="ml-auto flex gap-1"><span className="kbd">Ctrl</span><span className="kbd">K</span></span>
-          </motion.button>
-
-          <PerfPicker />
-          <ThemePicker theme={theme} setTheme={setTheme} />
+          <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
+            <motion.button
+              type="button" aria-label="Search tools" title="Search tools (Ctrl+K)"
+              className="btn btn-ghost !px-2 sm:!px-3 sm:flex-1 sm:max-w-xs sm:justify-start sm:gap-2.5 sm:text-[13px] sm:font-medium"
+              style={{ color: 'var(--muted)', background: 'var(--surface)', border: '1px solid var(--border)' }}
+              whileTap={{ scale: 0.97 }} onClick={() => setPaletteOpen(true)}
+            >
+              <SearchIcon />
+              <span className="hidden sm:inline">Search the table</span>
+              <span className="ml-auto hidden sm:flex gap-1"><span className="kbd">Ctrl</span><span className="kbd">K</span></span>
+            </motion.button>
+            <PerfPicker />
+            <ThemePicker theme={theme} setTheme={setTheme} />
+          </div>
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-6 pb-28 relative">
+      <main className="max-w-6xl mx-auto px-3 sm:px-6 pb-16 sm:pb-28 relative">
         <ErrorBoundary>
         <AnimatePresence mode="wait">
           {!active ? (
             <motion.div key="home" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -14 }} transition={SPRING}>
               {/* Masthead */}
-              <section className="pt-20 pb-16 text-center relative">
+              <section className="pt-12 pb-10 sm:pt-20 sm:pb-16 text-center relative">
                 <motion.div
-                  className="inline-block mb-8"
+                  className="inline-block mb-5 sm:mb-8"
                   initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ ...SPRING, delay: 0.05 }}
                 >
-                  <Logo className="w-[104px] h-[104px] rounded-[22px]" shadow big />
+                  <Logo className="w-[76px] h-[76px] sm:w-[104px] sm:h-[104px] rounded-[20px] sm:rounded-[22px]" shadow big />
                 </motion.div>
                 <motion.div className="eyebrow mb-5" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.12 }}>
                   By Mubashir
                 </motion.div>
                 <motion.h1
-                  className="display font-semibold text-[42px] md:text-[60px] leading-[1.04] tracking-tight"
+                  className="display font-semibold text-[32px] sm:text-[42px] md:text-[60px] leading-[1.08] tracking-tight"
                   initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ ...SPRING, delay: 0.16 }}
                 >
                   Every tool you need,
@@ -299,27 +286,27 @@ export default function App() {
               </section>
 
               {/* The table */}
-              <motion.div className="flex items-end justify-between mb-7" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}>
-                <h2 className="display font-semibold text-[26px]">The table</h2>
+              <motion.div className="flex flex-wrap items-end justify-between gap-1.5 mb-5 sm:mb-7" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}>
+                <h2 className="display font-semibold text-[23px] sm:text-[26px]">The table</h2>
                 <span className="text-[12px] font-medium" style={{ color: 'var(--muted)' }}>{TOOLS.length} tools · the collection grows</span>
               </motion.div>
 
-              <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+              <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-5">
                 {TOOLS.map((t, i) => <TiltCard key={t.id} tool={t} i={i} onOpen={openTool} />)}
               </section>
 
             </motion.div>
           ) : (
             <motion.div key={active.id} initial={{ opacity: 0, y: 20, scale: 0.99 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -20, scale: 0.99 }} transition={SPRING}>
-              <div className="pt-10 pb-8 flex items-center gap-5">
-                <motion.button className="btn btn-ghost" whileTap={{ scale: 0.92 }} onClick={() => setActive(null)}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M19 12H5m7-7-7 7 7 7" /></svg>
-                  The table
+              <div className="pt-6 pb-5 sm:pt-10 sm:pb-8 flex items-center gap-3 sm:gap-5 min-w-0">
+                <motion.button type="button" className="btn btn-ghost shrink-0 !px-3 sm:!px-4" whileTap={{ scale: 0.96 }} onClick={() => setActive(null)}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M19 12H5m7-7-7 7 7 7" /></svg>
+                  <span className="hidden sm:inline">The table</span><span className="sm:hidden">Back</span>
                 </motion.button>
-                <div className="h-6 w-px" style={{ background: 'var(--border)' }} />
-                <div>
-                  <div className="eyebrow mb-1">Tool {String(active.n).padStart(2, '0')} · {active.tag}</div>
-                  <h2 className="display font-semibold text-[26px] leading-none">{active.name}</h2>
+                <div className="h-8 w-px shrink-0" style={{ background: 'var(--border)' }} />
+                <div className="min-w-0">
+                  <div className="eyebrow mb-1 truncate">Tool {String(active.n).padStart(2, '0')} · {active.tag}</div>
+                  <h2 className="display font-semibold text-[20px] sm:text-[26px] leading-tight">{active.name}</h2>
                 </div>
               </div>
               <Suspense fallback={<ToolLoading />}><ActiveComp /></Suspense>

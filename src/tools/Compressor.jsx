@@ -1,9 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Dropzone, Note, AnimatedNumber, LiveProgress } from '../components/ui.jsx'
-import { getFFmpeg } from '../lib/ffmpeg.js'
-import { fetchFile } from '@ffmpeg/util'
-import { fmtBytes, fmtTime, mediaDuration, download, baseName, recentAction, clamp } from '../lib/utils.js'
+import { buildCompressionPlan, encodeToTargetSize, mediaKind } from '../lib/compressor.js'
+import { fmtBytes, fmtTime, download, baseName, recentAction, clamp } from '../lib/utils.js'
 
 const SPRING = { type: 'spring', stiffness: 300, damping: 25 }
 const MIN_MB = 1, MAX_MB = 200
@@ -98,18 +97,59 @@ function Segmented({ options, value, onChange, disabled }) {
   )
 }
 
+function probeMediaFile(file, kind) {
+  const url = URL.createObjectURL(file)
+  const element = document.createElement(kind === 'audio' ? 'audio' : 'video')
+  element.preload = 'metadata'
+  let settle
+  const promise = new Promise((resolve) => {
+    let done = false
+    const cleanup = () => {
+      element.removeEventListener('loadedmetadata', onMetadata)
+      element.removeEventListener('error', onError)
+      try { element.removeAttribute('src'); element.load() } catch {}
+      URL.revokeObjectURL(url)
+    }
+    const finish = (result) => {
+      if (done) return
+      done = true
+      cleanup()
+      resolve(result)
+    }
+    const onMetadata = () => {
+      const duration = Number(element.duration)
+      const w = kind === 'video' ? Number(element.videoWidth) : null
+      const h = kind === 'video' ? Number(element.videoHeight) : null
+      if (!Number.isFinite(duration) || duration <= 0 || (kind === 'video' && (!w || !h))) {
+        finish({ error: 'Could not read valid duration or dimensions from this media file.' })
+      } else finish({ duration, w, h })
+    }
+    const onError = () => finish({ error: 'The browser could not read this file’s media metadata.' })
+    settle = finish
+    element.addEventListener('loadedmetadata', onMetadata)
+    element.addEventListener('error', onError)
+    element.src = url
+  })
+  return { promise, cancel: () => settle?.(null) }
+}
+
 export default function Compressor() {
   const [file, setFile] = useState(null)
+  const [kind, setKind] = useState(null)
   const [duration, setDuration] = useState(NaN)
   const [dims, setDims] = useState(null)
   const [targetMB, setTargetMB] = useState(25)
   const [audioKbps, setAudioKbps] = useState(128)
+  const [includeAudio, setIncludeAudio] = useState(true)
   const [scale, setScale] = useState(1)
   const [busy, setBusy] = useState(false)
+  const [loading, setLoading] = useState(false)
   const [prog, setProg] = useState(0)
   const [elapsed, setElapsed] = useState(0)
   const [result, setResult] = useState(null)
   const [error, setError] = useState('')
+  const probeRef = useRef(null)
+  const loadSeq = useRef(0)
 
   useEffect(() => {
     if (!busy) return
@@ -118,57 +158,98 @@ export default function Compressor() {
     return () => clearInterval(id)
   }, [busy])
 
-  async function load([f]) {
-    setFile(f); setResult(null); setError(''); setProg(0)
-    setDuration(await mediaDuration(f))
-    const v = document.createElement('video'); v.preload = 'metadata'; v.src = URL.createObjectURL(f)
-    v.onloadedmetadata = () => setDims({ w: v.videoWidth, h: v.videoHeight })
+  useEffect(() => () => {
+    loadSeq.current += 1
+    probeRef.current?.()
+    probeRef.current = null
+  }, [])
+
+  async function load(files) {
+    const f = files?.[0]
+    if (!f) return
+    const seq = ++loadSeq.current
+    probeRef.current?.(); probeRef.current = null
+    const mediaType = mediaKind(f)
+    if (!mediaType) {
+      setFile(null); setKind(null); setDuration(NaN); setDims(null); setLoading(false)
+      setError('Choose a supported audio or video file.')
+      return
+    }
+
+    setFile(f); setKind(mediaType); setDuration(NaN); setDims(null)
+    setIncludeAudio(true)
+    setResult(null); setError(''); setProg(0); setLoading(true)
+    try {
+      const probe = probeMediaFile(f, mediaType)
+      probeRef.current = probe.cancel
+      const info = await probe.promise
+      if (seq !== loadSeq.current) return
+      if (!info) return
+      if (info.error) { setError(info.error); return }
+      setDuration(info.duration)
+      setDims(mediaType === 'video' ? { w: info.w, h: info.h } : null)
+    } catch (e) {
+      if (seq === loadSeq.current) setError('Could not inspect this file: ' + String(e?.message || e).slice(0, 180))
+    } finally {
+      if (seq === loadSeq.current) {
+        probeRef.current = null
+        setLoading(false)
+      }
+    }
+  }
+
+  function changeFile() {
+    if (busy) return
+    loadSeq.current += 1
+    probeRef.current?.(); probeRef.current = null
+    setFile(null); setKind(null); setDuration(NaN); setDims(null)
+    setIncludeAudio(true)
+    setResult(null); setError(''); setProg(0); setLoading(false)
   }
 
   const plan = useMemo(() => {
-    if (!file || !Number.isFinite(duration) || duration <= 0) return null
-    const targetBytes = targetMB * 1024 * 1024
-    const overhead = targetBytes * 0.02
-    const audioBytes = (audioKbps * 1000 * duration) / 8
-    const videoBits = Math.max(0, (targetBytes - overhead - audioBytes) * 8)
-    const vKbps = Math.round(videoBits / duration / 1000)
-    const est = videoBits / 8 + audioBytes + overhead
-    return { targetBytes, overhead, audioBytes, vKbps, est, fits: est <= targetBytes }
-  }, [file, duration, targetMB, audioKbps])
+    if (!file || !kind) return null
+    return buildCompressionPlan({ kind, duration, targetMB, audioKbps: kind === 'video' && !includeAudio ? 0 : audioKbps })
+  }, [file, kind, duration, targetMB, audioKbps, includeAudio])
 
   async function compress() {
-    if (!plan || plan.vKbps < 20) { setError('Budget too small for this duration — raise the target, lower audio bitrate, or scale resolution down.'); return }
+    if (!plan || !plan.fits || loading) {
+      setError(kind === 'audio'
+        ? 'The target is too small for this audio duration. Raise the target size or lower the audio bitrate cap.'
+        : 'The target leaves too little bitrate for this video. Raise the target, turn off audio for a silent source, lower the audio bitrate, or scale the resolution down.')
+      return
+    }
     setBusy(true); setProg(0); setElapsed(0); setError(''); setResult(null)
+    const target = targetMB
     try {
-      const ffmpeg = await getFFmpeg()
-      const handler = ({ progress }) => setProg(progress * 100)
-      ffmpeg.on('progress', handler)
-      const inName = 'in' + file.name.slice(file.name.lastIndexOf('.'))
-      await ffmpeg.writeFile(inName, await fetchFile(file))
-      const args = ['-i', inName]
-      if (scale < 1) args.push('-vf', `scale=trunc(iw*${scale}/2)*2:trunc(ih*${scale}/2)*2`)
-      args.push('-c:v', 'libx264', '-b:v', `${plan.vKbps}k`, '-maxrate', `${Math.round(plan.vKbps * 1.15)}k`, '-bufsize', `${plan.vKbps * 2}k`, '-preset', 'medium', '-c:a', 'aac', '-b:a', `${audioKbps}k`, '-y', 'out.mp4')
-      await ffmpeg.exec(args)
-      const data = await ffmpeg.readFile('out.mp4')
-      const blob = new Blob([data.buffer], { type: 'video/mp4' })
-      await ffmpeg.deleteFile(inName); await ffmpeg.deleteFile('out.mp4')
-      ffmpeg.off('progress', handler)
-      setResult(blob)
-      download(blob, `${baseName(file.name)}-${targetMB}mb.mp4`)
-      recentAction(`Compressed ${file.name} into a ${targetMB} MB budget`)
+      const encoded = await encodeToTargetSize(file, plan, { scale, onProgress: setProg })
+      const name = `${baseName(file.name)}-${target}mb.${encoded.ext}`
+      const next = { ...encoded, name, targetMB: target, size: encoded.blob.size }
+      setResult(next)
+      // Keep an explicit save action in the result panel in case the browser blocks this automatic download.
+      download(encoded.blob, name)
+      recentAction(`Compressed ${file.name} into a ${target} MB budget`)
     } catch (e) {
       setError('Encode failed: ' + String(e?.message || e).slice(0, 220))
     } finally { setBusy(false) }
   }
 
-  const savedPct = result ? Math.max(0, Math.round((1 - result.size / file.size) * 100)) : 0
+  const saveResult = () => { if (result?.blob) download(result.blob, result.name) }
+  const savedPct = result && file?.size ? Math.max(0, Math.round((1 - result.size / file.size) * 100)) : 0
+  const allocatedOther = plan ? Math.max(0, plan.targetBytes - plan.audioBytes - (plan.kind === 'video' ? plan.videoBytes : plan.overhead)) : 0
+  const allocations = plan && (plan.kind === 'video'
+    ? [['Video', plan.videoBytes], [plan.audioKbps > 0 ? 'Audio reserve' : 'Audio off', plan.audioBytes], ['Container / margin', allocatedOther]]
+    : [['Audio', plan.audioBytes], ['Container reserve', plan.overhead], ['Unused budget', Math.max(0, plan.targetBytes - plan.audioBytes - plan.overhead)]])
 
   return (
     <div className="space-y-6">
       {!file ? (
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={SPRING}>
-          <Dropzone onFiles={load} accept="video/*,audio/*" label="Drop a video or audio file" sub="The only tool allowed to compress — and only when you ask" />
-        </motion.div>
+        <>
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={SPRING}>
+            <Dropzone onFiles={load} accept="video/*,audio/*" label="Drop a video or audio file" sub="The only tool allowed to compress — and only when you ask" />
+          </motion.div>
+          {error && <Note tone="warn">{error}</Note>}
+        </>
       ) : (
         <div className="grid lg:grid-cols-[1fr_360px] gap-6 items-start">
           {/* -------- left: source + dial + levers -------- */}
@@ -184,10 +265,11 @@ export default function Compressor() {
               <div className="flex-1 min-w-0">
                 <div className="display font-semibold text-[17px] truncate">{file.name}</div>
                 <div className="text-[12px] mt-0.5" style={{ color: 'var(--muted)' }}>
-                  {Number.isFinite(duration) ? fmtTime(duration) : '…'} {dims && `· ${dims.w}×${dims.h}`} · source <AnimatedNumber value={file.size} format={(n) => fmtBytes(n)} className="font-semibold" />
+                  {loading ? 'Reading media metadata…' : Number.isFinite(duration) ? fmtTime(duration) : 'Duration unavailable'} {dims && `· ${dims.w}×${dims.h}`} · {kind === 'audio' ? 'audio' : 'video'} · source <AnimatedNumber value={file.size} format={(n) => fmtBytes(n)} className="font-semibold" />
                 </div>
               </div>
-              <button className="btn" disabled={busy} onClick={() => { setFile(null); setResult(null) }}>Change file</button>
+              <button className="btn" disabled={busy} onClick={changeFile}>Change file</button>
+              {error && <div className="basis-full"><Note tone="warn">{error}</Note></div>}
             </motion.div>
 
             <motion.div className="card p-7" initial={{ opacity: 0, y: 22 }} animate={{ opacity: 1, y: 0 }} transition={{ ...SPRING, delay: 0.06 }}>
@@ -204,37 +286,44 @@ export default function Compressor() {
             </motion.div>
 
             <motion.div className="card p-7 grid sm:grid-cols-2 gap-7" initial={{ opacity: 0, y: 22 }} animate={{ opacity: 1, y: 0 }} transition={{ ...SPRING, delay: 0.12 }}>
-              <div>
-                <div className="flex justify-between mb-2">
-                  <span className="label">Audio bitrate</span>
-                  <span className="text-[12px] font-bold tabular-nums" style={{ color: 'var(--copper)' }}>{audioKbps} kbps</span>
+              <div className="space-y-3">
+                {kind === 'video' && (
+                  <label className="flex items-start gap-2.5 cursor-pointer">
+                    <input type="checkbox" className="mt-0.5" style={{ accentColor: 'var(--copper)' }} checked={includeAudio} disabled={busy || loading} onChange={(e) => setIncludeAudio(e.target.checked)} />
+                    <span>
+                      <span className="label block">Include audio if available</span>
+                      <span className="block text-[11px] leading-relaxed mt-1" style={{ color: 'var(--muted)' }}>Turn off for silent sources to give the full target budget to video. The output will be silent.</span>
+                    </span>
+                  </label>
+                )}
+                <div>
+                  <div className="flex justify-between mb-2 gap-2">
+                    <span className="label">Audio bitrate cap</span>
+                    <span className="text-[12px] font-bold tabular-nums shrink-0" style={{ color: 'var(--copper)' }}>{kind === 'video' && !includeAudio ? 'Off' : `${audioKbps} kbps`}</span>
+                  </div>
+                  <input type="range" className="w-full" min="64" max="320" step="32" value={audioKbps} disabled={busy || loading || (kind === 'video' && !includeAudio)} onChange={(e) => setAudioKbps(+e.target.value)} />
+                  <div className="flex justify-between text-[10px] mt-1" style={{ color: 'var(--muted)' }}><span>64</span><span>320</span></div>
                 </div>
-                <input type="range" className="w-full" min="64" max="320" step="32" value={audioKbps} disabled={busy} onChange={(e) => setAudioKbps(+e.target.value)} />
-                <div className="flex justify-between text-[10px] mt-1" style={{ color: 'var(--muted)' }}><span>64</span><span>320</span></div>
               </div>
-              <div>
+              {kind === 'video' && <div>
                 <div className="label mb-2">Resolution scale</div>
                 <Segmented disabled={busy} options={[[1, '100%'], [0.75, '75%'], [0.5, '50%'], [0.25, '25%']]} value={scale} onChange={setScale} />
-              </div>
+              </div>}
             </motion.div>
 
             {plan && (
               <motion.div className="card p-7" initial={{ opacity: 0, y: 22 }} animate={{ opacity: 1, y: 0 }} transition={{ ...SPRING, delay: 0.18 }}>
                 <div className="flex items-baseline justify-between mb-4">
                   <h3 className="display font-semibold text-[18px]">Budget allocation</h3>
-                  <span className="text-[11px] font-semibold" style={{ color: 'var(--muted)' }}>live two-pass math</span>
+                  <span className="text-[11px] font-semibold" style={{ color: 'var(--muted)' }}>{kind === 'video' ? 'target bitrate budget' : 'audio bitrate within target'}</span>
                 </div>
                 <div className="flex h-4 rounded-full overflow-hidden border border-line" style={{ background: 'var(--surface2)' }}>
-                  <motion.div initial={false} animate={{ width: `${clamp((1 - (plan.audioBytes + plan.overhead) / plan.targetBytes) * 100, 0, 100)}%` }} transition={SPRING} style={{ background: 'var(--copper)' }} />
-                  <motion.div initial={false} animate={{ width: `${clamp((plan.audioBytes / plan.targetBytes) * 100, 0, 100)}%` }} transition={SPRING} style={{ background: 'color-mix(in srgb, var(--copper) 45%, var(--surface))' }} />
-                  <motion.div initial={false} animate={{ width: `${clamp((plan.overhead / plan.targetBytes) * 100, 0, 100)}%` }} transition={SPRING} style={{ background: 'var(--border)' }} />
+                  <motion.div initial={false} animate={{ width: `${clamp(((kind === 'video' ? plan.videoBytes : plan.audioBytes) / plan.targetBytes) * 100, 0, 100)}%` }} transition={SPRING} style={{ background: 'var(--copper)' }} />
+                  <motion.div initial={false} animate={{ width: `${clamp(((kind === 'video' ? plan.audioBytes : plan.overhead) / plan.targetBytes) * 100, 0, 100)}%` }} transition={SPRING} style={{ background: 'color-mix(in srgb, var(--copper) 45%, var(--surface))' }} />
+                  <motion.div initial={false} animate={{ width: `${clamp((allocatedOther / plan.targetBytes) * 100, 0, 100)}%` }} transition={SPRING} style={{ background: 'var(--border)' }} />
                 </div>
                 <div className="grid grid-cols-3 gap-3 mt-4 text-center">
-                  {[
-                    ['Video', plan.targetBytes - plan.audioBytes - plan.overhead],
-                    ['Audio', plan.audioBytes],
-                    ['Container', plan.overhead],
-                  ].map(([l, b]) => (
+                  {allocations.map(([l, b]) => (
                     <div key={l}>
                       <div className="label">{l}</div>
                       <AnimatedNumber value={b} format={(n) => fmtBytes(n)} className="block font-bold text-[14px] mt-1 tabular-nums" />
@@ -251,12 +340,12 @@ export default function Compressor() {
               <h3 className="display font-semibold text-[18px]">The plan</h3>
               <div className="grid grid-cols-2 gap-3">
                 <div className="rounded-xl border border-line p-3" style={{ background: 'var(--surface2)' }}>
-                  <div className="label">Video bitrate</div>
-                  <div className="font-bold text-[17px] mt-1 tabular-nums"><AnimatedNumber value={plan?.vKbps || 0} /> <span className="text-[11px]" style={{ color: 'var(--muted)' }}>kbps</span></div>
+                  <div className="label">{kind === 'audio' ? 'Audio bitrate' : 'Video bitrate'}</div>
+                  <div className="font-bold text-[17px] mt-1 tabular-nums"><AnimatedNumber value={plan ? (kind === 'audio' ? plan.audioKbps : plan.videoKbps) : 0} /> <span className="text-[11px]" style={{ color: 'var(--muted)' }}>kbps</span></div>
                 </div>
                 <div className="rounded-xl border border-line p-3" style={{ background: 'var(--surface2)' }}>
                   <div className="label">Est. output</div>
-                  <div className="font-bold text-[17px] mt-1 tabular-nums"><AnimatedNumber value={plan?.est || 0} format={(n) => fmtBytes(n)} /></div>
+                  <div className="font-bold text-[17px] mt-1 tabular-nums"><AnimatedNumber value={plan?.estimatedBytes || 0} format={(n) => fmtBytes(n)} /></div>
                 </div>
               </div>
 
@@ -298,8 +387,8 @@ export default function Compressor() {
                       <div className="absolute inset-0 grid place-items-center text-[11px] font-bold tabular-nums"><AnimatedNumber value={prog} />%</div>
                     </div>
                     <div className="flex-1">
-                      <div className="font-semibold text-[14px]">Two-pass calculated encode</div>
-                      <div className="text-[12px] mt-0.5" style={{ color: 'var(--muted)' }}>x264 · AAC · {fmtTime(elapsed)} elapsed</div>
+                      <div className="font-semibold text-[14px]">{kind === 'video' ? 'Two-pass H.264 encode' : 'AAC audio encode'}</div>
+                      <div className="text-[12px] mt-0.5" style={{ color: 'var(--muted)' }}>{kind === 'video' ? (includeAudio ? 'H.264 · AAC when source audio exists' : 'H.264 · audio omitted') : 'AAC in an M4A container'} · {fmtTime(elapsed)} elapsed</div>
                       <div className="mt-3"><LiveProgress value={prog} /></div>
                     </div>
                   </div>
@@ -322,11 +411,12 @@ export default function Compressor() {
                         <span>{l}</span><span className="tabular-nums">{fmtBytes(b)}</span>
                       </div>
                       <div className="h-3 rounded-full overflow-hidden" style={{ background: 'var(--surface2)', border: '1px solid var(--border)' }}>
-                        <motion.div className="h-full rounded-full" initial={{ width: 0 }} animate={{ width: `${(b / file.size) * 100}%` }} transition={{ ...SPRING, delay: 0.1 + i * 0.12 }} style={{ background: c }} />
+                        <motion.div className="h-full rounded-full" initial={{ width: 0 }} animate={{ width: `${clamp((b / file.size) * 100, 0, 100)}%` }} transition={{ ...SPRING, delay: 0.1 + i * 0.12 }} style={{ background: c }} />
                       </div>
                     </div>
                   ))}
-                  <div className="text-[12px]" style={{ color: 'var(--muted)' }}>Downloaded as {baseName(file.name)}-{targetMB}mb.mp4 · target {targetMB} MB.</div>
+                  <div className="text-[12px]" style={{ color: 'var(--muted)' }}>Ready as {result.name} · target {result.targetMB} MB.</div>
+                  <button className="btn btn-primary w-full" onClick={saveResult}>Download again</button>
                 </motion.div>
               )}
             </AnimatePresence>

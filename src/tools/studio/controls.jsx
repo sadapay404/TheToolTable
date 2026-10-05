@@ -71,7 +71,7 @@ export function Icon({ n, s = 18, w = 1.7, className = '' }) {
 }
 
 /* ----------------------------------------- slider ----------------------------------------- */
-export function Slider({ label, value, min = -100, max = 100, step = 1, def = 0, onChange, track, fmt, suffix = '' }) {
+export function Slider({ label, value, min = -100, max = 100, step = 1, def = 0, onChange, track, fmt, suffix = '', disabled = false }) {
   const ref = useRef(null)
   const [drag, setDrag] = useState(false)
   const [shake, setShake] = useState(0)
@@ -83,7 +83,7 @@ export function Slider({ label, value, min = -100, max = 100, step = 1, def = 0,
   const shown = fmt ? fmt(value) : (step < 1 ? value.toFixed(2) : Math.round(value)) + suffix
 
   return (
-    <div className="group select-none" onDoubleClick={() => { onChange(def); setShake((n) => n + 1) }} title="Double-click to reset">
+    <div className={`group select-none ${disabled ? 'opacity-55' : ''}`} onDoubleClick={() => { if (!disabled) { onChange(def); setShake((n) => n + 1) } }} title={disabled ? undefined : 'Double-click to reset'}>
       <div className="flex items-center justify-between mb-1.5">
         <motion.span key={shake} className="text-[12px] font-semibold" animate={shake ? { x: [0, -3, 3, -2, 0] } : {}} transition={{ duration: 0.3 }}
           style={{ color: changed ? 'var(--ink)' : 'var(--muted)' }}>{label}</motion.span>
@@ -91,7 +91,7 @@ export function Slider({ label, value, min = -100, max = 100, step = 1, def = 0,
           <AnimatePresence>
             {changed && (
               <motion.button initial={{ opacity: 0, scale: 0.4 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.4 }} transition={SPRING}
-                className="w-3.5 h-3.5 grid place-items-center rounded-full" style={{ color: 'var(--muted)' }} onClick={() => onChange(def)} aria-label={`Reset ${label}`}>
+                disabled={disabled} className="w-3.5 h-3.5 grid place-items-center rounded-full" style={{ color: 'var(--muted)' }} onClick={() => onChange(def)} aria-label={`Reset ${label}`}>
                 <Icon n="reset" s={11} w={2.2} />
               </motion.button>
             )}
@@ -100,12 +100,13 @@ export function Slider({ label, value, min = -100, max = 100, step = 1, def = 0,
         </span>
       </div>
       <div
-        ref={ref} role="slider" tabIndex={0} aria-label={label} aria-valuemin={min} aria-valuemax={max} aria-valuenow={value}
-        className="relative h-6 cursor-pointer touch-none focus:outline-none"
-        onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); setDrag(true); onChange(fromEvent(e)) }}
-        onPointerMove={(e) => drag && onChange(fromEvent(e))}
+        ref={ref} role="slider" tabIndex={disabled ? -1 : 0} aria-label={label} aria-disabled={disabled} aria-valuemin={min} aria-valuemax={max} aria-valuenow={value}
+        className={`relative h-6 touch-none focus:outline-none ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+        onPointerDown={(e) => { if (disabled) return; e.currentTarget.setPointerCapture(e.pointerId); setDrag(true); onChange(fromEvent(e)) }}
+        onPointerMove={(e) => !disabled && drag && onChange(fromEvent(e))}
         onPointerUp={() => setDrag(false)} onPointerCancel={() => setDrag(false)}
         onKeyDown={(e) => {
+          if (disabled) return
           const d = e.shiftKey ? step * 10 : step
           if (e.key === 'ArrowRight' || e.key === 'ArrowUp') { e.preventDefault(); onChange(snap(value + d)) }
           if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') { e.preventDefault(); onChange(snap(value - d)) }

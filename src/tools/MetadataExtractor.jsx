@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import exifr from 'exifr'
 import { jsPDF } from 'jspdf'
 import { Dropzone, Note } from '../components/ui.jsx'
@@ -33,6 +33,8 @@ function jsonSafe(v) {
 }
 
 const rows = (obj) => (obj && typeof obj === 'object' ? Object.entries(obj).filter(([, v]) => v !== undefined) : [])
+const PREVIEW_LIMIT_BYTES = 8 * 1024 * 1024
+const HASH_LIMIT_BYTES = 64 * 1024 * 1024
 
 /* ---------- file structure (always works for JPEG/PNG) ---------- */
 const JPEG_MARKERS = { c0: 'SOF0', c1: 'SOF1', c2: 'SOF2', c4: 'DHT', c8: 'SOF8', ca: 'SOF10', cc: 'DAC', d8: 'SOI', d9: 'EOI', da: 'SOS', db: 'DQT', dd: 'DRI', e0: 'APP0 (JFIF)', e1: 'APP1 (EXIF/XMP)', e2: 'APP2 (ICC)', ed: 'APP13 (IPTC)', ee: 'APP14 (Adobe)', fe: 'COM' }
@@ -82,12 +84,12 @@ async function sha256(buf) {
   } catch { return 'unavailable in this context' }
 }
 
-async function reverseGeocode(lat, lon) {
-  try {
-    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}`)
-    const j = await r.json()
-    return j?.display_name || null
-  } catch { return null }
+async function reverseGeocode(lat, lon, signal) {
+  const params = new URLSearchParams({ format: 'jsonv2', lat: String(lat), lon: String(lon) })
+  const response = await fetch(`https://nominatim.openstreetmap.org/reverse?${params}`, { signal, headers: { Accept: 'application/json' } })
+  if (!response.ok) throw new Error(`OpenStreetMap returned ${response.status}`)
+  const result = await response.json()
+  return result?.display_name || null
 }
 
 /* ---------- PDF report ---------- */
@@ -131,77 +133,158 @@ export default function MetadataExtractor() {
   const [filter, setFilter] = useState('')
   const [error, setError] = useState('')
   const [cleaned, setCleaned] = useState(null)
+  const [scrubBusy, setScrubBusy] = useState(false)
+  const [placeBusy, setPlaceBusy] = useState(false)
+  const [placeError, setPlaceError] = useState('')
+  const [mapOpen, setMapOpen] = useState(false)
+  const analysisId = useRef(0)
+  const thumbUrlRef = useRef('')
+  const placeController = useRef(null)
 
-  async function analyze([f]) {
+  useEffect(() => () => {
+    analysisId.current++
+    placeController.current?.abort()
+    if (thumbUrlRef.current) URL.revokeObjectURL(thumbUrlRef.current)
+  }, [])
+
+  function releaseThumbnail() {
+    if (thumbUrlRef.current) URL.revokeObjectURL(thumbUrlRef.current)
+    thumbUrlRef.current = ''
+  }
+
+  function clearFile() {
+    analysisId.current++
+    placeController.current?.abort(); placeController.current = null
+    releaseThumbnail()
+    setFile(null); setMeta(null); setError(''); setCleaned(null); setFilter(''); setScrubBusy(false)
+    setPlaceBusy(false); setPlaceError(''); setMapOpen(false)
+  }
+
+  async function analyze(files) {
+    const f = [...(files || [])][0]
+    if (!f) return
+    const id = ++analysisId.current
+    placeController.current?.abort(); placeController.current = null
+    releaseThumbnail()
     setFile(f); setError(''); setCleaned(null); setMeta(null); setFilter('')
+    setPlaceBusy(false); setPlaceError(''); setMapOpen(false); setScrubBusy(false)
+    let pendingThumb = ''
+    const isCurrent = () => analysisId.current === id
     try {
-      const buf = await f.arrayBuffer()
-
-      /* ---- file-level facts ---- */
+      // Keep large images responsive: parsing uses a small leading slice, while SHA-256 is
+      // calculated only when the whole file fits a modest memory budget.
+      const fullBuf = f.size <= HASH_LIMIT_BYTES ? await f.arrayBuffer() : null
+      const buf = fullBuf ? fullBuf.slice(0, PREVIEW_LIMIT_BYTES) : await f.slice(0, PREVIEW_LIMIT_BYTES).arrayBuffer()
+      if (!isCurrent()) return
+      const type = detectType(buf)
+      const mime = String(f.type || '').toLowerCase()
       const fileInfo = {
         'File name': f.name,
         'File size': `${fmtBytes(f.size)} (${f.size.toLocaleString()} bytes)`,
         'MIME type': f.type || 'unknown',
         'Extension': extName(f.name).toUpperCase() || '—',
-        'Container': detectType(buf)?.toUpperCase() || (f.type.includes('webp') ? 'WEBP' : f.type.includes('heic') ? 'HEIC' : extName(f.name).toUpperCase()),
-        'SHA-256': await sha256(buf),
+        'Container': type?.toUpperCase() || (mime.includes('webp') ? 'WEBP' : mime.includes('heic') ? 'HEIC' : extName(f.name).toUpperCase()),
+        'SHA-256': fullBuf ? await sha256(fullBuf) : 'Skipped for files over 64 MiB to avoid a large memory allocation',
         'Last modified': new Date(f.lastModified),
       }
-      let w = 0, h = 0
-      try {
-        const url = URL.createObjectURL(f)
-        const img = new Image()
-        await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url })
-        w = img.naturalWidth; h = img.naturalHeight
-        fileInfo['Dimensions'] = `${w} × ${h} px`
-        fileInfo['Megapixels'] = ((w * h) / 1e6).toFixed(2) + ' MP'
-        const g = gcd(w, h)
-        fileInfo['Aspect ratio'] = g ? `${w / g}:${h / g}` : '—'
-        fileInfo['Orientation'] = w > h ? 'Landscape' : w < h ? 'Portrait' : 'Square'
-        URL.revokeObjectURL(url)
-      } catch { /* undecodable — fine */ }
+      if (!isCurrent()) return
 
-      /* ---- every exifr block ---- */
-      const opts = { translateValues: true, reviveValues: true, exif: true, iptc: true, xmp: true, icc: true, gps: true, makerNotes: true, ifd0: true, ifd1: true, interop: true }
-      let all = {}, exif = {}, iptc = {}, xmp = {}, gps = null, icc = {}, thumbUrl = null
-      try { all = (await exifr.parse(f, opts)) || {} } catch { all = {} }
-      try { exif = (await exifr.exif(f)) || {} } catch { exif = {} }
-      try { iptc = (await exifr.iptc(f)) || {} } catch { iptc = {} }
-      try { xmp = (await exifr.xmp(f)) || {} } catch { xmp = {} }
-      try { gps = await exifr.gps(f) } catch { gps = null }
-      try { icc = (await exifr.icc(f)) || {} } catch { icc = {} }
+      // Revoke the image URL even when decode fails or the selection changes mid-load.
+      const imageUrl = URL.createObjectURL(f)
       try {
-        const t = await exifr.thumbnail(f)
-        if (t) thumbUrl = URL.createObjectURL(new Blob([t], { type: 'image/jpeg' }))
-      } catch { thumbUrl = null }
+        const img = new Image()
+        await new Promise((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error('Image dimensions took too long to load')), 15000)
+          img.onload = () => { clearTimeout(timer); resolve() }
+          img.onerror = () => { clearTimeout(timer); reject(new Error('Image preview unavailable')) }
+          img.src = imageUrl
+        })
+        if (!isCurrent()) return
+        const w = img.naturalWidth, h = img.naturalHeight
+        if (w && h) {
+          fileInfo['Dimensions'] = `${w} × ${h} px`
+          fileInfo['Megapixels'] = ((w * h) / 1e6).toFixed(2) + ' MP'
+          const g = gcd(w, h)
+          fileInfo['Aspect ratio'] = g ? `${w / g}:${h / g}` : '—'
+          fileInfo['Orientation'] = w > h ? 'Landscape' : w < h ? 'Portrait' : 'Square'
+        }
+      } catch { /* some formats, such as HEIC, may expose metadata without browser preview support */ }
+      finally { URL.revokeObjectURL(imageUrl) }
+      if (!isCurrent()) return
+
+      /* ---- metadata blocks ---- */
+      const opts = { translateValues: true, reviveValues: true, exif: true, iptc: true, xmp: true, icc: true, gps: true, makerNotes: true, ifd0: true, ifd1: true, interop: true }
+      let all = {}, exif = {}, iptc = {}, xmp = {}, gps = null, icc = {}
+      try { all = (await exifr.parse(f, opts)) || {} } catch { all = {} }
+      if (!isCurrent()) return
+      try { exif = (await exifr.exif(f)) || {} } catch { exif = {} }
+      if (!isCurrent()) return
+      try { iptc = (await exifr.iptc(f)) || {} } catch { iptc = {} }
+      if (!isCurrent()) return
+      try { xmp = (await exifr.xmp(f)) || {} } catch { xmp = {} }
+      if (!isCurrent()) return
+      try { gps = await exifr.gps(f) } catch { gps = null }
+      if (!isCurrent()) return
+      try { icc = (await exifr.icc(f)) || {} } catch { icc = {} }
+      if (!isCurrent()) return
+      try {
+        const thumbnail = await exifr.thumbnail(f)
+        if (thumbnail) pendingThumb = URL.createObjectURL(new Blob([thumbnail], { type: 'image/jpeg' }))
+      } catch { pendingThumb = '' }
+      if (!isCurrent()) { if (pendingThumb) URL.revokeObjectURL(pendingThumb); return }
 
       const xmpRaw = rawXmpPacket(buf)
       if (xmpRaw) xmp['Raw XMP packet'] = xmpRaw.slice(0, 4000)
-
-      /* ---- location ---- */
-      let place = null
-      if (gps?.latitude != null) place = await reverseGeocode(gps.latitude, gps.longitude)
-
-      const structure = detectType(buf) === 'jpeg' ? jpegStructure(buf) : detectType(buf) === 'png' ? pngStructure(buf) : []
-      setMeta({ fileInfo, all, exif, iptc, xmp, gps, icc, place, structure, thumbUrl, buf })
+      const structure = type === 'jpeg' ? jpegStructure(buf) : type === 'png' ? pngStructure(buf) : []
+      if (!isCurrent()) { if (pendingThumb) URL.revokeObjectURL(pendingThumb); return }
+      thumbUrlRef.current = pendingThumb
+      setMeta({ fileInfo, all, exif, iptc, xmp, gps, icc, place: null, structure, thumbUrl: pendingThumb, hexBytes: buf.slice(0, 512) })
     } catch (e) {
-      setError('Analysis failed: ' + String(e?.stack || e?.message || e).slice(0, 400))
+      if (pendingThumb) URL.revokeObjectURL(pendingThumb)
+      if (isCurrent()) setError('Analysis failed: ' + String(e?.message || e).slice(0, 280))
     }
   }
+
+  async function resolvePlace() {
+    if (!gpsPosition || placeBusy) return
+    const { lat, lon } = gpsPosition
+    const id = analysisId.current
+    const controller = new AbortController()
+    placeController.current?.abort(); placeController.current = controller
+    const timer = setTimeout(() => controller.abort(), 8000)
+    setPlaceBusy(true); setPlaceError('')
+    try {
+      const place = await reverseGeocode(lat, lon, controller.signal)
+      if (analysisId.current !== id) return
+      if (place) setMeta((current) => current ? { ...current, place } : current)
+      else setPlaceError('OpenStreetMap did not return a place name for these coordinates.')
+    } catch (e) {
+      if (analysisId.current === id) setPlaceError(e.name === 'AbortError' ? 'Place lookup timed out.' : e.message || 'Place lookup failed.')
+    } finally {
+      clearTimeout(timer)
+      if (analysisId.current === id) { setPlaceBusy(false); placeController.current = null }
+    }
+  }
+
+  const gpsPosition = useMemo(() => {
+    const lat = Number(meta?.gps?.latitude), lon = Number(meta?.gps?.longitude)
+    return Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180 ? { lat, lon } : null
+  }, [meta?.gps])
 
   const sections = useMemo(() => {
     if (!meta) return []
     const q = filter.trim().toLowerCase()
     const flt = (r) => (q ? r.filter(([k, v]) => String(k).toLowerCase().includes(q) || fmtVal(v).toLowerCase().includes(q)) : r)
     const loc = []
-    if (meta.gps?.latitude != null) {
-      loc.push(['Latitude', meta.gps.latitude.toFixed(7) + '°'])
-      loc.push(['Longitude', meta.gps.longitude.toFixed(7) + '°'])
+    if (gpsPosition) {
+      const { lat, lon } = gpsPosition
+      loc.push(['Latitude', `${lat.toFixed(7)}°`])
+      loc.push(['Longitude', `${lon.toFixed(7)}°`])
       if (meta.gps.altitude != null) loc.push(['Altitude', `${Number(meta.gps.altitude).toFixed(1)} m`])
       if (meta.gps.speed != null) loc.push(['Speed', `${Number(meta.gps.speed).toFixed(1)} km/h`])
       if (meta.gps.imgDirection != null) loc.push(['Camera direction', `${Number(meta.gps.imgDirection).toFixed(0)}°`])
       if (meta.place) loc.push(['Place (reverse geocoded)', meta.place])
-      loc.push(['Map', `https://www.openstreetmap.org/?mlat=${meta.gps.latitude}&mlon=${meta.gps.longitude}#map=17/${meta.gps.latitude}/${meta.gps.longitude}`])
+      loc.push(['Map', `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=17/${lat}/${lon}`])
     }
     return [
       ['File Information', flt(rows(meta.fileInfo))],
@@ -213,16 +296,24 @@ export default function MetadataExtractor() {
       ['ICC Color Profile', flt(rows(meta.icc))],
       ['File Structure', flt(meta.structure)],
     ]
-  }, [meta, filter])
+  }, [meta, filter, gpsPosition])
 
   const totalTags = useMemo(() => sections.reduce((n, [, r]) => n + r.length, 0), [sections])
 
-  function sanitizeFile() {
-    const res = scrub(meta.buf)
-    if (!res) { setError('Scrub supports JPEG & PNG pixel-losslessly. Other containers would require re-encoding, which the zero-compression policy blocks.'); return }
-    download(res.blob, `${baseName(file.name)}-clean.${res.type === 'jpeg' ? 'jpg' : 'png'}`)
-    setCleaned({ before: file.size, after: res.blob.size })
-    recentAction(`Scrubbed metadata from ${file.name}`)
+  async function sanitizeFile() {
+    if (!file || !meta || scrubBusy) return
+    const id = analysisId.current
+    setScrubBusy(true); setError(''); setCleaned(null)
+    try {
+      const res = scrub(await file.arrayBuffer())
+      if (analysisId.current !== id) return
+      if (!res) { setError('Scrub supports JPEG and PNG without re-encoding. Other containers are left unchanged.'); return }
+      const name = `${baseName(file.name)}-clean.${res.type === 'jpeg' ? 'jpg' : 'png'}`
+      setCleaned({ before: file.size, after: res.blob.size, blob: res.blob, name })
+      recentAction(`Prepared a metadata-scrubbed copy of ${file.name}`)
+    } catch (e) {
+      if (analysisId.current === id) setError(`Sanitizing failed: ${e.message || e}`)
+    } finally { if (analysisId.current === id) setScrubBusy(false) }
   }
 
   function exportJSON() {
@@ -234,33 +325,33 @@ export default function MetadataExtractor() {
   return (
     <div className="space-y-5">
       {!file ? (
-        <Dropzone onFiles={analyze} accept="image/*,.heic,.tif,.tiff,.webp" label="Drop a photo or image file" sub="JPEG · PNG · TIFF · HEIC · WebP — every tag, GPS + place name, parsed on this device" />
+        <Dropzone onFiles={analyze} accept="image/*,.heic,.tif,.tiff,.webp" label="Drop a photo or image file" sub="JPEG · PNG · TIFF · HEIC · WebP — metadata stays local; online place lookup is optional" />
       ) : (
         <>
-          <div className="card p-6 flex flex-wrap items-center gap-4">
+          <div className="card p-4 sm:p-6 flex flex-wrap items-center gap-3 sm:gap-4">
             <div className="min-w-0 flex-1">
               <div className="display font-semibold text-[19px] truncate">{file.name}</div>
               <div className="text-[12.5px] mt-1" style={{ color: 'var(--muted)' }}>
                 {fmtBytes(file.size)} · {totalTags} metadata entries extracted
               </div>
             </div>
-            <input className="input max-w-[200px]" placeholder="Filter tags…" value={filter} onChange={(e) => setFilter(e.target.value)} />
-            <button className="btn" onClick={() => { setFile(null); setMeta(null) }}>New file</button>
+            <input className="input w-full sm:w-auto sm:max-w-[220px]" aria-label="Filter metadata tags" placeholder="Filter tags…" value={filter} onChange={(e) => setFilter(e.target.value)} />
+            <button className="btn" onClick={clearFile}>New file</button>
             <button className="btn" disabled={!meta} onClick={exportJSON}>JSON</button>
             <button className="btn" disabled={!meta} onClick={() => { exportPDF({ file, sections }); recentAction(`Exported metadata PDF for ${file.name}`) }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 21h16" /></svg>
               Report PDF
             </button>
-            <button className="btn btn-primary" disabled={!meta} onClick={sanitizeFile}>Scrub & Sanitize</button>
+            <button className="btn btn-primary" disabled={!meta || scrubBusy} onClick={sanitizeFile}>{scrubBusy ? 'Preparing…' : 'Scrub & Sanitize'}</button>
           </div>
 
-          {cleaned && <Note tone="ok">Sanitized copy downloaded — {fmtBytes(cleaned.before)} → {fmtBytes(cleaned.after)}. Pixel data untouched.</Note>}
+          {cleaned && <Note tone="ok"><span className="flex flex-col sm:flex-row sm:items-center gap-2">Sanitized copy ready — {fmtBytes(cleaned.before)} → {fmtBytes(cleaned.after)}. Compressed image data was not re-encoded; removed orientation/color tags can change display in some viewers. <button className="btn btn-primary !py-1.5 !px-3 text-[12px] shrink-0" onClick={() => download(cleaned.blob, cleaned.name)}>Save sanitized copy</button></span></Note>}
           {error && <Note tone="warn">{error}</Note>}
 
           {!meta ? (
             <div className="card p-8 text-center">
               <div className="display font-semibold text-[16px]">Reading metadata…</div>
-              <div className="text-[12.5px] mt-1" style={{ color: 'var(--muted)' }}>Parsing EXIF, IPTC, XMP, ICC, GPS, structure and reverse-geocoding location on-device.</div>
+              <div className="text-[12.5px] mt-1" style={{ color: 'var(--muted)' }}>Parsing EXIF, IPTC, XMP, ICC, GPS and image structure locally. GPS is not sent anywhere unless you request an online lookup or map.</div>
             </div>
           ) : (
           <>
@@ -281,18 +372,18 @@ export default function MetadataExtractor() {
                   <img src={meta.thumbUrl} alt="Embedded thumbnail" className="w-full rounded-lg border border-line" />
                 </div>
               )}
-              {meta.gps?.latitude != null && (
+              {gpsPosition && (
                 <div className="card overflow-hidden">
-                  <div className="p-4 pb-2 eyebrow">Location</div>
+                  <div className="p-4 pb-2 eyebrow">Location · GPS</div>
                   {meta.place && <div className="px-4 pb-3 text-[12.5px] leading-relaxed">{meta.place}</div>}
-                  <div className="px-4 pb-3 text-[11.5px] mono" style={{ color: 'var(--muted)' }}>
-                    {meta.gps.latitude.toFixed(6)}, {meta.gps.longitude.toFixed(6)}
+                  <div className="px-4 pb-3 text-[11.5px] mono" style={{ color: 'var(--muted)' }}>{gpsPosition.lat.toFixed(6)}, {gpsPosition.lon.toFixed(6)}</div>
+                  <div className="px-4 pb-3 flex flex-col sm:flex-row gap-2">
+                    <button className="btn flex-1 !py-2 text-[12px]" onClick={resolvePlace} disabled={placeBusy}>{placeBusy ? 'Looking up…' : meta.place ? 'Refresh place name' : 'Find place name'}</button>
+                    <button className="btn flex-1 !py-2 text-[12px]" onClick={() => setMapOpen((open) => !open)}>{mapOpen ? 'Hide map' : 'Show map'}</button>
                   </div>
-                  <iframe
-                    title="GPS location"
-                    className="w-full h-64"
-                    src={`https://www.openstreetmap.org/export/embed.html?bbox=${meta.gps.longitude - 0.01}%2C${meta.gps.latitude - 0.006}%2C${meta.gps.longitude + 0.01}%2C${meta.gps.latitude + 0.006}&layer=mapnik&marker=${meta.gps.latitude}%2C${meta.gps.longitude}`}
-                  />
+                  <p className="px-4 pb-3 text-[11px] leading-relaxed" style={{ color: 'var(--muted)' }}>Using either online feature sends these coordinates to OpenStreetMap. Nothing is sent unless you choose a button.</p>
+                  {placeError && <div className="px-4 pb-3 text-[12px]" style={{ color: 'var(--error)' }}>{placeError}</div>}
+                  {mapOpen && <iframe title="GPS location map from OpenStreetMap" referrerPolicy="no-referrer" loading="lazy" className="w-full h-64 border-0" src={`https://www.openstreetmap.org/export/embed.html?bbox=${gpsPosition.lon - 0.01}%2C${gpsPosition.lat - 0.006}%2C${gpsPosition.lon + 0.01}%2C${gpsPosition.lat + 0.006}&layer=mapnik&marker=${gpsPosition.lat}%2C${gpsPosition.lon}`} />}
                 </div>
               )}
             </div>
@@ -319,7 +410,7 @@ export default function MetadataExtractor() {
 
               <div className="card overflow-hidden">
                 <div className="px-5 py-3.5 display font-semibold text-[15px] border-b border-line">Raw hex (first 512 B)</div>
-                <HexView buf={meta.buf} />
+                <HexView buf={meta.hexBytes} />
               </div>
             </div>
           </div>

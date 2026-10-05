@@ -1,28 +1,39 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-/* Self-hosted fonts: no network needed (offline PWA / Windows / Android) */
+/* Roboto is self-hosted through @fontsource so the app stays usable offline and in native builds. */
 @font-face { font-family: 'Fraunces'; font-style: normal; font-weight: 100 900; font-display: swap; src: url(../node_modules/@fontsource-variable/fraunces/files/fraunces-latin-wght-normal.woff2) format('woff2'); unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
 @font-face { font-family: 'Fraunces'; font-style: normal; font-weight: 100 900; font-display: swap; src: url(../node_modules/@fontsource-variable/fraunces/files/fraunces-latin-ext-wght-normal.woff2) format('woff2'); unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+1E00-1EFF,U+20A0-20AB,U+20AD-20C0,U+2C60-2C7F,U+A720-A7FF; }
 @font-face { font-family: 'Fraunces'; font-style: italic; font-weight: 100 900; font-display: swap; src: url(../node_modules/@fontsource-variable/fraunces/files/fraunces-latin-wght-italic.woff2) format('woff2'); unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
-@font-face { font-family: 'Inter'; font-style: normal; font-weight: 100 900; font-display: swap; src: url(../node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2) format('woff2'); unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 100 900; font-display: swap; src: url(../node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2) format('woff2'); unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+FEFF,U+FFFD; }
 @font-face { font-family: 'Inter'; font-style: normal; font-weight: 100 900; font-display: swap; src: url(../node_modules/@fontsource-variable/inter/files/inter-latin-ext-wght-normal.woff2) format('woff2'); unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+1E00-1EFF,U+20A0-20AB,U+20AD-20C0,U+2C60-2C7F,U+A720-A7FF; }
-
 :root {
-  --bg: #FDFBF7;
-  --surface: #FFFFFF;
-  --surface2: #F7F3EA;
-  --border: #E6E1D6;
-  --ink: #1A1817;
-  --muted: #7A7267;
-  --accent: #C87941;
-  --accent2: #8A6D3B;
-  --glow: rgba(200,121,65,0.22);
-  --copper: #B4715A;
-  --shadow: 0 1px 2px rgba(26,24,23,0.05), 0 8px 24px -12px rgba(26,24,23,0.14);
-  --shadow-lg: 0 2px 4px rgba(26,24,23,0.06), 0 24px 48px -16px rgba(26,24,23,0.22);
-  --hero-a: #F7EFE2;
-  --hero-b: #FDE8D7;
+  --bg: #FFFBFE;
+  --surface: #FFFBFE;
+  --surface2: #F4EFF7;
+  --border: #CAC4D0;
+  --ink: #1C1B1F;
+  --muted: #49454F;
+  --accent: #6750A4;
+  --accent2: #625B71;
+  --primary: #6750A4;
+  --on-primary: #FFFFFF;
+  --primary-container: #EADDFF;
+  --on-primary-container: #21005D;
+  --secondary: #625B71;
+  --on-secondary: #FFFFFF;
+  --secondary-container: #E8DEF8;
+  --tertiary: #7D5260;
+  --tertiary-container: #FFD8E4;
+  --error: #B3261E;
+  --success: #146C2E;
+  --outline: #79747E;
+  --glow: rgba(103,80,164,0.18);
+  --copper: #6750A4;
+  --shadow: 0 1px 3px rgba(29,25,43,.12), 0 4px 12px rgba(29,25,43,.08);
+  --shadow-lg: 0 2px 6px rgba(29,25,43,.14), 0 12px 28px rgba(29,25,43,.12);
+  --hero-a: #F4EFF7;
+  --hero-b: #EADDFF;
 }
 
 * { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
@@ -32,13 +43,17 @@
 html, body { background: var(--bg); }
 body {
   color: var(--ink);
-  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-family: Roboto, "Noto Sans", Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
-  transition: background 0.5s ease, color 0.5s ease;
-  font-feature-settings: "ss01" on, "cv05" on;
+  transition: background 0.3s ease, color 0.3s ease;
+  font-feature-settings: "kern";
 }
 
-/* paper grain — quiet, editorial */
+/* Material You is clean, high-contrast and typography-led rather than textured. */
+html[data-theme="material"] body::after,
+html[data-theme="material-dark"] body::after { display: none; }
+
+/* paper grain — retained only for the legacy decorative themes */
 body::after {
   content: "";
   position: fixed; inset: 0;
@@ -50,7 +65,7 @@ body::after {
 }
 html[data-theme="oled"] body::after, html[data-theme="cyberpunk"] body::after, html[data-theme="midnight"] body::after { mix-blend-mode: screen; --grain: 0.035; opacity: 0.035; }
 
-.display { font-family: Fraunces, Georgia, serif; letter-spacing: -0.015em; }
+.display { font-family: Roboto, "Noto Sans", Arial, sans-serif; letter-spacing: -0.015em; }
 .eyebrow {
   font-size: 11px; font-weight: 600; letter-spacing: 0.28em; text-transform: uppercase;
   color: var(--muted);
@@ -82,6 +97,12 @@ html[data-theme="oled"] body::after, html[data-theme="cyberpunk"] body::after, h
 }
 .card3d:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); box-shadow: var(--shadow-lg); }
 .card3d .inner { transform: translateZ(34px); transform-style: preserve-3d; }
+html[data-theme="material"] .card3d .inner,
+html[data-theme="material-dark"] .card3d .inner { transform: none; transform-style: flat; }
+html[data-theme="material"] .card-raised::before,
+html[data-theme="material-dark"] .card-raised::before,
+html[data-theme="material"] .hero-tint,
+html[data-theme="material-dark"] .hero-tint { display: none; }
 .card3d .sheen {
   position: absolute; inset: 0; pointer-events: none;
   background: radial-gradient(440px at var(--mx, 50%) var(--my, 50%), var(--glow), transparent 68%);
@@ -104,18 +125,33 @@ html[data-theme="oled"] body::after, html[data-theme="cyberpunk"] body::after, h
 /* ---------- controls ---------- */
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-  border-radius: 10px; padding: 9px 16px; font-weight: 600; font-size: 13.5px;
-  border: 1px solid var(--border); background: var(--surface); color: var(--ink);
-  cursor: pointer; user-select: none;
-  transition: transform 0.15s ease, box-shadow 0.3s ease, background 0.3s ease, border-color 0.3s ease, opacity .2s;
+  min-height: 40px; border-radius: 999px; padding: 9px 18px; font-weight: 500; font-size: 14px;
+  border: 1px solid var(--outline, var(--border)); background: var(--surface); color: var(--ink);
+  cursor: pointer; user-select: none; touch-action: manipulation;
+  transition: transform 0.15s ease, box-shadow 0.2s ease, background 0.2s ease, border-color 0.2s ease, opacity .2s;
 }
-.btn:hover { box-shadow: var(--shadow); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+.btn:hover { box-shadow: var(--shadow); border-color: var(--accent); }
+.btn:focus-visible { outline: 3px solid color-mix(in srgb, var(--primary, var(--accent)) 35%, transparent); outline-offset: 2px; }
 .btn:active { transform: translateY(1px) scale(0.98); }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
-.btn-primary { background: var(--ink); border-color: var(--ink); color: var(--bg); }
-.btn-primary:hover { box-shadow: var(--shadow-lg); border-color: var(--ink); }
+.btn-primary { background: var(--primary, var(--accent)); border-color: var(--primary, var(--accent)); color: var(--on-primary, #fff); }
+.btn-primary:hover { box-shadow: var(--shadow-lg); border-color: var(--primary, var(--accent)); }
 .btn-ghost { background: transparent; border-color: transparent; }
 .btn-ghost:hover { background: var(--surface2); box-shadow: none; }
+
+html[data-theme="material"] .card,
+html[data-theme="material-dark"] .card,
+html[data-theme="material"] .card-raised,
+html[data-theme="material-dark"] .card-raised {
+  border-radius: 20px;
+  box-shadow: var(--shadow);
+}
+html[data-theme="material"] .card3d,
+html[data-theme="material-dark"] .card3d { border-radius: 24px; box-shadow: none; }
+html[data-theme="material"] .card3d .sheen,
+html[data-theme="material-dark"] .card3d .sheen { display: none; }
+html[data-theme="material"] .btn-sheen::after,
+html[data-theme="material-dark"] .btn-sheen::after { display: none; }
 
 .input {
   width: 100%; border-radius: 10px; padding: 10px 14px; font-size: 14px;
@@ -133,7 +169,7 @@ html[data-theme="oled"] body::after, html[data-theme="cyberpunk"] body::after, h
   cursor: pointer; transition: all .2s ease;
 }
 .chip:hover { color: var(--ink); border-color: var(--accent); }
-.chip[data-on="true"] { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+.chip[data-on="true"] { background: var(--primary, var(--accent)); border-color: var(--primary, var(--accent)); color: var(--on-primary, #fff); }
 
 input[type="range"] {
   -webkit-appearance: none; appearance: none; height: 4px; border-radius: 4px;
@@ -210,6 +246,12 @@ table.kv td:first-child { color: var(--muted); font-weight: 600; width: 40%; }
 .shimmer { background: linear-gradient(100deg, var(--surface2) 30%, color-mix(in srgb, var(--surface) 70%, var(--surface2)) 50%, var(--surface2) 70%); background-size: 220% 100%; animation: shimmer-run 1.4s linear infinite; }
 @keyframes shimmer-run { to { background-position: -220% 0; } }
 
+/* Tool 08: let the studio flow vertically on phones; reserve a fixed workspace on wider screens. */
+.viz-shell { height: auto; min-height: 0; }
+@media (min-width: 1024px) {
+  .viz-shell { height: clamp(660px, calc(100vh - 210px), 940px); min-height: 0; }
+}
+
 /* ---------- Exchange desk (Tool 09): ticker tape + split-flap board ---------- */
 @keyframes ex-ticker { to { transform: translateX(-50%); } }
 .ex-ticker { animation: ex-ticker 70s linear infinite; }
@@ -235,3 +277,28 @@ html[data-perf="lite"] .dropzone[data-hot="true"] { animation: none !important; 
 html[data-perf="lite"] .card3d { transform-style: flat; }
 html[data-perf="lite"] .card3d .inner { transform: none; transform-style: flat; }
 html[data-perf="balanced"] .hero-tint { display: none; }
+
+/* Material 3 typography, shape and mobile comfort. */
+html[data-theme="material"] .eyebrow,
+html[data-theme="material-dark"] .eyebrow { letter-spacing: .1em !important; font-weight: 500; }
+html[data-theme="material"] .ghost-num,
+html[data-theme="material-dark"] .ghost-num { font-family: Roboto, "Noto Sans", Arial, sans-serif; font-weight: 500; }
+html[data-theme="material"] .label,
+html[data-theme="material-dark"] .label { letter-spacing: .04em; font-weight: 500; }
+html[data-theme="material"] .card3d:hover,
+html[data-theme="material-dark"] .card3d:hover { border-color: var(--outline); box-shadow: var(--shadow); }
+html[data-theme="material"] .dropzone,
+html[data-theme="material-dark"] .dropzone { border-radius: 24px; }
+html[data-theme="material"] .input:focus,
+html[data-theme="material-dark"] .input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--glow); }
+
+@media (max-width: 640px) {
+  .dropzone { padding: 1.75rem 1rem; }
+  input.input, select.input, textarea.input { font-size: 16px; }
+  .card-raised { border-radius: 20px; }
+  .frame-stage-actions { gap: .5rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme="material"] *, html[data-theme="material-dark"] * { scroll-behavior: auto !important; }
+}

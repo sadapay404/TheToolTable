@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { motion, AnimatePresence, useMotionValue, useSpring, useTransform } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { AnimatedNumber, LiveProgress, Note } from '../components/ui.jsx'
 import RangeTrack, { TimeField, clock } from '../components/RangeTrack.jsx'
 import { fmtBytes, recentAction } from '../lib/utils.js'
-import { engine, getBase, setBase } from '../lib/engine.js'
+import { engine, getBase, setBase as persistEngineBase } from '../lib/engine.js'
 
 const SPRING = { type: 'spring', stiffness: 300, damping: 25 }
 
@@ -15,10 +15,10 @@ function Seg({ id, options, value, onChange, disabled }) {
       {options.map(([v, l, sub]) => (
         <button
           key={String(v)} disabled={disabled} onClick={() => onChange(v)}
-          className="relative flex-1 min-w-[64px] rounded-lg px-3 py-2 text-[12.5px] font-semibold transition-colors"
-          style={{ color: value === v ? 'var(--bg)' : 'var(--muted)' }}
+          className="relative flex-1 min-w-[64px] rounded-full px-3 py-2 text-[12px] sm:text-[12.5px] font-medium transition-colors"
+          style={{ color: value === v ? 'var(--on-primary)' : 'var(--muted)' }}
         >
-          {value === v && <motion.span layoutId={`seg-${id}`} className="absolute inset-0 rounded-lg" style={{ background: 'var(--ink)' }} transition={SPRING} />}
+          {value === v && <motion.span layoutId={`seg-${id}`} className="absolute inset-0 rounded-full" style={{ background: 'var(--primary)' }} transition={SPRING} />}
           <span className="relative z-10 block leading-tight">{l}</span>
           {sub && <span className="relative z-10 block text-[10px] font-medium opacity-70 mt-0.5">{sub}</span>}
         </button>
@@ -42,7 +42,7 @@ function Switch({ on, onChange, label, hint }) {
 }
 
 const Card = ({ children, delay = 0, className = '' }) => (
-  <motion.div className={`card p-6 ${className}`} initial={{ opacity: 0, y: 22 }} animate={{ opacity: 1, y: 0 }} transition={{ ...SPRING, delay }}>{children}</motion.div>
+  <motion.div className={`card p-4 sm:p-6 ${className}`} initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ ...SPRING, delay }}>{children}</motion.div>
 )
 
 /* ---------------------------------- engine status ---------------------------------- */
@@ -52,8 +52,8 @@ function EnginePill({ engine: st, onRetry }) {
   return (
     <button onClick={onRetry} className="flex items-center gap-2.5 rounded-full border border-line px-3.5 py-1.5 text-[11.5px] font-semibold" style={{ background: 'var(--surface)' }} title="Re-check engine">
       <span className="relative flex w-2.5 h-2.5">
-        {st.status !== 'offline' && <motion.span className="absolute inset-0 rounded-full" style={{ background: on ? '#4E937A' : 'var(--copper)' }} animate={{ scale: [1, 2.3], opacity: [0.5, 0] }} transition={{ repeat: Infinity, duration: 1.8, ease: 'easeOut' }} />}
-        <span className="relative w-2.5 h-2.5 rounded-full" style={{ background: on ? '#4E937A' : st.status === 'offline' ? '#D04841' : 'var(--copper)' }} />
+        {st.status !== 'offline' && <motion.span className="absolute inset-0 rounded-full" style={{ background: on ? 'var(--success)' : 'var(--copper)' }} animate={{ scale: [1, 2.3], opacity: [0.5, 0] }} transition={{ repeat: Infinity, duration: 1.8, ease: 'easeOut' }} />}
+        <span className="relative w-2.5 h-2.5 rounded-full" style={{ background: on ? 'var(--success)' : st.status === 'offline' ? 'var(--error)' : 'var(--copper)' }} />
       </span>
       {on ? (
         <span>yt-dlp {st.info.ytdlp}{st.info.extractors ? <> · <AnimatedNumber value={st.info.extractors} /> sites</> : ''}{st.info.ffmpeg ? ' · ffmpeg' : ' · no ffmpeg'}{engine.kind !== 'http' ? ' · built in' : ''}</span>
@@ -63,21 +63,28 @@ function EnginePill({ engine: st, onRetry }) {
 }
 
 function OfflineCard({ onRetry }) {
-  const [base, setBase] = useState(getBase())
+  const [baseDraft, setBaseDraft] = useState(getBase())
   const [copied, setCopied] = useState('')
   const cmds = ['npm run setup:engine', 'npm run engine']
-  const copy = (c) => { navigator.clipboard?.writeText(c); setCopied(c); setTimeout(() => setCopied(''), 1400) }
+  const copy = async (c) => {
+    try { await navigator.clipboard?.writeText(c); setCopied(c); setTimeout(() => setCopied(''), 1400) }
+    catch { setCopied('') }
+  }
+  const connect = async () => {
+    persistEngineBase(baseDraft)
+    await onRetry()
+  }
   return (
     <Card>
-      <div className="flex items-start gap-4">
-        <motion.div className="w-12 h-12 rounded-2xl grid place-items-center shrink-0" style={{ background: 'color-mix(in srgb, #D04841 12%, transparent)', color: '#D04841' }}
+      <div className="flex flex-col sm:flex-row items-start gap-3 sm:gap-4">
+        <motion.div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl grid place-items-center shrink-0" style={{ background: 'color-mix(in srgb, var(--error) 12%, transparent)', color: 'var(--error)' }}
           animate={{ rotate: [0, -6, 6, 0] }} transition={{ repeat: Infinity, duration: 3.5, ease: 'easeInOut' }}>
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M12 2v6m0 8v6M4.9 4.9l4.2 4.2m5.8 5.8 4.2 4.2M2 12h6m8 0h6M4.9 19.1l4.2-4.2m5.8-5.8 4.2-4.2" /></svg>
         </motion.div>
         <div className="flex-1 min-w-0">
           <h3 className="display font-semibold text-[19px]">The download engine is asleep</h3>
           <p className="text-[13px] mt-1.5 leading-relaxed" style={{ color: 'var(--muted)' }}>
-            yt-dlp is a native program, so it can't run inside a browser tab. Start TheToolTable's companion engine on your machine (or any server) and this page wakes up on its own.
+            yt-dlp runs in a companion engine, not inside a browser tab. Start the engine on your PC, or connect to a separately hosted engine below. Static website hosting does not include the downloader service.
           </p>
           <div className="mt-4 space-y-2">
             {cmds.map((c, i) => (
@@ -89,10 +96,10 @@ function OfflineCard({ onRetry }) {
             ))}
           </div>
           <div className="mt-5 grid sm:grid-cols-[1fr_auto] gap-2">
-            <input className="input mono text-[12.5px]" value={base} onChange={(e) => setBase(e.target.value)} placeholder="Engine address — default /api/ytdlp" />
-            <button className="btn btn-primary" onClick={() => { setBase(base); onRetry() }}>Connect</button>
+            <input className="input mono min-w-0 text-[12.5px]" aria-label="Downloader engine address" value={baseDraft} onChange={(e) => setBaseDraft(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && connect()} placeholder="Engine address — default /api/ytdlp" />
+            <button className="btn btn-primary w-full sm:w-auto" onClick={connect}>Connect</button>
           </div>
-          <p className="text-[11.5px] mt-2" style={{ color: 'var(--muted)' }}>Self-hosting? Point this at e.g. <span className="mono">http://127.0.0.1:8787/api/ytdlp</span> or your own server.</p>
+          <p className="text-[11.5px] mt-2 leading-relaxed" style={{ color: 'var(--muted)' }}>Example local address: <span className="mono break-all">http://127.0.0.1:8787/api/ytdlp</span>. A remote engine must allow this app’s origin through CORS.</p>
         </div>
       </div>
     </Card>
@@ -109,7 +116,12 @@ function JobCard({ job, onRemove }) {
   const fired = useRef(false)
 
   const [savedMsg, setSavedMsg] = useState(null)
-  const save = useCallback(async () => { setSavedMsg(await engine.save(job.id)) }, [job.id])
+  const save = useCallback(async () => {
+    try {
+      const location = await engine.save(job.id)
+      setSavedMsg(location || (engine.kind === 'http' ? 'Browser download started' : 'File opened in its folder'))
+    } catch (e) { setSavedMsg(`Could not save: ${e.message || e}`) }
+  }, [job.id])
 
   useEffect(() => {
     let alive = true
@@ -126,18 +138,18 @@ function JobCard({ job, onRemove }) {
   }, [job.id])
 
   useEffect(() => {
-    if (s.state === 'done' && !fired.current) { fired.current = true; save(); recentAction(`Downloaded “${job.title}” via yt-dlp`) }
-  }, [s.state, save, job.title])
+    if (s.state === 'done' && !fired.current) { fired.current = true; recentAction(`Ready to save “${job.title}” via yt-dlp`) }
+  }, [s.state, job.title])
 
   const step = stepOf(s)
   const R = 26, C = 2 * Math.PI * R
   const indeterminate = s.state === 'running' && s.percent == null
-  const accent = s.state === 'error' ? '#D04841' : s.state === 'done' ? '#4E937A' : 'var(--copper)'
+  const accent = s.state === 'error' ? 'var(--error)' : s.state === 'done' ? 'var(--success)' : 'var(--copper)'
 
   return (
-    <motion.div layout initial={{ opacity: 0, y: 24, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, x: -40, scale: 0.95 }} transition={SPRING} className="card p-5">
-      <div className="flex items-center gap-4">
-        <div className="relative w-16 h-16 shrink-0">
+    <motion.div layout initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, x: -24 }} transition={SPRING} className="card p-4 sm:p-5">
+      <div className="flex flex-wrap sm:flex-nowrap items-center gap-3 sm:gap-4">
+        <div className="relative w-14 h-14 sm:w-16 sm:h-16 shrink-0">
           <svg viewBox="0 0 64 64" className="w-full h-full -rotate-90">
             <circle cx="32" cy="32" r={R} fill="none" stroke="var(--border)" strokeWidth="6" />
             {indeterminate ? (
@@ -150,25 +162,25 @@ function JobCard({ job, onRemove }) {
           </svg>
           <div className="absolute inset-0 grid place-items-center">
             {s.state === 'done' ? (
-              <motion.svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#4E937A" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" initial={{ pathLength: 0, scale: 0.6 }} animate={{ pathLength: 1, scale: 1 }} transition={SPRING}>
+              <motion.svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--success)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" initial={{ pathLength: 0, scale: 0.6 }} animate={{ pathLength: 1, scale: 1 }} transition={SPRING}>
                 <motion.path d="M20 6 9 17l-5-5" initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 0.45 }} />
               </motion.svg>
-            ) : s.state === 'error' ? <span className="font-bold text-[18px]" style={{ color: '#D04841' }}>!</span>
+            ) : s.state === 'error' ? <span className="font-bold text-[18px]" style={{ color: 'var(--error)' }}>!</span>
               : indeterminate ? <span className="text-[10px] font-bold" style={{ color: 'var(--muted)' }}>…</span>
               : <span className="text-[12px] font-bold tabular-nums"><AnimatedNumber value={s.percent || 0} />%</span>}
           </div>
         </div>
 
-        <div className="flex-1 min-w-0">
-          <div className="display font-semibold text-[15.5px] truncate">{job.title}</div>
+        <div className="flex-[1_1_180px] min-w-0">
+          <div className="display font-semibold text-[15px] sm:text-[15.5px] truncate">{job.title}</div>
           <div className="text-[11.5px] mt-0.5 truncate" style={{ color: 'var(--muted)' }}>{job.label}</div>
           {s.state === 'error' ? (
-            <div className="text-[12.5px] mt-2 font-medium" style={{ color: '#D04841' }}>{s.error}</div>
+            <div className="text-[12.5px] mt-2 font-medium" style={{ color: 'var(--error)' }}>{s.error}</div>
           ) : (
             <div className="mt-2.5 flex items-center gap-1.5">
               {STEPS.map((l, i) => (
                 <React.Fragment key={l}>
-                  <motion.span className="text-[10.5px] font-bold uppercase tracking-wider" animate={{ color: i <= step ? 'var(--ink)' : 'var(--muted)', opacity: i <= step ? 1 : 0.55 }}>
+                  <motion.span className="text-[10.5px] font-bold uppercase tracking-wider" animate={{ color: i <= step ? 'var(--primary)' : 'var(--muted)', opacity: i <= step ? 1 : 0.55 }}>
                     {l}
                   </motion.span>
                   {i < STEPS.length - 1 && <motion.span className="h-px flex-1 max-w-[28px]" animate={{ background: i < step ? 'var(--copper)' : 'var(--border)' }} />}
@@ -178,9 +190,9 @@ function JobCard({ job, onRemove }) {
           )}
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
-          {s.state === 'done' && <motion.button className="btn btn-primary" initial={{ scale: 0.7, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={SPRING} onClick={save}>Save again</motion.button>}
-          <button className="btn btn-ghost" aria-label="Remove" onClick={() => { if (s.state === 'running') engine.cancel(job.id); onRemove() }}>
+        <div className="flex items-center gap-2 shrink-0 ml-auto sm:ml-0">
+          {s.state === 'done' && <motion.button className="btn btn-primary !px-3 sm:!px-4 text-[12px] sm:text-[13px]" initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={SPRING} onClick={save}>{savedMsg ? 'Save again' : 'Save file'}</motion.button>}
+          <button className="btn btn-ghost !px-3" aria-label={s.state === 'running' ? 'Cancel download' : 'Remove download'} onClick={() => { if (s.state === 'running') engine.cancel(job.id); onRemove() }}>
             {s.state === 'running' ? 'Cancel' : '✕'}
           </button>
         </div>
@@ -195,38 +207,31 @@ function JobCard({ job, onRemove }) {
           </div>
         </div>
       )}
-      {s.state === 'done' && <div className="mt-3 text-[12px]" style={{ color: 'var(--muted)' }}>{savedMsg || s.file} · {fmtBytes(s.size)} · {s.elapsed.toFixed(1)}s</div>}
+      {s.state === 'done' && <div className="mt-3 text-[12px] break-all" style={{ color: 'var(--muted)' }}>{savedMsg || s.file} · {fmtBytes(s.size)} · {s.elapsed.toFixed(1)}s</div>}
     </motion.div>
   )
 }
 
-/* ---------------------------------- media card w/ 3D tilt ---------------------------------- */
+/* ---------------------------------- media card ---------------------------------- */
 
 function MediaCard({ info }) {
-  const mx = useMotionValue(0), my = useMotionValue(0)
-  const rx = useSpring(useTransform(my, [-0.5, 0.5], [7, -7]), { stiffness: 200, damping: 20 })
-  const ry = useSpring(useTransform(mx, [-0.5, 0.5], [-9, 9]), { stiffness: 200, damping: 20 })
   const date = info.uploadDate ? `${info.uploadDate.slice(0, 4)}-${info.uploadDate.slice(4, 6)}-${info.uploadDate.slice(6, 8)}` : null
   return (
     <Card className="!p-0 overflow-hidden">
-      <div className="grid sm:grid-cols-[260px_1fr]">
-        <div className="p-5 pb-0 sm:pb-5" style={{ perspective: 700 }}>
-          <motion.div
-            className="relative rounded-xl overflow-hidden aspect-video" style={{ rotateX: rx, rotateY: ry, background: 'var(--surface2)', boxShadow: '0 14px 30px -12px rgba(0,0,0,.45)' }}
-            onMouseMove={(e) => { const r = e.currentTarget.getBoundingClientRect(); mx.set((e.clientX - r.left) / r.width - 0.5); my.set((e.clientY - r.top) / r.height - 0.5) }}
-            onMouseLeave={() => { mx.set(0); my.set(0) }}
-          >
+      <div className="grid sm:grid-cols-[240px_1fr]">
+        <div className="p-4 sm:p-5 sm:pr-0">
+          <div className="relative rounded-2xl overflow-hidden aspect-video" style={{ background: 'var(--surface2)' }}>
             {info.thumbnail && <img src={info.thumbnail} alt="" referrerPolicy="no-referrer" className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none' }} />}
-            {info.duration && <span className="absolute bottom-2 right-2 mono text-[11px] font-semibold px-1.5 py-0.5 rounded" style={{ background: 'rgba(0,0,0,.72)', color: '#fff' }}>{clock(info.duration).replace(/\.\d$/, '')}</span>}
-          </motion.div>
+            {info.duration && <span className="absolute bottom-2 right-2 mono text-[11px] font-semibold px-2 py-1 rounded-full" style={{ background: 'rgba(0,0,0,.72)', color: '#fff' }}>{clock(info.duration).replace(/\.\d$/, '')}</span>}
+          </div>
         </div>
-        <div className="p-5 min-w-0">
+        <div className="p-4 sm:p-5 min-w-0">
           <div className="flex items-center gap-2 flex-wrap mb-2">
             <span className="chip pointer-events-none" style={{ cursor: 'default' }}>{info.extractor}</span>
-            {info.isLive && <span className="chip pointer-events-none" style={{ cursor: 'default', color: '#D04841' }}>LIVE</span>}
+            {info.isLive && <span className="chip pointer-events-none" style={{ cursor: 'default', color: 'var(--error)' }}>LIVE</span>}
             {info.chapters > 0 && <span className="chip pointer-events-none" style={{ cursor: 'default' }}>{info.chapters} chapters</span>}
           </div>
-          <h3 className="display font-semibold text-[20px] leading-snug line-clamp-2">{info.title}</h3>
+          <h3 className="display font-semibold text-[19px] sm:text-[20px] leading-snug line-clamp-2">{info.title}</h3>
           <div className="text-[12.5px] mt-1.5" style={{ color: 'var(--muted)' }}>
             {[info.uploader, date, info.views ? `${info.views.toLocaleString()} views` : null].filter(Boolean).join(' · ')}
           </div>
@@ -403,7 +408,7 @@ export default function Downloader() {
                               <motion.button key={h.height ?? 'best'} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ ...SPRING, delay: i * 0.025 }}
                                 whileHover={{ y: -2 }} whileTap={{ scale: 0.95 }} onClick={() => set({ height: h.height })}
                                 className="relative rounded-xl border px-3 py-2.5 text-left overflow-hidden"
-                                style={{ borderColor: on ? 'var(--ink)' : 'var(--border)', background: on ? 'var(--ink)' : 'var(--surface)', color: on ? 'var(--bg)' : 'var(--ink)' }}>
+                                style={{ borderColor: on ? 'var(--primary)' : 'var(--border)', background: on ? 'var(--primary)' : 'var(--surface)', color: on ? 'var(--on-primary)' : 'var(--ink)' }}>
                                 <div className="font-bold text-[14px]">{h.height ? `${h.height}p` : 'Best'}{h.fps > 30 ? <span className="text-[10px] font-semibold opacity-70"> {Math.round(h.fps)}fps</span> : null}</div>
                                 <div className="text-[10.5px] mt-0.5 opacity-70">{h.height ? `${h.vcodec || ''} ${ref?.bytes ? '· ~' + fmtBytes(ref.bytes) : ''}` : `highest · ${ref?.height || '—'}p`}</div>
                               </motion.button>

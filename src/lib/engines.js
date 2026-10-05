@@ -14,7 +14,7 @@ export const GROUPS = [
 ]
 
 export const KIND_TARGETS = {
-  image: ['png', 'jpeg', 'webp', 'bmp', 'tiff', 'tga', 'svg', 'zip'],
+  image: ['png', 'jpeg', 'webp', 'bmp', 'tiff', 'tga', 'gif', 'svg', 'zip'],
   svg: ['png', 'jpeg', 'webp', 'bmp', 'svg', 'zip'],
   video: ['mp4', 'mkv', 'webm', 'avi', 'mov', 'flv', 'wmv', 'ts', 'gif', 'mp3', 'wav', 'flac', 'ogg', 'opus', 'm4a', 'aac', 'wma', 'aiff', 'zip'],
   audio: ['mp3', 'wav', 'flac', 'ogg', 'opus', 'm4a', 'aac', 'wma', 'aiff', 'zip'],
@@ -26,39 +26,66 @@ export const KIND_TARGETS = {
   zip: ['txt', 'json', 'zip'],
   epub: ['txt', 'md', 'html', 'zip'],
   pptx: ['txt', 'html', 'zip'],
+  other: ['zip'],
 }
+
+const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'webp', 'bmp', 'tif', 'tiff', 'tga', 'gif', 'avif'])
+const VIDEO_EXTENSIONS = new Set(['mp4', 'mkv', 'webm', 'avi', 'mov', 'flv', 'wmv', 'ts', 'mpeg', 'mpg', 'm4v', '3gp', 'ogv'])
+const AUDIO_EXTENSIONS = new Set(['mp3', 'wav', 'flac', 'ogg', 'opus', 'm4a', 'aac', 'wma', 'aiff'])
+const TEXT_EXTENSIONS = new Set(['txt', 'text', 'md', 'markdown', 'html', 'htm', 'xml', 'json', 'csv', 'tsv', 'rtf', 'log', 'yaml', 'yml', 'ini', 'cfg', 'js', 'jsx', 'tsx', 'css', 'scss', 'sql', 'py', 'sh'])
 
 export function kindOf(f) {
   const e = extName(f.name)
-  if (f.type === 'application/pdf' || e === 'pdf') return 'pdf'
-  if (e === 'svg' || f.type === 'image/svg+xml') return 'svg'
+  const mime = String(f.type || '').toLowerCase()
+  if (mime === 'application/pdf' || e === 'pdf') return 'pdf'
+  if (e === 'svg' || mime === 'image/svg+xml') return 'svg'
   if (e === 'zip' || e === 'tttzip') return 'zip'
   if (e === 'epub') return 'epub'
-  if (e === 'pptx' || e === 'ppt') return 'pptx'
+  if (e === 'pptx') return 'pptx'
   if (e === 'docx') return 'docx'
   if (e === 'odt') return 'odt'
   if (['xlsx', 'xls', 'ods', 'csv', 'tsv'].includes(e)) return 'sheet'
-  if (f.type.startsWith('image/')) return 'image'
-  if (f.type.startsWith('video/') || ['mkv', 'avi', 'mov', 'flv', 'wmv', 'webm', 'ts'].includes(e)) return 'video'
-  if (f.type.startsWith('audio/') || ['flac', 'aac', 'm4a', 'ogg', 'opus', 'wav', 'wma'].includes(e)) return 'audio'
-  return 'text'
+  if (mime.startsWith('image/') || IMAGE_EXTENSIONS.has(e)) return 'image'
+  if (mime.startsWith('text/') && e === 'ts') return 'text'
+  if (mime.startsWith('video/') || VIDEO_EXTENSIONS.has(e)) return 'video'
+  if (mime.startsWith('audio/') || AUDIO_EXTENSIONS.has(e)) return 'audio'
+  if (TEXT_EXTENSIONS.has(e) || mime.startsWith('text/') || ['application/json', 'application/xml', 'application/rtf'].includes(mime)) return 'text'
+  return 'other'
 }
 
 export const KIND_LABEL = {
   image: 'Image', svg: 'Vector', video: 'Video', audio: 'Audio', pdf: 'PDF', docx: 'Word',
-  odt: 'ODT', text: 'Document', sheet: 'Spreadsheet', zip: 'Archive', epub: 'E-book', pptx: 'Slides',
+  odt: 'ODT', text: 'Document', sheet: 'Spreadsheet', zip: 'Archive', epub: 'E-book', pptx: 'Slides', other: 'File',
 }
 
 /* ================= shared helpers ================= */
 
-const enc = new TextEncoder()
 const dec = (b) => new TextDecoder().decode(b)
+const makeId = () => globalThis.crypto?.randomUUID?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
 const stripTags = (s) => s.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/\s+\n/g, '\n').replace(/[ \t]{2,}/g, ' ')
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
+const MAX_ARCHIVE_BYTES = 256 * 1024 * 1024
+const MAX_ARCHIVE_EXPANDED_BYTES = 384 * 1024 * 1024
+const MAX_ARCHIVE_ENTRIES = 5000
+
 async function unzip(buf) {
+  if (buf.byteLength > MAX_ARCHIVE_BYTES) throw new Error('Archive is over the 256 MiB safety limit')
   const { unzipSync } = await import('fflate')
-  return unzipSync(new Uint8Array(buf))
+  let expanded = 0, count = 0
+  return unzipSync(new Uint8Array(buf), { filter: (entry) => {
+    count++
+    if (count > MAX_ARCHIVE_ENTRIES) throw new Error('Archive contains too many entries to process safely')
+    if (!Number.isFinite(entry.originalSize) || entry.originalSize < 0) throw new Error(`Invalid size for archive entry: ${entry.name}`)
+    expanded += entry.originalSize
+    if (expanded > MAX_ARCHIVE_EXPANDED_BYTES) throw new Error('Expanded archive would exceed the 384 MiB safety limit')
+    return true
+  } })
+}
+
+async function unzipFile(file) {
+  if (file.size > MAX_ARCHIVE_BYTES) throw new Error('Archive is over the 256 MiB safety limit')
+  return unzip(await file.arrayBuffer())
 }
 
 /* ================= engines ================= */
@@ -96,9 +123,11 @@ async function canvasPath(file, target, onProg) {
 
 async function svgEmbed(file) {
   const url = URL.createObjectURL(file)
-  const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url })
-  URL.revokeObjectURL(url)
-  const w = img.naturalWidth, h = img.naturalHeight
+  let w = 0, h = 0
+  try {
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url })
+    w = img.naturalWidth; h = img.naturalHeight
+  } finally { URL.revokeObjectURL(url) }
   const data = await file.arrayBuffer()
   let inner = dec(data)
   if (!inner.includes('xmlns=')) inner = inner.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"')
@@ -189,7 +218,7 @@ async function writeText(text, title, target, onProg) {
     const zip = zipSync({
       'mimetype': [strToU8('application/epub+zip'), { level: 0 }],
       'META-INF/container.xml': strToU8(`<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>`),
-      'OEBPS/content.opf': strToU8(`<?xml version="1.0" encoding="utf-8"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">urn:uuid:${crypto.randomUUID()}</dc:identifier><dc:title>${esc(title)}</dc:title><dc:language>en</dc:language><meta property="dcterms:modified">${new Date().toISOString().replace(/\.\d+Z$/, 'Z')}</meta></metadata><manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="ch1" href="chapter.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="ch1"/></spine></package>`),
+      'OEBPS/content.opf': strToU8(`<?xml version="1.0" encoding="utf-8"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">urn:uuid:${makeId()}</dc:identifier><dc:title>${esc(title)}</dc:title><dc:language>en</dc:language><meta property="dcterms:modified">${new Date().toISOString().replace(/\.\d+Z$/, 'Z')}</meta></metadata><manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="ch1" href="chapter.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="ch1"/></spine></package>`),
       'OEBPS/nav.xhtml': strToU8(`<?xml version="1.0" encoding="utf-8"?><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><head><title>${esc(title)}</title></head><body><nav epub:type="toc"><ol><li><a href="chapter.xhtml">${esc(title)}</a></li></ol></nav></body></html>`),
       'OEBPS/chapter.xhtml': strToU8(`<?xml version="1.0" encoding="utf-8"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>${esc(title)}</title></head><body><h1>${esc(title)}</h1>${paras}</body></html>`),
     })
@@ -232,12 +261,13 @@ async function sheetPath(file, target, onProg) {
 
 async function zipWrap(file) {
   const { zipSync } = await import('fflate')
-  const z = zipSync({ [file.name]: new Uint8Array(await file.arrayBuffer()) })
+  const name = String(file.name || 'file').split(/[\\/]/).pop().replace(/[\u0000-\u001f]/g, '') || 'file'
+  const z = zipSync({ [name]: new Uint8Array(await file.arrayBuffer()) })
   return { blob: new Blob([z], { type: 'application/zip' }), ext: 'zip' }
 }
 
 async function zipTexts(file) {
-  const entries = await unzip(await file.arrayBuffer())
+  const entries = await unzipFile(file)
   const texts = []
   const manifest = []
   for (const [name, data] of Object.entries(entries)) {
@@ -272,7 +302,7 @@ export async function convertFile(file, kind, target, onProg) {
     case 'svg': {
       if (['png', 'jpeg', 'webp', 'bmp'].includes(target)) return canvasPath(file, target, onProg)
       if (target === 'svg') return svgEmbed(file)
-      if (['tiff', 'tga'].includes(target)) return ffmpegPath(file, target, onProg)
+      if (['tiff', 'tga', 'gif'].includes(target)) return ffmpegPath(file, target, onProg)
       break
     }
     case 'video':
@@ -286,19 +316,19 @@ export async function convertFile(file, kind, target, onProg) {
       return writeText(text, file.name, target, onProg)
     }
     case 'docx': {
-      const entries = await unzip(await file.arrayBuffer())
+      const entries = await unzipFile(file)
       return writeText(docxReadText(entries), file.name, target, onProg)
     }
     case 'odt': {
-      const entries = await unzip(await file.arrayBuffer())
+      const entries = await unzipFile(file)
       return writeText(odtText(entries), file.name, target, onProg)
     }
     case 'pptx': {
-      const entries = await unzip(await file.arrayBuffer())
+      const entries = await unzipFile(file)
       return writeText(pptxText(entries), file.name, target === 'html' ? 'html' : 'txt', onProg)
     }
     case 'epub': {
-      const entries = await unzip(await file.arrayBuffer())
+      const entries = await unzipFile(file)
       return writeText(epubText(entries), file.name, target, onProg)
     }
     case 'zip': {

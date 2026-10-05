@@ -257,19 +257,64 @@ export function partsIn(ts, zone) {
 /** offset of the zone from UTC in minutes at instant ts */
 export function offsetMin(zone, ts) {
   const p = partsIn(ts, zone)
-  return Math.round((Date.UTC(p.y, p.mo - 1, p.d, p.h, p.mi, p.s) - Math.floor(ts / 1000) * 1000) / 60000)
+  return Math.round((wallEpoch(p.y, p.mo, p.d, p.h, p.mi) + p.s * 1000 - Math.floor(ts / 1000) * 1000) / 60000)
 }
-/** wall-clock time in `zone` → UTC instant (handles DST gaps/overlaps by taking the earlier valid instant) */
+
+// A UTC-shaped timestamp for a wall-clock value, used only for comparisons. Avoid Date.UTC's
+// special treatment of years 0–99, and reject normalized/invalid calendar fields.
+function wallEpoch(y, mo, d, h = 0, mi = 0) {
+  if (![y, mo, d, h, mi].every(Number.isInteger) || y < 1 || y > 9999 || mo < 1 || mo > 12 || d < 1 || d > 31 || h < 0 || h > 23 || mi < 0 || mi > 59) return NaN
+  const date = new Date(0)
+  date.setUTCFullYear(y, mo - 1, d)
+  date.setUTCHours(h, mi, 0, 0)
+  return date.getUTCFullYear() === y && date.getUTCMonth() === mo - 1 && date.getUTCDate() === d && date.getUTCHours() === h && date.getUTCMinutes() === mi ? date.getTime() : NaN
+}
+export function isValidDateString(value) {
+  const match = typeof value === 'string' && /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+  return !!match && Number.isFinite(wallEpoch(+match[1], +match[2], +match[3]))
+}
+
+/**
+ * Wall-clock time in `zone` → UTC instant. Exact times in a DST overlap resolve to the earlier
+ * occurrence; skipped times move forward by the size of the gap (for example 02:30 → 03:30).
+ * Offsets are sampled on both sides of the requested date so this also handles non-hour DST shifts.
+ */
 export function zonedToUtc(y, mo, d, h, mi, zone) {
-  const guess = Date.UTC(y, mo - 1, d, h, mi)
-  let t = guess - offsetMin(zone, guess) * 60000
-  const o2 = offsetMin(zone, t)
-  t = guess - o2 * 60000
-  return t
+  const target = wallEpoch(y, mo, d, h, mi)
+  if (!Number.isFinite(target)) return NaN
+
+  const offsets = new Set()
+  try {
+    for (const hours of [-36, -24, -12, 0, 12, 24, 36]) offsets.add(offsetMin(zone, target + hours * 3600000))
+    // Include any offset reached by the candidates themselves (covers unusual historical jumps).
+    for (let pass = 0; pass < 3; pass++) {
+      let added = false
+      for (const offset of [...offsets]) {
+        const candidate = target - offset * 60000
+        const actual = offsetMin(zone, candidate)
+        if (!offsets.has(actual)) { offsets.add(actual); added = true }
+      }
+      if (!added) break
+    }
+
+    const exact = [], after = []
+    for (const offset of offsets) {
+      const instant = target - offset * 60000
+      const p = partsIn(instant, zone)
+      const local = wallEpoch(p.y, p.mo, p.d, p.h, p.mi)
+      if (local === target) exact.push(instant)
+      else if (local > target) after.push({ instant, delta: local - target })
+    }
+    if (exact.length) return Math.min(...exact)
+    after.sort((a, b) => a.delta - b.delta || a.instant - b.instant)
+    return after[0]?.instant ?? NaN
+  } catch {
+    return NaN
+  }
 }
 export const fmtOffset = (min) => { const s = min < 0 ? '−' : '+', a = Math.abs(min); return `UTC${s}${Math.floor(a / 60)}${a % 60 ? ':' + String(a % 60).padStart(2, '0') : ''}` }
 export function isDst(zone, ts) {
-  const y = new Date(ts).getUTCFullYear(), a = offsetMin(zone, Date.UTC(y, 0, 1)), b = offsetMin(zone, Date.UTC(y, 6, 1))
+  const y = new Date(ts).getUTCFullYear(), a = offsetMin(zone, wallEpoch(y, 1, 1)), b = offsetMin(zone, wallEpoch(y, 7, 1))
   return a !== b && offsetMin(zone, ts) === Math.max(a, b)
 }
 export function zoneAbbr(zone, ts) {
@@ -281,7 +326,7 @@ export function zoneAbbr(zone, ts) {
 export const pad2 = (n) => String(n).padStart(2, '0')
 export const dateStr = (p) => `${p.y}-${pad2(p.mo)}-${pad2(p.d)}`
 /** whole-day difference between two zone-local dates */
-export function dayDiff(pa, pb) { return Math.round((Date.UTC(pb.y, pb.mo - 1, pb.d) - Date.UTC(pa.y, pa.mo - 1, pa.d)) / 86400000) }
+export function dayDiff(pa, pb) { return Math.round((wallEpoch(pb.y, pb.mo, pb.d) - wallEpoch(pa.y, pa.mo, pa.d)) / 86400000) }
 export function humanDiff(min) {
   if (min === 0) return 'the same time as'
   const a = Math.abs(min), h = Math.floor(a / 60), m = a % 60

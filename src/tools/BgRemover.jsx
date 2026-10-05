@@ -5,13 +5,20 @@ import { Dropzone, AnimatedNumber } from '../components/ui.jsx'
 import { Icon, SPRING } from './studio/controls.jsx'
 import { BackgroundPanel, RefinePanel } from './bg/Panels.jsx'
 import { DownloadPanel } from './bg/Dock.jsx'
-import { warmUp, subscribe, segment, retry, setEngine, TIERS } from '../lib/bg/engine.js'
+import { warmUp, subscribe, segment, retry, setEngine, shutdown, TIERS } from '../lib/bg/engine.js'
 import { EngineChooser, EnginePill, engineLine } from './bg/EngineSwitch.jsx'
+import { isImageFile } from '../lib/bg/media.js'
 import { compose, matteLUT, matteCanvas, netMaskToWork, paintStroke, fitSize, encode, MIME, DEFAULT_EDGE } from '../lib/bg/compose.js'
 import { clamp, download, baseName, recentAction, fmtBytes } from '../lib/utils.js'
 
 const CHECKER = 'conic-gradient(#dcd6c9 25%, #f4f0e7 0 50%, #dcd6c9 0 75%, #f4f0e7 0) 0 0 / 18px 18px'
 const WORK_MAX = 1600
+const MAX_EXPORT_EDGE = 8192
+const MAX_INPUT_PIXELS = 40_000_000
+const MAX_IMAGE_BYTES = 80 * 1024 * 1024
+const MAX_ITEMS = 6
+const MAX_UNDO_STROKES = 8
+const MAX_ZIP_BYTES = 100 * 1024 * 1024
 const TABS = [['background', 'Background', 'layers'], ['refine', 'Refine', 'brush'], ['download', 'Download', 'download']]
 const VIEWS = [['result', 'Result'], ['original', 'Original'], ['matte', 'Matte'], ['split', 'Split']]
 const PAD = { l: 36, r: 36, t: 82, b: 24 }
@@ -19,11 +26,25 @@ const PAD = { l: 36, r: 36, t: 82, b: 24 }
 export default function BgRemover() {
   /* ---------------------------------- engine ---------------------------------- */
   const [eng, setEng] = useState({ phase: 'idle', value: 0, ready: false, error: '' })
-  useEffect(() => { const un = subscribe(setEng); warmUp().catch(() => {}); return un }, [])
+  useEffect(() => {
+    alive.current = true
+    const un = subscribe((next) => { if (alive.current) setEng(next) })
+    warmUp().catch(() => {})
+    return () => {
+      alive.current = false
+      un(); shutdown(); clearTimeout(toastTimer.current)
+      data.current.forEach((d) => {
+        for (const canvas of [d.source?.canvas, d.work?.canvas]) if (canvas) { canvas.width = 0; canvas.height = 0 }
+      })
+      data.current.clear()
+    }
+  }, [])
 
   /* ---------------------------------- items ---------------------------------- */
   const [items, setItems] = useState([])
-  const data = useRef(new Map()) // id → { img, work:{canvas,w,h}, M, M0, undo[] }  (heavy, kept out of React state)
+  const alive = useRef(true), itemsRef = useRef(items)
+  itemsRef.current = items
+  const data = useRef(new Map()) // id → bounded source/work canvases, matte and a short per-image undo stack
   const [selId, setSelId] = useState(null)
   const [rev, setRev] = useState(0)
   const [reveal, setReveal] = useState(null)
@@ -67,28 +88,81 @@ export default function BgRemover() {
   const sel = items.find((i) => i.id === selId) || null
   const selData = sel ? data.current.get(sel.id) : null
   const done = sel?.status === 'done'
-  const say = useCallback((t) => { setToast(t); clearTimeout(toastTimer.current); toastTimer.current = setTimeout(() => setToast(''), 2800) }, [])
-  const patch = useCallback((id, p) => setItems((l) => l.map((i) => (i.id === id ? { ...i, ...p } : i))), [])
+  const say = useCallback((t) => {
+    if (!alive.current) return
+    setToast(t); clearTimeout(toastTimer.current); toastTimer.current = setTimeout(() => { if (alive.current) setToast('') }, 2800)
+  }, [])
+  const patch = useCallback((id, p) => {
+    if (!alive.current) return
+    setItems((l) => {
+      if (!alive.current) return l
+      const next = l.map((i) => (i.id === id ? { ...i, ...p } : i))
+      itemsRef.current = next
+      return next
+    })
+  }, [])
 
   /* ---------------------------------- adding photos ---------------------------------- */
   const addFiles = useCallback(async (files) => {
-    const imgs = [...files].filter((f) => f.type.startsWith('image/'))
-    if (!imgs.length) return say('Those files aren’t images')
-    for (const f of imgs) {
-      const id = Math.random().toString(36).slice(2, 9)
-      setItems((l) => [...l, { id, name: f.name || 'pasted-image.png', size: f.size, status: 'loading', thumb: '', w: 0, h: 0 }])
-      setSelId((cur) => cur || id)
+    const candidates = [...(files || [])].filter(isImageFile)
+    if (!candidates.length) return say('Choose a supported image file')
+    const smallEnough = candidates.filter((f) => {
+      if (f.size <= MAX_IMAGE_BYTES) return true
+      say(`${f.name || 'Image'} is over the ${fmtBytes(MAX_IMAGE_BYTES)} per-image limit`)
+      return false
+    })
+    const available = Math.max(0, MAX_ITEMS - itemsRef.current.length)
+    const imgs = smallEnough.slice(0, available)
+    if (smallEnough.length > imgs.length) say(`The working set is limited to ${MAX_ITEMS} images. Remove one before adding more.`)
+    if (!imgs.length) return
+    const reserved = imgs.map((f) => {
+      const id = globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2) + Date.now().toString(36)
+      return { f, id, item: { id, name: f.name || 'pasted-image.png', size: f.size, status: 'loading', thumb: '', w: 0, h: 0 } }
+    })
+    itemsRef.current = [...itemsRef.current, ...reserved.map((r) => r.item)]
+    setItems(itemsRef.current)
+    setSelId((cur) => cur || reserved[0].id)
+
+    for (const { f, id } of reserved) {
+      if (!alive.current) break
+      let url = '', img = null, sourceCanvas = null, workCanvas = null
       try {
-        const url = URL.createObjectURL(f)
-        const img = new Image(); img.src = url; await img.decode()
-        const k = fitSize(img.naturalWidth, img.naturalHeight, WORK_MAX)
-        const wc = document.createElement('canvas'); wc.width = k.w; wc.height = k.h
-        const wx = wc.getContext('2d'); wx.imageSmoothingQuality = 'high'; wx.drawImage(img, 0, 0, k.w, k.h)
-        const t = fitSize(k.w, k.h, 160); const tc = document.createElement('canvas'); tc.width = t.w; tc.height = t.h
-        tc.getContext('2d').drawImage(wc, 0, 0, t.w, t.h)
-        data.current.set(id, { img, work: { canvas: wc, w: k.w, h: k.h }, M: null, M0: null, undo: [] })
-        patch(id, { status: 'queued', thumb: tc.toDataURL('image/jpeg', 0.8), w: img.naturalWidth, h: img.naturalHeight })
-      } catch { patch(id, { status: 'error', error: 'Could not read that image' }) }
+        url = URL.createObjectURL(f)
+        img = new Image(); img.decoding = 'async'; img.src = url; await img.decode()
+        if (!alive.current) return
+        if (!itemsRef.current.some((it) => it.id === id)) continue
+        const rawW = Number(img.naturalWidth), rawH = Number(img.naturalHeight)
+        if (!rawW || !rawH || rawW * rawH > MAX_INPUT_PIXELS) throw new Error('This image is too large to process safely in a browser.')
+
+        const sourceSize = fitSize(rawW, rawH, MAX_EXPORT_EDGE)
+        sourceCanvas = document.createElement('canvas'); sourceCanvas.width = sourceSize.w; sourceCanvas.height = sourceSize.h
+        const sx = sourceCanvas.getContext('2d')
+        if (!sx) throw new Error('Could not allocate a canvas for this image.')
+        sx.imageSmoothingEnabled = true; sx.imageSmoothingQuality = 'high'; sx.drawImage(img, 0, 0, sourceSize.w, sourceSize.h)
+
+        const workSize = fitSize(sourceSize.w, sourceSize.h, WORK_MAX)
+        workCanvas = document.createElement('canvas'); workCanvas.width = workSize.w; workCanvas.height = workSize.h
+        const wx = workCanvas.getContext('2d')
+        if (!wx) throw new Error('Could not prepare a working canvas for this image.')
+        wx.imageSmoothingEnabled = true; wx.imageSmoothingQuality = 'high'; wx.drawImage(sourceCanvas, 0, 0, workSize.w, workSize.h)
+        const thumbSize = fitSize(workSize.w, workSize.h, 160)
+        const thumbCanvas = document.createElement('canvas'); thumbCanvas.width = thumbSize.w; thumbCanvas.height = thumbSize.h
+        thumbCanvas.getContext('2d')?.drawImage(workCanvas, 0, 0, thumbSize.w, thumbSize.h)
+        const thumb = thumbCanvas.toDataURL('image/jpeg', 0.8)
+        const entry = {
+          source: { canvas: sourceCanvas, w: sourceSize.w, h: sourceSize.h },
+          work: { canvas: workCanvas, w: workSize.w, h: workSize.h },
+          M: null, M0: null, undo: [],
+        }
+        data.current.set(id, entry); sourceCanvas = null; workCanvas = null
+        patch(id, { status: 'queued', thumb, w: rawW, h: rawH })
+      } catch (e) {
+        if (alive.current && itemsRef.current.some((it) => it.id === id)) patch(id, { status: 'error', error: e.message || 'Could not read that image' })
+      } finally {
+        if (url) URL.revokeObjectURL(url)
+        try { img?.removeAttribute('src') } catch {}
+        for (const canvas of [sourceCanvas, workCanvas]) if (canvas) { canvas.width = 0; canvas.height = 0 }
+      }
     }
   }, [patch, say])
 
@@ -113,7 +187,10 @@ export default function BgRemover() {
         patch(next.id, { status: 'done', ms: r.ms, via: r.mode === 'online' ? `BiRefNet ${TIERS[r.tier].name}` : 'IS-Net · offline' })
         setRev((n) => n + 1); setReveal(next.id)
         recentAction(`Removed background from ${next.name}`)
-      } catch (e) { patch(next.id, { status: 'error', error: e.message }) }
+      } catch (e) {
+        if (e?.message === 'Engine stopped or restarted' && alive.current) patch(next.id, { status: 'queued', error: '' })
+        else patch(next.id, { status: 'error', error: e.message || 'Background removal failed' })
+      }
       busyRef.current = false
     })()
   }, [items, eng.error, patch])
@@ -162,16 +239,26 @@ export default function BgRemover() {
   useEffect(() => { zoomMV.set(1); panX.set(0); panY.set(0); setZoomPct(100); setTool('none') }, [selId]) // eslint-disable-line
 
   /* ---------------------------------- dock: preview + size estimate ---------------------------------- */
-  const outDimsFor = useCallback((d, sc) => {
-    const nat = { w: d.img.naturalWidth, h: d.img.naturalHeight }
-    let w = nat.w, h = nat.h
-    if (fit.on) { // approximate with the work-res bbox
-      const lut = matteLUT(edge); const { w: mw, h: mh } = d.work; let minX = mw, minY = mh, maxX = -1, maxY = -1
-      for (let i = 0; i < d.M.length; i += 3) { if (lut[d.M[i]] > 12) { const px = i % mw, py = (i / mw) | 0; if (px < minX) minX = px; if (px > maxX) maxX = px; if (py < minY) minY = py; if (py > maxY) maxY = py } }
-      if (maxX >= 0) { const bw = (maxX - minX + 1) / mw * nat.w, bh = (maxY - minY + 1) / mh * nat.h; const pad = Math.max(bw, bh) * (fit.pad / 100); w = bw + pad * 2; h = bh + pad * 2 }
+  const cropDimsFor = useCallback((d) => {
+    const nat = { w: d.source.w, h: d.source.h }
+    if (!fit.on || !d.M?.length) return nat
+    const lut = matteLUT(edge), { w: mw, h: mh } = d.work
+    let minX = mw, minY = mh, maxX = -1, maxY = -1
+    for (let i = 0; i < d.M.length; i++) {
+      if (lut[d.M[i]] <= 12) continue
+      const px = i % mw, py = (i / mw) | 0
+      if (px < minX) minX = px; if (px > maxX) maxX = px
+      if (py < minY) minY = py; if (py > maxY) maxY = py
     }
-    const f = fitSize(w * sc, h * sc, 8192); return f
+    if (maxX < 0) return nat
+    const bw = (maxX - minX + 1) / mw * nat.w, bh = (maxY - minY + 1) / mh * nat.h
+    const pad = Math.max(bw, bh) * (fit.pad / 100)
+    return { w: bw + pad * 2, h: bh + pad * 2 }
   }, [fit, edge])
+  const outDimsFor = useCallback((d, sc) => {
+    const crop = cropDimsFor(d), limit = fit.on ? MAX_EXPORT_EDGE - 4 : MAX_EXPORT_EDGE
+    return fitSize(crop.w * sc, crop.h * sc, limit)
+  }, [cropDimsFor, fit.on])
   const outDims = useMemo(() => (done && selData?.M ? outDimsFor(selData, scale) : { w: sel?.w || 0, h: sel?.h || 0 }), [done, selData, scale, outDimsFor, rev, sel?.w, sel?.h]) // eslint-disable-line
 
   useEffect(() => {
@@ -200,7 +287,7 @@ export default function BgRemover() {
     if (!done || e.button === 2 || !wrapRef.current?.contains(e.target)) return
     if (tool !== 'none') {
       e.currentTarget.setPointerCapture(e.pointerId)
-      const d = selData; d.dirty = true; d.undo.push(d.M.slice()); if (d.undo.length > 25) d.undo.shift(); setUndoN((n) => n + 1)
+      const d = selData; d.dirty = true; d.undo.push(d.M.slice()); if (d.undo.length > MAX_UNDO_STROKES) d.undo.shift(); setUndoN((n) => n + 1)
       const p = ptWork(e); painting.current = p
       paintStroke(d.M, d.work.w, d.work.h, p, p, radiusWork(), brush.hard / 100, tool); setRev((n) => n + 1)
     } else if (zoomMV.get() > 1.02) { painting.current = { pan: true, x: e.clientX, y: e.clientY, px: panX.get(), py: panY.get() }; e.currentTarget.setPointerCapture(e.pointerId) }
@@ -230,43 +317,62 @@ export default function BgRemover() {
 
   /* ---------------------------------- export ---------------------------------- */
   const renderExport = useCallback(async (id, sc = scale, format = fmt) => {
-    const d = data.current.get(id); const lut = matteLUT(edge)
-    const f = fitSize(d.img.naturalWidth * sc, d.img.naturalHeight * sc, 8192)
-    const out = compose({ src: d.img, w: f.w, h: f.h, M: d.M, mw: d.work.w, mh: d.work.h, lut, bg, shadow, fit })
+    const d = data.current.get(id)
+    if (!d?.source || !d.M) throw new Error('This cut-out is no longer available. Re-run background removal first.')
+    const lut = matteLUT(edge), crop = cropDimsFor(d)
+    const requestedScale = Number.isFinite(sc) && sc > 0 ? sc : 1
+    const expandedEdge = Math.max(crop.w, crop.h) * requestedScale
+    const renderLimit = fit.on ? MAX_EXPORT_EDGE - 4 : MAX_EXPORT_EDGE
+    const renderScale = expandedEdge > renderLimit ? requestedScale * (renderLimit / expandedEdge) : requestedScale
+    const f = fitSize(d.source.w * renderScale, d.source.h * renderScale, MAX_EXPORT_EDGE)
+    const out = compose({ src: d.source.canvas, w: f.w, h: f.h, M: d.M, mw: d.work.w, mh: d.work.h, lut, bg, shadow, fit })
     const blob = await encode(out, format, quality / 100, bg.type === 'color' ? bg.color : '#FFFFFF')
     return { blob, w: out.width, h: out.height }
-  }, [edge, bg, shadow, fit, quality, scale, fmt])
+  }, [edge, bg, shadow, fit, quality, scale, fmt, cropDimsFor])
   const ext = fmt === 'jpeg' ? 'jpg' : fmt
   const onDownload = async () => {
     if (!sel || saving) return
     setSaving(true); setJustSaved(false)
     try {
       await new Promise((r) => setTimeout(r, 80))
-      const r = await renderExport(sel.id); download(r.blob, `${baseName(sel.name)}-cutout.${ext}`)
-      setSizeBytes(r.blob.size); setJustSaved(true); setTimeout(() => setJustSaved(false), 2600)
-    } catch (e) { say(e.message) }
-    setSaving(false)
+      const r = await renderExport(sel.id)
+      if (!alive.current) return
+      download(r.blob, `${baseName(sel.name)}-cutout.${ext}`)
+      setSizeBytes(r.blob.size); setJustSaved(true); setTimeout(() => { if (alive.current) setJustSaved(false) }, 2600)
+    } catch (e) { if (alive.current) say(e.message) }
+    finally { if (alive.current) setSaving(false) }
   }
   const onCopy = async () => {
     try { const r = await renderExport(sel.id, Math.min(scale, 1), 'png'); await navigator.clipboard.write([new ClipboardItem({ 'image/png': r.blob })]); say('Copied to clipboard') } catch { say('Clipboard was blocked by the browser') }
   }
   const doneItems = items.filter((i) => i.status === 'done')
   const onZip = async () => {
+    if (saving || !doneItems.length) return
     setSaving(true)
     try {
       const files = {}, used = new Set()
+      let totalBytes = 0
       for (const it of doneItems) {
-        const r = await renderExport(it.id); let n = `${baseName(it.name)}-cutout.${ext}`; let k = 2
+        const r = await renderExport(it.id)
+        const bytes = new Uint8Array(await r.blob.arrayBuffer())
+        totalBytes += bytes.byteLength
+        if (totalBytes > MAX_ZIP_BYTES) throw new Error(`The ZIP would exceed ${fmtBytes(MAX_ZIP_BYTES)}. Download images individually or reduce their output size.`)
+        let n = `${baseName(it.name)}-cutout.${ext}`, k = 2
         while (used.has(n)) n = `${baseName(it.name)}-cutout-${k++}.${ext}`
-        used.add(n); files[n] = new Uint8Array(await r.blob.arrayBuffer())
+        used.add(n); files[n] = bytes
       }
-      download(new Blob([zipSync(files, { level: 0 })], { type: 'application/zip' }), 'cutouts.zip'); say(`Zipped ${doneItems.length} images`)
-    } catch (e) { say(e.message) }
-    setSaving(false)
+      if (!alive.current) return
+      download(new Blob([zipSync(files, { level: 0 })], { type: 'application/zip' }), 'cutouts.zip')
+      say(`Zipped ${doneItems.length} images`)
+    } catch (e) { if (alive.current) say(e.message) }
+    finally { if (alive.current) setSaving(false) }
   }
   const removeItem = (id) => {
     data.current.delete(id)
-    setItems((l) => { const n = l.filter((i) => i.id !== id); if (selId === id) setSelId(n[0]?.id || null); return n })
+    const next = itemsRef.current.filter((i) => i.id !== id)
+    itemsRef.current = next
+    setItems(next)
+    if (selId === id) setSelId(next[0]?.id || null)
   }
   const requeue = (id) => patch(id, { status: 'queued', error: '' })
 
@@ -274,7 +380,7 @@ export default function BgRemover() {
   const ctx = {
     bg, setBg, shadow, setShadow, edge, setEdge, tool, setTool, brush, setBrush, canUndo: !!selData?.undo.length, undoStroke, dirty, resetMask, thumb: sel?.thumb,
     fmt, setFmt, quality, setQuality, scale, setScale, fit, setFit, outDims, previewUrl, sizeBytes, computing, saving, justSaved, ready: done, bgType: bg.type,
-    stats: sel?.ms ? { ms: sel.ms, via: sel.via } : null, onDownload, onCopy, onZip, doneCount: doneItems.length,
+    stats: sel?.ms ? { ms: sel.ms, via: sel.via } : null, onDownload, onCopy, onZip, doneCount: doneItems.length, say,
   }
   void undoN
 
@@ -283,7 +389,7 @@ export default function BgRemover() {
     return (
       <div className="space-y-6">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={SPRING}>
-          <Dropzone onFiles={addFiles} multiple accept="image/*" label="" sub=""><Hero eng={eng} onRetry={retry} /></Dropzone>
+          <Dropzone onFiles={addFiles} multiple accept="image/*,.avif,.heic,.heif,.tif,.tiff,.jfif,.jif,.jpe" label="" sub=""><Hero eng={eng} onRetry={retry} /></Dropzone>
         </motion.div>
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {[[2, 'cut-out engines', 'Offline: a 44 MB model bundled in the site. Online: BiRefNet, one of the best open models.'], [0, 'bytes uploaded', 'Photos are processed on this device. Online mode only downloads model weights.'], [4, 'ways to inspect', 'Result, original, matte and a draggable before / after split.'], [6, 'background types', 'Transparent, colour, gradient, blur, scenes or your own picture.']].map(([n, a, b], i) => (
@@ -306,8 +412,8 @@ export default function BgRemover() {
 
   return (
     <motion.div className="relative" style={{ left: '50%', width: 'min(1440px, calc(100vw - 32px))', marginLeft: 'calc(min(1440px, calc(100vw - 32px)) / -2)' }} initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={SPRING}>
-      <input ref={fileRef} type="file" multiple accept="image/*" hidden onChange={(e) => { addFiles(e.target.files); e.target.value = '' }} />
-      <div className="card-raised rounded-3xl overflow-hidden flex flex-col lg:flex-row" style={{ height: 'clamp(660px, calc(100vh - 200px), 940px)', background: 'var(--surface)' }}>
+      <input ref={fileRef} type="file" multiple accept="image/*,.avif,.heic,.heif,.tif,.tiff,.jfif,.jif,.jpe" hidden onChange={(e) => { addFiles(e.target.files); e.target.value = '' }} />
+      <div className="card-raised rounded-3xl overflow-hidden flex flex-col min-h-[900px] lg:min-h-0 lg:flex-row lg:h-[clamp(660px,calc(100vh-200px),940px)]" style={{ background: 'var(--surface)' }}>
 
         {/* ---------------- stage ---------------- */}
         <div className="flex-1 min-w-0 min-h-[440px] flex flex-col" style={{ background: 'var(--surface2)' }}>
@@ -373,20 +479,20 @@ export default function BgRemover() {
             )}
 
             {/* top bar */}
-            <motion.div className="absolute top-4 left-4 right-4 flex items-center justify-between gap-3 pointer-events-none" initial={{ opacity: 0, y: -14 }} animate={{ opacity: 1, y: 0 }} transition={{ ...SPRING, delay: 0.12 }}>
-              <div className="pointer-events-auto flex items-center gap-1 p-1 rounded-full" style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: 'var(--shadow)' }}>
+            <motion.div className="absolute top-2.5 sm:top-4 left-2.5 sm:left-4 right-2.5 sm:right-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pointer-events-none" initial={{ opacity: 0, y: -14 }} animate={{ opacity: 1, y: 0 }} transition={{ ...SPRING, delay: 0.12 }}>
+              <div className="pointer-events-auto flex items-center gap-0.5 sm:gap-1 p-1 rounded-full self-start max-w-full overflow-x-auto" style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: 'var(--shadow)' }}>
                 {VIEWS.map(([k, l]) => (
-                  <button key={k} disabled={!done} onClick={() => setView(k)} className="relative px-3.5 py-1.5 rounded-full text-[12px] font-bold" style={{ color: view === k ? 'var(--bg)' : 'var(--muted)', opacity: done ? 1 : 0.5 }}>
+                  <button key={k} disabled={!done} onClick={() => setView(k)} className="relative px-2 sm:px-3.5 py-1.5 rounded-full text-[11px] sm:text-[12px] font-bold shrink-0" style={{ color: view === k ? 'var(--bg)' : 'var(--muted)', opacity: done ? 1 : 0.5 }}>
                     {view === k && <motion.span layoutId="bg-view" className="absolute inset-0 rounded-full" style={{ background: 'var(--ink)' }} transition={SPRING} />}
                     <span className="relative">{l}</span>
                   </button>
                 ))}
               </div>
-              <div className="pointer-events-auto flex items-center gap-1.5">
+              <div className="pointer-events-auto self-end sm:self-auto flex flex-wrap items-center justify-end gap-1.5 max-w-full">
                 <EnginePill eng={eng} canRedo={sel?.status === 'done'} onRedo={() => requeue(sel.id)} />
                 <AnimatePresence>{zoomPct > 102 && <motion.button initial={{ opacity: 0, scale: 0.7 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.7 }} whileTap={{ scale: 0.9 }} onClick={resetZoom} className="btn !py-1.5 !px-3 text-[11.5px] mono">{zoomPct}% · fit</motion.button>}</AnimatePresence>
-                <motion.button whileHover={{ y: -2 }} whileTap={{ scale: 0.9 }} className="btn !py-2 !px-3.5 text-[12px]" onClick={() => fileRef.current?.click()}><Icon n="plus" s={14} w={2.2} /> Add photos</motion.button>
-                <motion.button whileHover={{ y: -2 }} whileTap={{ scale: 0.9 }} disabled={!done} className="btn btn-primary !py-2 !px-4 text-[12px]" onClick={() => setTab('download')}><Icon n="download" s={14} w={2.2} /> Download</motion.button>
+                <motion.button aria-label="Add photos" title="Add photos" whileHover={{ y: -2 }} whileTap={{ scale: 0.9 }} className="btn !py-2 !px-2.5 sm:!px-3.5 text-[12px]" onClick={() => fileRef.current?.click()}><Icon n="plus" s={14} w={2.2} /><span className="hidden sm:inline">Add photos</span></motion.button>
+                <motion.button aria-label="Download" title="Download" whileHover={{ y: -2 }} whileTap={{ scale: 0.9 }} disabled={!done} className="btn btn-primary !py-2 !px-2.5 sm:!px-4 text-[12px]" onClick={() => setTab('download')}><Icon n="download" s={14} w={2.2} /><span className="hidden sm:inline">Download</span></motion.button>
               </div>
             </motion.div>
 
@@ -483,7 +589,7 @@ function Hero({ eng, onRetry }) {
     <div className="py-7">
       <HeroArt />
       <div className="display font-semibold text-[22px] text-center mt-5">Drop photos to cut out the background</div>
-      <div className="text-[13px] mt-1.5 text-center" style={{ color: 'var(--muted)' }}>One or many · paste with Ctrl+V · nothing leaves your device</div>
+      <div className="text-[13px] mt-1.5 text-center" style={{ color: 'var(--muted)' }}>Up to 6 images · paste with Ctrl+V · originals stay on your device</div>
       <EngineChooser eng={eng} />
     </div>
   )

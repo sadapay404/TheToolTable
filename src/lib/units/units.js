@@ -57,9 +57,23 @@ export const CATEGORIES = [
 ]
 export const CAT = Object.fromEntries(CATEGORIES.map((c) => [c.id, c]))
 
+const UNIT_NUMBER = /^-?(?:(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i
+const UNIT_NUMBER_DRAFT = /^-?(?:\d[\d,]*(?:\.\d*)?|\.\d*)?(?:e[+-]?\d*)?$/i
+
+/** Parse a plain number or a correctly grouped value such as 1,234.5; reject malformed commas. */
+export function parseUnitValue(value) {
+  const text = String(value ?? '').trim()
+  if (!UNIT_NUMBER.test(text)) return NaN
+  const number = Number(text.replace(/,/g, ''))
+  return Number.isFinite(number) ? number : NaN
+}
+export const isUnitNumberDraft = (value) => UNIT_NUMBER_DRAFT.test(String(value ?? ''))
+
 export function convertUnit(cat, v, fromK, toK) {
-  const c = CAT[cat], a = c.units.find((u) => u.k === fromK), b = c.units.find((u) => u.k === toK)
-  if (!a || !b || !Number.isFinite(v)) return NaN
+  const c = CAT[cat]
+  if (!c || !Number.isFinite(v)) return NaN
+  const a = c.units.find((u) => u.k === fromK), b = c.units.find((u) => u.k === toK)
+  if (!a || !b) return NaN
   const base = a.to ? a.to(v) : v * a.f
   return b.from ? b.from(base) : base / b.f
 }
@@ -70,7 +84,11 @@ export function fmtNum(n, mode = 'auto') {
   if (n === 0) return '0'
   const a = Math.abs(n)
   if (mode === 'sci') return n.toExponential(6).replace(/\.?0+e/, 'e').replace('e+', 'e')
-  if (mode !== 'auto') return n.toLocaleString('en-US', { minimumFractionDigits: +mode, maximumFractionDigits: +mode })
+  if (mode !== 'auto') {
+    const decimals = Number(mode)
+    if (!Number.isInteger(decimals) || decimals < 0 || decimals > 20) return fmtNum(n, 'auto')
+    return n.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
+  }
   if (a >= 1e15 || a < 1e-7) return n.toExponential(6).replace(/\.?0+e/, 'e').replace('e+', 'e')
   const digits = a >= 1000 ? 6 : a >= 1 ? 8 : 10
   return Number(n.toPrecision(digits)).toLocaleString('en-US', { maximumFractionDigits: 12 })

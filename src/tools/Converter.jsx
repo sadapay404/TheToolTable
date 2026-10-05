@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Dropzone, Progress, Note } from '../components/ui.jsx'
 import { convertFile, GROUPS, KIND_TARGETS, kindOf, KIND_LABEL } from '../lib/engines.js'
@@ -8,33 +8,76 @@ export default function Converter() {
   const [files, setFiles] = useState([])
   const [status, setStatus] = useState({})
   const [openCat, setOpenCat] = useState(null)
+  const [batchBusy, setBatchBusy] = useState(false)
+  const running = useRef(new Set())
+  const versions = useRef(new Map())
+  const batchId = useRef(0)
+  const alive = useRef(true)
+
+  useEffect(() => {
+    alive.current = true
+    return () => {
+      alive.current = false
+      batchId.current++
+      for (const id of versions.current.keys()) versions.current.set(id, versions.current.get(id) + 1)
+    }
+  }, [])
 
   function addFiles(fs) {
-    setFiles((prev) => [...prev, ...fs.map((f, i) => {
+    setFiles((prev) => [...prev, ...fs.map((f) => {
       const kind = kindOf(f)
-      return { file: f, id: `${Date.now()}-${i}-${f.name}`, kind, target: KIND_TARGETS[kind]?.[0] || 'txt' }
+      const id = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}-${f.name}`
+      return { file: f, id, kind, target: KIND_TARGETS[kind]?.[0] || 'txt' }
     })])
   }
 
   const patch = (id, p) => setStatus((s) => ({ ...s, [id]: { ...s[id], ...p } }))
+  const invalidate = (id) => versions.current.set(id, (versions.current.get(id) || 0) + 1)
 
   async function run(item) {
-    patch(item.id, { state: 'working', prog: 4, msg: 'Starting engine…', error: null })
+    if (running.current.has(item.id)) return
+    running.current.add(item.id)
+    const token = (versions.current.get(item.id) || 0) + 1
+    versions.current.set(item.id, token)
+    const isCurrent = () => alive.current && versions.current.get(item.id) === token
+    if (isCurrent()) patch(item.id, { state: 'working', prog: 4, msg: 'Starting engine…', error: null })
     try {
-      const { blob, ext } = await convertFile(item.file, item.kind, item.target, (p) => patch(item.id, { prog: p }))
-      download(blob, `${baseName(item.file.name)}.${ext}`)
-      patch(item.id, { state: 'done', prog: 100, msg: `Done — ${fmtBytes(blob.size)}`, blob, ext })
+      const { blob, ext } = await convertFile(item.file, item.kind, item.target, (p) => { if (isCurrent()) patch(item.id, { prog: p }) })
+      if (!isCurrent()) return
+      patch(item.id, { state: 'done', prog: 100, msg: `Ready to save · ${fmtBytes(blob.size)}`, blob, ext })
       recentAction(`Converted ${item.file.name} → ${ext.toUpperCase()}`)
     } catch (e) {
-      patch(item.id, { state: 'error', prog: 0, msg: String(e?.message || e).slice(0, 220) })
-    }
+      if (isCurrent()) patch(item.id, { state: 'error', prog: 0, msg: String(e?.message || e).slice(0, 220) })
+    } finally { running.current.delete(item.id) }
   }
 
   async function runAll() {
-    for (const item of files) {
-      if (status[item.id]?.state === 'working') continue
-      await run(item)
+    if (batchBusy) return
+    const currentBatch = ++batchId.current
+    setBatchBusy(true)
+    try {
+      for (const item of files) {
+        if (!alive.current || batchId.current !== currentBatch) return
+        if (status[item.id]?.state === 'working' || running.current.has(item.id)) continue
+        await run(item)
+      }
+    } finally {
+      if (alive.current && batchId.current === currentBatch) setBatchBusy(false)
     }
+  }
+
+  function clearQueue() {
+    batchId.current++
+    for (const item of files) invalidate(item.id)
+    setFiles([]); setStatus({}); setBatchBusy(false)
+  }
+
+  function removeFile(id) {
+    batchId.current++
+    invalidate(id)
+    setFiles((current) => current.filter((item) => item.id !== id))
+    setStatus((current) => { const next = { ...current }; delete next[id]; return next })
+    setBatchBusy(false)
   }
 
   const catalog = useMemo(() => GROUPS.map(([cat, fmts]) => ({
@@ -49,8 +92,8 @@ export default function Converter() {
       {files.length > 0 && (
         <>
           <div className="flex items-center gap-3 flex-wrap">
-            <button className="btn btn-primary" onClick={runAll}>Convert all ({files.length})</button>
-            <button className="btn" onClick={() => { setFiles([]); setStatus({}) }}>Clear queue</button>
+            <button className="btn btn-primary" disabled={batchBusy} onClick={runAll}>{batchBusy ? 'Converting queue…' : `Convert all (${files.length})`}</button>
+            <button className="btn" onClick={clearQueue}>Clear queue</button>
             <span className="text-[12px]" style={{ color: 'var(--muted)' }}>Lossless-first defaults · everything on-device.</span>
           </div>
 
@@ -68,10 +111,11 @@ export default function Converter() {
                       </div>
                       <div className="flex-1 min-w-[140px]">
                         <div className="font-semibold text-[13.5px] truncate">{item.file.name}</div>
-                        <div className="text-[11.5px] mt-0.5" style={{ color: st.state === 'error' ? '#D04841' : 'var(--muted)' }}>{fmtBytes(item.file.size)} · {st.msg}</div>
+                        <div className="text-[11.5px] mt-0.5 break-words" style={{ color: st.state === 'error' ? 'var(--error)' : 'var(--muted)' }}>{fmtBytes(item.file.size)} · {st.msg}</div>
                       </div>
                       <select
-                        className="input w-auto min-w-[190px]"
+                        className="input w-full sm:w-auto min-w-[190px]"
+                        aria-label={`Output format for ${item.file.name}`}
                         value={item.target}
                         disabled={st.state === 'working'}
                         onChange={(e) => setFiles((fs) => fs.map((x) => x.id === item.id ? { ...x, target: e.target.value } : x))}
@@ -90,12 +134,12 @@ export default function Converter() {
                         </optgroup>
                       </select>
                       {st.state === 'done' && st.blob && (
-                        <button className="btn" onClick={() => download(st.blob, `${baseName(item.file.name)}.${st.ext}`)}>Save again</button>
+                        <button className="btn" onClick={() => download(st.blob, `${baseName(item.file.name)}.${st.ext}`)}>Save file</button>
                       )}
                       <button className="btn btn-primary" disabled={st.state === 'working'} onClick={() => run(item)}>
-                        {st.state === 'working' ? 'Working…' : 'Convert'}
+                        {st.state === 'working' ? 'Working…' : st.state === 'done' ? 'Convert again' : 'Convert'}
                       </button>
-                      <button className="btn btn-ghost" onClick={() => setFiles((fs) => fs.filter((x) => x.id !== item.id))}>✕</button>
+                      <button className="btn btn-ghost" aria-label={`Remove ${item.file.name}`} onClick={() => removeFile(item.id)}>✕</button>
                     </div>
                     {st.state === 'working' && <div className="mt-3"><Progress value={st.prog} /></div>}
                   </motion.div>
@@ -107,7 +151,7 @@ export default function Converter() {
       )}
 
       {/* Format catalog */}
-      <div className="card p-6">
+      <div className="card p-4 sm:p-6">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h3 className="display font-semibold text-[18px]">Format catalog</h3>

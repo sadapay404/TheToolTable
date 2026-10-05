@@ -18,16 +18,16 @@ export function parseClock(str) {
 }
 
 /** Editable mm:ss.s field that commits on blur / Enter */
-export function TimeField({ label, value, onCommit }) {
+export function TimeField({ label, value, onCommit, disabled = false }) {
   const [txt, setTxt] = useState(clock(value))
   const [focus, setFocus] = useState(false)
   useEffect(() => { if (!focus) setTxt(clock(value)) }, [value, focus])
-  const commit = () => { const v = parseClock(txt); if (v != null) onCommit(v); setFocus(false) }
+  const commit = () => { if (!disabled) { const v = parseClock(txt); if (v != null) onCommit(v) } setFocus(false) }
   return (
     <label className="block">
       <span className="label">{label}</span>
       <input
-        className="input mt-1.5 tabular-nums text-center font-semibold" value={txt}
+        className="input mt-1.5 tabular-nums text-center font-semibold" value={txt} disabled={disabled}
         onFocus={() => setFocus(true)} onChange={(e) => setTxt(e.target.value)}
         onBlur={commit} onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
       />
@@ -44,7 +44,7 @@ export default function RangeTrack({ duration, start, end, onChange, peaks, play
   const canvasRef = useRef(null)
   const [drag, setDrag] = useState(null) // 'a' | 'b'
   const pct = (t) => (duration ? (t / duration) * 100 : 0)
-  const minGap = Math.max(0.1, duration / 2000)
+  const minGap = Math.min(duration, Math.max(0.001, Math.min(0.1, duration / 2000)))
 
   useEffect(() => {
     const c = canvasRef.current; if (!c) return
@@ -101,13 +101,15 @@ export default function RangeTrack({ duration, start, end, onChange, peaks, play
       )}
       {[['a', start], ['b', end]].map(([k, t]) => (
         <motion.button
-          key={k} aria-label={k === 'a' ? 'Clip start' : 'Clip end'}
-          className="absolute top-0 bottom-0 w-4 -ml-2 grid place-items-center cursor-ew-resize focus:outline-none"
+          key={k} type="button" role="slider" tabIndex={0}
+          aria-label={k === 'a' ? 'Clip start' : 'Clip end'} aria-valuemin={k === 'a' ? 0 : start + minGap}
+          aria-valuemax={k === 'a' ? end - minGap : duration} aria-valuenow={t}
+          className="absolute top-0 bottom-0 w-5 -ml-2.5 grid place-items-center cursor-ew-resize focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
           animate={{ left: `${pct(t)}%`, scale: drag === k ? 1.12 : 1 }} transition={drag === k ? { duration: 0 } : SPRING}
           onKeyDown={(e) => {
             const step = e.shiftKey ? 1 : 0.1
-            if (e.key === 'ArrowLeft') move(k, t - step)
-            if (e.key === 'ArrowRight') move(k, t + step)
+            if (e.key === 'ArrowLeft') { e.preventDefault(); move(k, t - step) }
+            if (e.key === 'ArrowRight') { e.preventDefault(); move(k, t + step) }
           }}
         >
           <span className="block w-1.5 h-9 rounded-full" style={{ background: 'var(--copper)', boxShadow: '0 0 0 3px var(--surface), 0 2px 8px rgba(0,0,0,.3)' }} />

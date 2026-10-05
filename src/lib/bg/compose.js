@@ -20,8 +20,12 @@ export function matteLUT({ edge = 0, soft = 30 } = DEFAULT_EDGE) {
   return lut
 }
 
-/** Fit a long edge to `max` keeping aspect. */
-export function fitSize(w, h, max) { const k = Math.min(1, max / Math.max(w, h)); return { w: Math.max(1, Math.round(w * k)), h: Math.max(1, Math.round(h * k)) } }
+/** Fit a long edge to `max` keeping aspect, rejecting invalid canvas dimensions. */
+export function fitSize(w, h, max) {
+  if (![w, h, max].every(Number.isFinite) || w <= 0 || h <= 0 || max < 1) throw new RangeError('Image dimensions and maximum edge must be positive finite numbers')
+  const k = Math.min(1, max / Math.max(w, h))
+  return { w: Math.max(1, Math.round(w * k)), h: Math.max(1, Math.round(h * k)), scale: k, capped: k < 1 }
+}
 
 /** Bilinear-upscale an 8-bit mask to w×h (uses the canvas resampler — fast and smooth). */
 export function resizeMask(M, mw, mh, w, h) {
@@ -153,6 +157,9 @@ export function matteCanvas(M, mw, mh, lut) {
 
 export const MIME = { png: 'image/png', webp: 'image/webp', jpeg: 'image/jpeg' }
 export function encode(canvas, fmt, quality = 0.92, flattenColor = '#FFFFFF') {
+  if (!canvas || typeof canvas.toBlob !== 'function' || !canvas.width || !canvas.height) throw new TypeError('A non-empty canvas is required for image export')
+  if (!Object.hasOwn(MIME, fmt)) throw new TypeError('Choose PNG, WebP or JPEG output')
+  quality = Number.isFinite(quality) ? Math.max(0, Math.min(1, quality)) : 0.92
   let c = canvas
   if (fmt === 'jpeg') { // no alpha in JPEG → flatten on white (or the chosen background colour)
     c = document.createElement('canvas'); c.width = canvas.width; c.height = canvas.height

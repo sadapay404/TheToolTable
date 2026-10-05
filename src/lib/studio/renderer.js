@@ -174,35 +174,69 @@ void main(){
   outColor = vec4(c*t0.a, t0.a);
 }`
 
+export function fitTextureSize(w, h, max) {
+  if (![w, h, max].every(Number.isFinite) || w <= 0 || h <= 0 || max < 1) throw new RangeError('Texture dimensions must be positive finite numbers')
+  const k = Math.min(1, max / w, max / h)
+  return { w: Math.max(1, Math.floor(w * k)), h: Math.max(1, Math.floor(h * k)), capped: k < 1 }
+}
+
+const MAX_SOURCE_TEXTURE = 8192
+
 export function createRenderer(canvas) {
   const gl = canvas.getContext('webgl2', { premultipliedAlpha: true, preserveDrawingBuffer: true, antialias: false, alpha: true })
   if (!gl) return null
 
+  const shaders = []
+  let prog = null, buf = null, tex = null
+  const releasePartial = () => {
+    shaders.forEach((sh) => { try { gl.deleteShader(sh) } catch {} })
+    if (buf) { try { gl.deleteBuffer(buf) } catch {} }
+    if (tex) { try { gl.deleteTexture(tex) } catch {} }
+    if (prog) { try { gl.deleteProgram(prog) } catch {} }
+    try { gl.getExtension('WEBGL_lose_context')?.loseContext() } catch {}
+  }
   const compile = (type, src) => {
-    const sh = gl.createShader(type); gl.shaderSource(sh, src); gl.compileShader(sh)
-    if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) throw new Error('Shader: ' + gl.getShaderInfoLog(sh))
+    const sh = gl.createShader(type)
+    if (!sh) throw new Error('WebGL could not allocate a shader')
+    gl.shaderSource(sh, src); gl.compileShader(sh)
+    if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+      const info = gl.getShaderInfoLog(sh)
+      gl.deleteShader(sh)
+      throw new Error('Shader: ' + info)
+    }
+    shaders.push(sh)
     return sh
   }
-  const prog = gl.createProgram()
-  gl.attachShader(prog, compile(gl.VERTEX_SHADER, VERT))
-  gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FRAG))
-  gl.linkProgram(prog)
-  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error('Link: ' + gl.getProgramInfoLog(prog))
-  gl.useProgram(prog)
+  try {
+    prog = gl.createProgram()
+    if (!prog) throw new Error('WebGL could not allocate a program')
+    gl.attachShader(prog, compile(gl.VERTEX_SHADER, VERT))
+    gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FRAG))
+    gl.linkProgram(prog)
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error('Link: ' + gl.getProgramInfoLog(prog))
+    gl.useProgram(prog)
 
-  const buf = gl.createBuffer()
-  gl.bindBuffer(gl.ARRAY_BUFFER, buf)
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW)
-  const loc = gl.getAttribLocation(prog, 'aPos')
-  gl.enableVertexAttribArray(loc)
-  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0)
+    buf = gl.createBuffer()
+    if (!buf) throw new Error('WebGL could not allocate a vertex buffer')
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf)
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW)
+    const loc = gl.getAttribLocation(prog, 'aPos')
+    gl.enableVertexAttribArray(loc)
+    gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0)
 
-  const tex = gl.createTexture()
+    tex = gl.createTexture()
+    if (!tex) throw new Error('WebGL could not allocate a source texture')
+  } catch (e) {
+    releasePartial()
+    throw e
+  }
+
   const locs = {}
   const U = (n) => (locs[n] ??= gl.getUniformLocation(prog, n))
 
-  const state = { w: 1, h: 1, video: false, mip: true, ready: false }
-  const maxTex = gl.getParameter(gl.MAX_TEXTURE_SIZE)
+  const state = { w: 1, h: 1, video: false, mip: true, ready: false, el: null, uploadEl: null, uploadCtx: null }
+  const hardwareMaxTex = Number(gl.getParameter(gl.MAX_TEXTURE_SIZE)) || 1
+  const maxTex = Math.max(1, Math.min(hardwareMaxTex, MAX_SOURCE_TEXTURE))
 
   function configureTexture() {
     gl.bindTexture(gl.TEXTURE_2D, tex)
@@ -214,20 +248,51 @@ export function createRenderer(canvas) {
 
   /** el: HTMLImageElement | HTMLCanvasElement | HTMLVideoElement */
   function setSource(el, w, h, isVideo = false) {
-    state.w = w; state.h = h; state.video = isVideo
-    state.mip = !isVideo || h <= 1440
+    if (!el || !Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) throw new Error('The media has no usable pixel dimensions')
+    const size = fitTextureSize(w, h, maxTex)
+    state.w = size.w; state.h = size.h; state.video = isVideo
+    state.mip = isVideo ? size.h <= 1440 : Math.max(size.w, size.h) <= 4096
+    state.el = el; state.uploadEl = el; state.uploadCtx = null
+
+    if (size.capped) {
+      const scaled = document.createElement('canvas')
+      scaled.width = size.w; scaled.height = size.h
+      const ctx = scaled.getContext('2d')
+      if (!ctx) throw new Error('Could not prepare a GPU-safe preview for this large file')
+      state.uploadEl = scaled
+      state.uploadCtx = ctx
+      ctx.drawImage(el, 0, 0, size.w, size.h)
+    }
+
     configureTexture()
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false)
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, el)
-    if (state.mip) gl.generateMipmap(gl.TEXTURE_2D)
-    state.el = el; state.ready = true
+    for (let i = 0; i < 16 && gl.getError() !== gl.NO_ERROR; i++) {}
+    try {
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, state.uploadEl)
+      if (state.mip) gl.generateMipmap(gl.TEXTURE_2D)
+    } catch (e) {
+      state.ready = false
+      throw new Error('The GPU could not upload this media. Try a smaller image or video.')
+    }
+    const glError = gl.getError()
+    if (glError !== gl.NO_ERROR) {
+      state.ready = false
+      throw new Error('The GPU rejected this media texture. It may exceed available memory.')
+    }
+    state.ready = true
+    return { ...size, originalW: w, originalH: h }
   }
 
   function refreshVideo() {
     if (!state.video || !state.el || state.el.readyState < 2) return
-    gl.bindTexture(gl.TEXTURE_2D, tex)
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, state.el)
-    if (state.mip) gl.generateMipmap(gl.TEXTURE_2D)
+    try {
+      if (state.uploadCtx) state.uploadCtx.drawImage(state.el, 0, 0, state.w, state.h)
+      gl.bindTexture(gl.TEXTURE_2D, tex)
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, state.uploadEl)
+      if (state.mip) gl.generateMipmap(gl.TEXTURE_2D)
+    } catch {
+      // A transient decode frame can be unavailable while a video is seeking.
+    }
   }
 
   /** Output size in px for given geometry params (at 100% scale). */
@@ -285,11 +350,19 @@ export function createRenderer(canvas) {
     const d = outputDims(p, view.crop)
     const w = Math.round(width), h = Math.max(1, Math.round((width * d.h) / d.w))
     const prevW = canvas.width, prevH = canvas.height
-    setSize(w, h); draw(p, view)
     const out = document.createElement('canvas'); out.width = w; out.height = h
-    out.getContext('2d', { willReadFrequently: true }).drawImage(canvas, 0, 0)
-    setSize(prevW, prevH)
-    return out
+    try {
+      setSize(w, h); draw(p, view)
+      const ctx = out.getContext('2d', { willReadFrequently: true })
+      if (!ctx) throw new Error('Could not create a thumbnail canvas')
+      ctx.drawImage(canvas, 0, 0)
+      return out
+    } finally { setSize(prevW, prevH) }
+  }
+
+  function destroy() {
+    state.ready = false; state.el = null; state.uploadEl = null; state.uploadCtx = null
+    releasePartial()
   }
 
   function readPixel(x, y) {
@@ -298,5 +371,5 @@ export function createRenderer(canvas) {
     return px
   }
 
-  return { gl, maxTex, state, setSource, refreshVideo, outputDims, draw, setSize, snapshot, readPixel }
+  return { gl, maxTex, state, setSource, refreshVideo, outputDims, draw, setSize, snapshot, readPixel, destroy }
 }

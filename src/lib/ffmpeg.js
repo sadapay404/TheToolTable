@@ -1,5 +1,6 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg'
 import { fetchFile, toBlobURL } from '@ffmpeg/util'
+import { createSerialQueue } from './serial-queue.js'
 
 let instance = null
 let loading = null
@@ -23,22 +24,38 @@ export async function getFFmpeg(onProgress) {
   try { return await loading } catch (e) { loading = null; throw e }
 }
 
-export async function convertWithFFmpeg(inputFile, outputName, args, onProgress) {
+const enqueueFFmpegJob = createSerialQueue()
+
+/** Serialize every multi-step FFmpeg operation: ffmpeg.wasm owns one shared worker and filesystem. */
+export function runFFmpegJob(job) { return enqueueFFmpegJob(job) }
+
+/** Keep conversion exports serial on the same queue as other FFmpeg tools. */
+export function convertWithFFmpeg(inputFile, outputName, args, onProgress) {
+  return runFFmpegJob(() => runConversion(inputFile, outputName, args, onProgress))
+}
+
+async function runConversion(inputFile, outputName, args, onProgress) {
+  if (!inputFile) throw new TypeError('Choose a file to convert')
   const ffmpeg = await getFFmpeg()
-  const progHandler = ({ progress }) => onProgress?.(progress * 100)
+  const id = globalThis.crypto?.randomUUID?.().replace(/-/g, '') || `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`
+  const inputExt = String(inputFile.name || '').match(/\.([a-z0-9]{1,10})$/i)?.[1]?.toLowerCase() || 'bin'
+  const outputExt = String(outputName || '').split('.').pop().toLowerCase().replace(/[^a-z0-9]/g, '') || 'bin'
+  const inputPath = `ttt-${id}-input.${inputExt}`
+  const outputPath = `ttt-${id}-output.${outputExt}`
+  const progHandler = ({ progress }) => { if (Number.isFinite(progress)) onProgress?.(Math.min(100, Math.max(0, progress * 100))) }
   ffmpeg.on('progress', progHandler)
   try {
-    await ffmpeg.writeFile(inputFile.name, await fetchFile(inputFile))
-    await ffmpeg.exec(['-i', inputFile.name, ...args, outputName])
-    let data
-    try { data = await ffmpeg.readFile(outputName) } catch {
-      try { await ffmpeg.deleteFile(inputFile.name) } catch {}
-      throw new Error(args.includes('-vn') ? 'This file has no audio track to extract.' : 'Nothing could be produced from this file — it may be empty or in an unsupported variant.')
+    await ffmpeg.writeFile(inputPath, await fetchFile(inputFile))
+    await ffmpeg.exec(['-i', inputPath, ...args, outputPath])
+    const data = await ffmpeg.readFile(outputPath)
+    return new Blob([data], { type: 'application/octet-stream' })
+  } catch (e) {
+    if (e?.name === 'ErrnoError' || /no such file|does not exist/i.test(String(e?.message || e))) {
+      throw new Error(args.includes('-vn') ? 'This file has no audio track to extract.' : 'Nothing could be produced — the file may be empty or unsupported.')
     }
-    await ffmpeg.deleteFile(inputFile.name)
-    await ffmpeg.deleteFile(outputName)
-    return new Blob([data.buffer], { type: 'application/octet-stream' })
+    throw e
   } finally {
     ffmpeg.off('progress', progHandler)
+    await Promise.all([inputPath, outputPath].map(async (path) => { try { await ffmpeg.deleteFile(path) } catch { /* cleanup is best-effort */ } }))
   }
 }

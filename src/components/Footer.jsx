@@ -30,7 +30,7 @@ export default function Footer() {
       <div className="relative max-w-6xl mx-auto px-6 pt-14 pb-8">
         {/* ── the wordmark, one ultra-wide line ── */}
         <div role="img" aria-label="the TOOLTABLE by Mubashir" style={{ containerType: 'inline-size' }}>
-          <motion.div className="flex items-end justify-between select-none" initial="hidden" whileInView="show" viewport={{ once: true, amount: 0.3 }} style={{ fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', fontWeight: 800, fontSize: '15.3cqw', letterSpacing: '-0.045em', color: 'var(--ink)', lineHeight: 0.8, fontFeatureSettings: '"ss01","cv11"' }}>
+          <motion.div className="flex items-end justify-between select-none" initial="hidden" whileInView="show" viewport={{ once: true, amount: 0.3 }} style={{ fontFamily: 'Roboto, "Noto Sans", Arial, sans-serif', fontWeight: 800, fontSize: '15.3cqw', letterSpacing: '-0.045em', color: 'var(--ink)', lineHeight: 0.8, fontFeatureSettings: '"kern"' }}>
             <motion.span className="block shrink-0" initial={{ opacity: 0, x: -14 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ ...SPRING, delay: 0.05 }}
               style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', fontSize: '0.3em', letterSpacing: '-0.01em', lineHeight: 1, paddingBlock: '0.04em', marginRight: '0.06em' }}>the</motion.span>
             <span className="flex">{word.map((c, i) => <Glyph key={'a' + i} c={c} i={i} />)}</span>

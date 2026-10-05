@@ -35,18 +35,28 @@ function probe(cmd, args) {
 let _bins = null
 export function resolveBinaries(force = false) {
   if (_bins && !force) return _bins
-  const ytCands = [process.env.YTDLP_PATH, path.join(ROOT, '.bin', 'yt-dlp'), path.join(HOME, '.ytvenv', 'bin', 'yt-dlp'), 'yt-dlp', 'yt-dlp.exe'].filter(Boolean)
+  const ytCands = [
+    process.env.YTDLP_PATH,
+    path.join(ROOT, '.bin', 'yt-dlp'), path.join(ROOT, '.bin', 'yt-dlp.exe'),
+    path.join(HOME, '.ytvenv', 'bin', 'yt-dlp'), path.join(HOME, '.ytvenv', 'Scripts', 'yt-dlp.exe'),
+    'yt-dlp', 'yt-dlp.exe',
+  ].filter(Boolean)
   let ytdlp = null, version = null
   for (const c of ytCands) { const v = probe(c, ['--version']); if (v) { ytdlp = c; version = v; break } }
 
   const ffCands = [process.env.FFMPEG_PATH, path.join(ROOT, '.bin', 'ffmpeg'), 'ffmpeg', 'ffmpeg.exe']
+  const packageDirs = [
+    path.join(HOME, '.ytvenv', 'Lib', 'site-packages'),
+    path.join(HOME, '.ytvenv', 'lib', 'python'),
+  ]
   try {
-    const dir = path.join(HOME, '.ytvenv', 'lib')
-    for (const py of fs.readdirSync(dir)) {
-      const b = path.join(dir, py, 'site-packages', 'imageio_ffmpeg', 'binaries')
-      if (fs.existsSync(b)) for (const f of fs.readdirSync(b)) ffCands.push(path.join(b, f))
-    }
-  } catch { /* venv absent */ }
+    const unixLib = path.join(HOME, '.ytvenv', 'lib')
+    for (const py of fs.readdirSync(unixLib)) packageDirs.push(path.join(unixLib, py, 'site-packages'))
+  } catch { /* no Unix-style venv */ }
+  for (const packages of packageDirs) {
+    const b = path.join(packages, 'imageio_ffmpeg', 'binaries')
+    try { for (const f of fs.readdirSync(b)) ffCands.push(path.join(b, f)) } catch { /* ffmpeg wheel not installed here */ }
+  }
   let ffmpeg = null
   for (const c of ffCands.filter(Boolean)) { if (probe(c, ['-version'])) { ffmpeg = c; break } }
 

@@ -312,7 +312,7 @@ export function ExportPanel({ c }) {
           <motion.button whileHover={{ y: -1, scale: 1.02 }} whileTap={{ scale: 0.96, y: 1 }} className="btn btn-primary btn-sheen w-full py-3.5 text-[15px]" disabled={c.busy} onClick={c.exportImage}>
             {c.busy ? 'Rendering…' : `Export ${e.fmt.toUpperCase()}`}
           </motion.button>
-          <motion.button whileTap={{ scale: 0.95 }} className="btn w-full !py-2.5 text-[12.5px]" onClick={c.copyImage}><Icon n="copy" s={14} /> Copy image to clipboard</motion.button>
+          <motion.button whileTap={{ scale: 0.95 }} className="btn w-full !py-2.5 text-[12.5px]" disabled={c.busy} onClick={c.copyImage}><Icon n="copy" s={14} /> Copy image to clipboard</motion.button>
         </Group>
       ) : (
         <Group title="Video" delay={0.05}>
@@ -351,9 +351,12 @@ export function ExportPanel({ c }) {
       <AnimatePresence>
         {c.result && (
           <motion.div initial={{ opacity: 0, y: 14, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0 }} transition={SPRING}
-            className="rounded-xl border px-4 py-3 text-[12.5px] flex items-center gap-3" style={{ background: 'color-mix(in srgb, #4E937A 12%, var(--surface))', borderColor: 'color-mix(in srgb, #4E937A 40%, transparent)' }}>
-            <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ ...SPRING, delay: 0.1 }} style={{ color: '#4E937A' }}><Icon n="check" s={18} w={3} /></motion.span>
-            <span><b>{c.result.name}</b> · {c.result.w}×{c.result.h} · {fmtBytes(c.result.size)}</span>
+            className="rounded-xl border px-4 py-3 text-[12.5px]" style={{ background: 'color-mix(in srgb, #4E937A 12%, var(--surface))', borderColor: 'color-mix(in srgb, #4E937A 40%, transparent)' }}>
+            <div className="flex items-center gap-3 min-w-0">
+              <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ ...SPRING, delay: 0.1 }} style={{ color: '#4E937A' }}><Icon n="check" s={18} w={3} /></motion.span>
+              <span className="min-w-0 break-words"><b>{c.result.name}</b> · {c.result.w}×{c.result.h} · {fmtBytes(c.result.size)}</span>
+            </div>
+            <button className="btn btn-primary w-full mt-3" disabled={!c.result.blob} onClick={c.saveResult}>Save {isVideo ? 'video' : 'image'}</button>
           </motion.div>
         )}
       </AnimatePresence>

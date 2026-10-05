@@ -13,27 +13,46 @@ import { normalizeUrl, summarise, buildArgs, infoArgs, JobTracker, err } from '.
 /* ====================================== HTTP ====================================== */
 
 const BASE_KEY = 'ttt.engine.base'
-export const getBase = () => (localStorage.getItem(BASE_KEY) || '/api/ytdlp').replace(/\/+$/, '')
-export const setBase = (v) => localStorage.setItem(BASE_KEY, (v || '').trim() || '/api/ytdlp')
+const DEFAULT_BASE = '/api/ytdlp'
+export const getBase = () => {
+  try { return (localStorage.getItem(BASE_KEY) || DEFAULT_BASE).trim().replace(/\/+$/, '') || DEFAULT_BASE }
+  catch { return DEFAULT_BASE }
+}
+export const setBase = (v) => {
+  const base = String(v || '').trim().replace(/\/+$/, '') || DEFAULT_BASE
+  try { localStorage.setItem(BASE_KEY, base) } catch { /* restricted storage; same-session request still uses the default */ }
+  return base
+}
 
 async function http(path, opts = {}) {
-  const res = await fetch(getBase() + path, {
-    ...opts,
-    headers: opts.body ? { 'Content-Type': 'application/json' } : undefined,
-    body: opts.body ? JSON.stringify(opts.body) : undefined,
-  })
-  const text = await res.text()
-  let json = null
-  try { json = JSON.parse(text) } catch { /* SPA fallback HTML → engine absent */ }
-  if (!json) throw Object.assign(new Error('Engine not reachable'), { offline: true })
-  if (!res.ok) throw new Error(json.error || `Engine error ${res.status}`)
-  return json
+  const { timeoutMs = 90000, ...fetchOpts } = opts
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const res = await fetch(getBase() + path, {
+      ...fetchOpts,
+      signal: fetchOpts.signal || controller.signal,
+      headers: fetchOpts.body ? { 'Content-Type': 'application/json' } : undefined,
+      body: fetchOpts.body ? JSON.stringify(fetchOpts.body) : undefined,
+    })
+    const text = await res.text()
+    let json = null
+    try { json = JSON.parse(text) } catch { /* static SPA fallback HTML → no companion engine */ }
+    if (!json) throw Object.assign(new Error('Engine response was not JSON. Check the engine address and its /api/ytdlp route.'), { offline: true })
+    if (!res.ok) throw new Error(json.error || `Engine error ${res.status}`)
+    return json
+  } catch (e) {
+    if (e.offline) throw e
+    if (e.name === 'AbortError') throw Object.assign(new Error('The downloader engine did not respond in time. Check that it is running.'), { offline: true })
+    if (e instanceof TypeError) throw Object.assign(new Error('Could not reach the downloader engine. Check its address, network and CORS settings.'), { offline: true })
+    throw e
+  } finally { clearTimeout(timeout) }
 }
 
 const httpEngine = {
   kind: 'http',
   bundled: false, // user must run / point at an engine
-  health: () => http('/health'),
+  health: () => http('/health', { timeoutMs: 8000 }),
   info: (url, playlist) => http('/info', { method: 'POST', body: { url, playlist } }),
   start: (opts) => http('/jobs', { method: 'POST', body: opts }),
   status: (id) => http(`/jobs/${id}`),

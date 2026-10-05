@@ -1,13 +1,15 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { COUNTRIES, BY_CC, CONTINENTS, zoneLabel, partsIn, offsetMin, zonedToUtc, fmtOffset, isDst, zoneAbbr, pad2, dateStr, dayDiff, humanDiff } from '../../lib/units/world'
+import { COUNTRIES, BY_CC, CONTINENTS, zoneLabel, partsIn, offsetMin, zonedToUtc, fmtOffset, isDst, zoneAbbr, pad2, dateStr, dayDiff, humanDiff, isValidDateString } from '../../lib/units/world'
 import { Ico, Flag, SwapButton, Picker, SelectChip, CopyBtn, Panel, Label, Seg, SlideText, usePersist, SPRING } from './parts'
 
 const zoneOf = (c, z) => (z && c.zones.some((x) => x.id === z) ? z : c.zone)
 const hhmm = (p, h24) => (h24 ? `${pad2(p.h)}:${pad2(p.mi)}` : `${pad2(p.h % 12 || 12)}:${pad2(p.mi)} ${p.h >= 12 ? 'PM' : 'AM'}`)
-const niceDate = (p) => new Date(Date.UTC(p.y, p.mo - 1, p.d)).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })
+const utcCivilDate = (y, mo, d) => { const date = new Date(0); date.setUTCFullYear(y, mo - 1, d); date.setUTCHours(0, 0, 0, 0); return date }
+const niceDate = (p) => utcCivilDate(p.y, p.mo, p.d).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })
 const FILTERS = [['All', () => true], ...CONTINENTS.map((c) => [c, (i) => i.continent === c]), ['Multi-zone', (i) => i.multi]]
 const DEFAULT_PINS = ['IN', 'PK', 'US', 'GB', 'AE', 'SA', 'CN', 'JP', 'AU', 'DE', 'CA', 'SG']
+const DEFAULT_EXTRAS = ['AE', 'GB', 'US', 'JP']
 
 function useNow(ms) {
   const [t, setT] = useState(() => Date.now())
@@ -127,15 +129,22 @@ function Planner({ fz, tz, fc, tc, fp, instant }) {
 }
 
 export default function TimeTab() {
-  const [st, setSt] = usePersist('time', { from: 'IN', fz: '', to: 'PK', tz: '', mode: 'live', date: '', h: 12, mi: 0, h24: true, extras: ['AE', 'GB', 'US', 'JP'] })
+  const [st, setSt] = usePersist('time', { from: 'IN', fz: '', to: 'PK', tz: '', mode: 'live', date: '', h: 12, mi: 0, h24: true, extras: DEFAULT_EXTRAS })
   const [more, setMore] = useState('planner')
   const upd = (p) => setSt((s) => ({ ...s, ...p }))
-  const fc = BY_CC[st.from] || BY_CC.IN, tc = BY_CC[st.to] || BY_CC.PK
+  const from = typeof st.from === 'string' && BY_CC[st.from] ? st.from : 'IN'
+  const to = typeof st.to === 'string' && BY_CC[st.to] ? st.to : 'PK'
+  const fc = BY_CC[from], tc = BY_CC[to]
   const fz = zoneOf(fc, st.fz), tz = zoneOf(tc, st.tz)
   const man = st.mode === 'manual'
+  const h24 = typeof st.h24 === 'boolean' ? st.h24 : true
+  const manualH = Number.isInteger(st.h) && st.h >= 0 && st.h < 24 ? st.h : 12
+  const manualMi = Number.isInteger(st.mi) && st.mi >= 0 && st.mi < 60 ? st.mi : 0
+  const manualDate = typeof st.date === 'string' && isValidDateString(st.date) ? st.date : ''
+  const extraKeys = Array.isArray(st.extras) ? [...new Set(st.extras.filter((k) => typeof k === 'string' && BY_CC[k]))].slice(0, 11) : DEFAULT_EXTRAS
   const now = useNow(man ? 20000 : 1000)
   const p0 = partsIn(now, fz)
-  const fh = man ? st.h : p0.h, fmi = man ? st.mi : p0.mi, fdate = man && st.date ? st.date : dateStr(p0)
+  const fh = man ? manualH : p0.h, fmi = man ? manualMi : p0.mi, fdate = man && manualDate ? manualDate : dateStr(p0)
   const [Y, M, D] = fdate.split('-').map(Number)
   const instant = man ? zonedToUtc(Y, M, D, fh, fmi, fz) : now
   const fp = partsIn(instant, fz), tp = partsIn(instant, tz)
@@ -146,20 +155,20 @@ export default function TimeTab() {
   const takeover = (p) => upd({ mode: 'manual', date: fdate, h: fh, mi: fmi, ...p })
   const setH = (v) => takeover({ h: ((v % 24) + 24) % 24 })
   const setMi = (v) => takeover({ mi: ((v % 60) + 60) % 60 })
-  const typeH = (raw) => { const n = +(raw.replace(/\D/g, '').slice(-2) || 0); if (st.h24) setH(Math.min(23, n)); else { const x = Math.min(12, n) % 12; setH(x + (fh >= 12 ? 12 : 0)) } }
+  const typeH = (raw) => { const n = +(raw.replace(/\D/g, '').slice(-2) || 0); if (h24) setH(Math.min(23, n)); else { const x = Math.min(12, n) % 12; setH(x + (fh >= 12 ? 12 : 0)) } }
   const typeMi = (raw) => setMi(Math.min(59, +(raw.replace(/\D/g, '').slice(-2) || 0)))
-  const shiftDay = (n) => { const d = new Date(Date.UTC(Y, M - 1, D + n)); takeover({ date: `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}` }) }
-  const swap = () => setSt((s) => ({ ...s, from: s.to, fz: s.tz, to: s.from, tz: s.fz, ...(man ? { date: dateStr(tp), h: tp.h, mi: tp.mi } : {}) }))
+  const shiftDay = (n) => { const d = utcCivilDate(Y, M, D + n); takeover({ date: `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}` }) }
+  const swap = () => setSt((s) => ({ ...s, from: tc.cc, fz: tz, to: fc.cc, tz: fz, ...(man ? { date: dateStr(tp), h: tp.h, mi: tp.mi } : {}) }))
 
-  const minute = Math.floor(now / 60000)
+  const minute = Math.floor(now / 60000), catalogInstant = minute * 60000
   const items = useMemo(() => COUNTRIES.map((c) => {
-    const p = partsIn(Date.now(), c.zone)
-    return { key: c.cc, title: c.name, sub: `${c.capital} · ${fmtOffset(offsetMin(c.zone, Date.now()))}${c.multi ? ' · ' + c.zones.length + ' zones' : ''}`, meta: hhmm(p, true), group: c.continent, icon: <Flag cc={c.cc} size={34} />, continent: c.continent, multi: c.multi, hay: (c.name + ' ' + c.cc + ' ' + c.capital + ' ' + c.continent + ' ' + c.zones.map((z) => z.id + ' ' + z.label).join(' ')).toLowerCase() }
-  }), [minute])
+    const p = partsIn(catalogInstant, c.zone)
+    return { key: c.cc, title: c.name, sub: `${c.capital} · ${fmtOffset(offsetMin(c.zone, catalogInstant))}${c.multi ? ' · ' + c.zones.length + ' zones' : ''}`, meta: hhmm(p, true), group: c.continent, icon: <Flag cc={c.cc} size={34} />, continent: c.continent, multi: c.multi, hay: (c.name + ' ' + c.cc + ' ' + c.capital + ' ' + c.continent + ' ' + c.zones.map((z) => z.id + ' ' + z.label).join(' ')).toLowerCase() }
+  }), [catalogInstant])
   const trig = (c) => ({ open, onClick }) => <SelectChip open={open} onClick={onClick} icon={<Flag cc={c.cc} size={36} />} title={c.name} sub={c.multi ? `${c.zones.length} time zones` : c.capital} />
 
-  const extras = (st.extras || []).map((k) => BY_CC[k]).filter(Boolean)
-  const text = hhmm(tp, st.h24)
+  const extras = extraKeys.map((k) => BY_CC[k]).filter(Boolean)
+  const text = hhmm(tp, h24)
   const dayWord = dd === 0 ? 'same day' : dd > 0 ? (dd === 1 ? 'next day' : `+${dd} days`) : dd === -1 ? 'previous day' : `${dd} days`
   const dstF = isDst(fz, instant), dstT = isDst(tz, instant)
 
@@ -173,12 +182,12 @@ export default function TimeTab() {
             </motion.button>}>When it is</Label>
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-1.5 sm:gap-2">
-              <TimeBox label="hour" value={st.h24 ? fh : fh % 12 || 12} onUp={() => setH(fh + 1)} onDown={() => setH(fh - 1)} onType={typeH} />
+              <TimeBox label="hour" value={h24 ? fh : fh % 12 || 12} onUp={() => setH(fh + 1)} onDown={() => setH(fh - 1)} onType={typeH} />
               <motion.span className="display text-[34px] font-semibold" animate={{ opacity: [1, 0.25, 1] }} transition={{ duration: 1, repeat: Infinity }}>:</motion.span>
               <TimeBox label="minute" value={fmi} onUp={() => setMi(fmi + 1)} onDown={() => setMi(fmi - 1)} onType={typeMi} />
-              {!st.h24 && <Seg small value={fh >= 12 ? 'PM' : 'AM'} onChange={(x) => setH((fh % 12) + (x === 'PM' ? 12 : 0))} options={[['AM', 'AM'], ['PM', 'PM']]} />}
+              {!h24 && <Seg small value={fh >= 12 ? 'PM' : 'AM'} onChange={(x) => setH((fh % 12) + (x === 'PM' ? 12 : 0))} options={[['AM', 'AM'], ['PM', 'PM']]} />}
             </div>
-            <div className="ml-auto"><Picker items={items} value={st.from} onChange={(k) => upd({ from: k, fz: '' })} storeId="time" filters={FILTERS} defaultPins={DEFAULT_PINS} placeholder="Search 195 countries, capitals…" trigger={trig(fc)} /></div>
+            <div className="ml-auto"><Picker items={items} value={from} onChange={(k) => upd({ from: k, fz: '' })} storeId="time" filters={FILTERS} defaultPins={DEFAULT_PINS} placeholder="Search 195 countries, capitals…" trigger={trig(fc)} /></div>
           </div>
           <AnimatePresence initial={false}>{fc.multi && <ZonePick key={fc.cc} c={fc} zone={fz} ts={now} onChange={(z) => upd({ fz: z })} />}</AnimatePresence>
 
@@ -189,7 +198,7 @@ export default function TimeTab() {
               <input type="date" value={fdate} onChange={(e) => e.target.value && takeover({ date: e.target.value })} className="bg-transparent outline-none text-[13px] font-semibold" style={{ colorScheme: 'light dark' }} />
             </label>
             <motion.button type="button" whileTap={{ scale: 0.85 }} onClick={() => shiftDay(1)} aria-label="Next day" className="w-9 h-9 grid place-items-center rounded-xl border border-line" style={{ background: 'var(--surface)' }}><Ico n="chevron" s={16} style={{ transform: 'rotate(-90deg)' }} /></motion.button>
-            <Seg small className="ml-auto" value={st.h24 ? '24' : '12'} onChange={(v) => upd({ h24: v === '24' })} options={[['24', '24 h'], ['12', '12 h']]} />
+            <Seg small className="ml-auto" value={h24 ? '24' : '12'} onChange={(v) => upd({ h24: v === '24' })} options={[['24', '24 h'], ['12', '12 h']]} />
           </div>
           <AnimatePresence>{shifted && <motion.p initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="text-[11.5px] mt-2" style={{ color: '#c98a1c' }}>That clock time is skipped by daylight saving — moved to {pad2(fp.h)}:{pad2(fp.mi)}.</motion.p>}</AnimatePresence>
 
@@ -205,7 +214,7 @@ export default function TimeTab() {
                 {dstT && <span className="text-[10.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md" style={{ background: 'color-mix(in srgb, #d99a1c 20%, transparent)', color: '#b07a12' }}>DST</span>}
               </div>
             </div>
-            <div className="ml-auto"><Picker items={items} value={st.to} onChange={(k) => upd({ to: k, tz: '' })} storeId="time" filters={FILTERS} defaultPins={DEFAULT_PINS} placeholder="Search 195 countries, capitals…" trigger={trig(tc)} /></div>
+            <div className="ml-auto"><Picker items={items} value={to} onChange={(k) => upd({ to: k, tz: '' })} storeId="time" filters={FILTERS} defaultPins={DEFAULT_PINS} placeholder="Search 195 countries, capitals…" trigger={trig(tc)} /></div>
           </div>
           <AnimatePresence initial={false}>{tc.multi && <ZonePick key={tc.cc} c={tc} zone={tz} ts={now} onChange={(z) => upd({ tz: z })} />}</AnimatePresence>
 
@@ -231,7 +240,7 @@ export default function TimeTab() {
         <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
           <Seg value={more} onChange={setMore} options={[['planner', 'Day planner'], ['world', 'World clock']]} />
           {more === 'world' && extras.length < 12 && (
-            <Picker items={items.filter((i) => !(st.extras || []).includes(i.key))} value="" onChange={(k) => upd({ extras: [...(st.extras || []), k] })} storeId="time" filters={FILTERS} defaultPins={DEFAULT_PINS} placeholder="Add a country…" width={360}
+            <Picker items={items.filter((i) => !extraKeys.includes(i.key))} value="" onChange={(k) => upd({ extras: [...extraKeys, k] })} storeId="time" filters={FILTERS} defaultPins={DEFAULT_PINS} placeholder="Add a country…" width={360}
               trigger={({ onClick }) => <motion.button type="button" onClick={onClick} whileHover={{ y: -2 }} whileTap={{ scale: 0.92 }} className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 border border-line text-[12.5px] font-semibold" style={{ background: 'var(--surface2)' }}><Ico n="plus" s={14} w={2.4} />Add country</motion.button>} />
           )}
         </div>
@@ -240,7 +249,7 @@ export default function TimeTab() {
             <motion.div key="pl" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }}><Planner fz={fz} tz={tz} fc={fc} tc={tc} fp={fp} instant={instant} /></motion.div>
           ) : (
             <motion.div key="wc" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }}>
-              <p className="text-[12.5px] mb-3" style={{ color: 'var(--muted)' }}>{hhmm(fp, st.h24)} in {fc.name} is…</p>
+              <p className="text-[12.5px] mb-3" style={{ color: 'var(--muted)' }}>{hhmm(fp, h24)} in {fc.name} is…</p>
               <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
                 <AnimatePresence initial={false} mode="popLayout">
                   {extras.map((c, i) => {
@@ -249,8 +258,8 @@ export default function TimeTab() {
                       <motion.div key={c.cc} layout initial={{ opacity: 0, scale: 0.85, y: 14 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.8 }} transition={{ ...SPRING, delay: i * 0.04 }} whileHover={{ y: -3 }} className="group relative rounded-2xl p-3.5 border border-line" style={{ background: nt ? 'color-mix(in srgb, #30345a 12%, var(--surface2))' : 'var(--surface2)' }}>
                         <div className="flex items-center gap-2.5"><Flag cc={c.cc} size={26} /><div className="min-w-0 leading-tight"><div className="text-[12.5px] font-bold truncate">{c.name}</div><div className="text-[10.5px] truncate" style={{ color: 'var(--muted)' }}>{c.capital} · {fmtOffset(offsetMin(c.zone, instant))}</div></div>
                           <span className="ml-auto" style={{ color: nt ? '#7f8fd8' : '#d99a1c' }}><Ico n={nt ? 'moon' : 'sun'} s={16} /></span></div>
-                        <div className="flex items-baseline gap-2 mt-2.5"><SlideText text={hhmm(p, st.h24)} className="display font-semibold text-[26px] tabular-nums" /><span className="text-[10.5px] font-bold" style={{ color: d ? 'var(--copper)' : 'var(--muted)' }}>{d === 0 ? 'same day' : d > 0 ? `+${d} day` : `${d} day`}</span></div>
-                        <button type="button" aria-label={'Remove ' + c.name} onClick={() => upd({ extras: st.extras.filter((k) => k !== c.cc) })} className="absolute top-1.5 right-1.5 w-5 h-5 grid place-items-center rounded-full opacity-0 group-hover:opacity-70 hover:!opacity-100 transition-opacity" style={{ background: 'var(--border)' }}><Ico n="x" s={10} w={3} /></button>
+                        <div className="flex items-baseline gap-2 mt-2.5"><SlideText text={hhmm(p, h24)} className="display font-semibold text-[26px] tabular-nums" /><span className="text-[10.5px] font-bold" style={{ color: d ? 'var(--copper)' : 'var(--muted)' }}>{d === 0 ? 'same day' : d > 0 ? `+${d} day` : `${d} day`}</span></div>
+                        <button type="button" aria-label={'Remove ' + c.name} onClick={() => upd({ extras: extraKeys.filter((k) => k !== c.cc) })} className="absolute top-1.5 right-1.5 w-5 h-5 grid place-items-center rounded-full opacity-0 group-hover:opacity-70 hover:!opacity-100 transition-opacity" style={{ background: 'var(--border)' }}><Ico n="x" s={10} w={3} /></button>
                       </motion.div>
                     )
                   })}

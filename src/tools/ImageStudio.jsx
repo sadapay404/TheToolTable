@@ -10,6 +10,9 @@ import { createRenderer } from '../lib/studio/renderer.js'
 import { makeSample } from '../lib/studio/sample.js'
 import { renderImage, renderVideo, supportedVideoTypes } from '../lib/studio/exporter.js'
 import { DEFAULTS, HSL_CHANNELS, PRESETS, SECTION_KEYS, TRANSFORM_KEYS, applyLook, isModified, transformOf } from '../lib/studio/params.js'
+import { studioMediaKind } from '../lib/studio/media.js'
+import { createObjectUrlResource, releaseMediaElement, waitForMediaElement } from '../lib/studio/media-source.js'
+import { loadSavedLooks, MAX_SAVED_LOOKS, persistLooks, safeLookName, safeLookParams } from '../lib/studio/looks.js'
 import { clamp, download, baseName, recentAction, fmtTime } from '../lib/utils.js'
 
 const SECTIONS = ['looks', 'light', 'color', 'mixer', 'grade', 'fx', 'crop', 'export']
@@ -20,8 +23,29 @@ const PADDING = { l: 28, r: 28, t: 74, b: 28 }
 const same = (a, b) => { for (const k in a) if (a[k] !== b[k]) return false; return true }
 const isNonTransformPatch = (patch) => Object.keys(patch).some((k) => !TRANSFORM_KEYS.includes(k))
 const lookOnly = (p) => Object.fromEntries(Object.entries(p).filter(([k]) => !TRANSFORM_KEYS.includes(k)))
-const loadMine = () => { try { return JSON.parse(localStorage.getItem('ttt.looks') || '[]') } catch { return [] } }
 
+function releaseAudioGraph(audio) {
+  if (!audio) return
+  try { audio.node?.disconnect() } catch {}
+  try { audio.gain?.disconnect() } catch {}
+  try { audio.dest?.stream?.getTracks?.().forEach((track) => track.stop()) } catch {}
+  try { const closing = audio.ctx?.close?.(); closing?.catch?.(() => {}) } catch {}
+}
+function makeAudioGraph(video) {
+  const AudioContext = window.AudioContext || window.webkitAudioContext
+  if (!AudioContext) return null
+  let ctx
+  try {
+    ctx = new AudioContext()
+    const node = ctx.createMediaElementSource(video)
+    const gain = ctx.createGain(), dest = ctx.createMediaStreamDestination()
+    node.connect(gain); gain.connect(ctx.destination); node.connect(dest)
+    return { ctx, node, gain, dest }
+  } catch {
+    try { const closing = ctx?.close?.(); closing?.catch?.(() => {}) } catch {}
+    return null
+  }
+}
 /* ============================================================================================ */
 export default function ImageStudio() {
   const [src, setSrc] = useState(null)
@@ -32,6 +56,7 @@ export default function ImageStudio() {
   const pRef = useRef(DEFAULTS)
   const [hist, setHist] = useState(0)
   const [ready, setReady] = useState(0)
+  const [renderInfo, setRenderInfo] = useState(null)
   const [box, setBox] = useState({ w: 800, h: 560 })
   const [hover, setHover] = useState(null)
   const [holdOrig, setHoldOrig] = useState(false)
@@ -40,7 +65,7 @@ export default function ImageStudio() {
   const [channel, setChannel] = useState(0)
   const [toast, setToast] = useState('')
   const [thumbs, setThumbs] = useState({})
-  const [myLooks, setMyLooks] = useState(loadMine)
+  const [myLooks, setMyLooks] = useState(loadSavedLooks)
   const [activeLook, setActiveLook] = useState(null)
   const [strength, setStrengthState] = useState(100)
   const [hist3, setHist3] = useState(null)
@@ -61,12 +86,29 @@ export default function ImageStudio() {
   const live = useRef({}), rafRef = useRef(0), exportingRef = useRef(false), abortRef = useRef(null)
   const base = useRef(DEFAULTS), past = useRef([]), future = useRef([]), timer = useRef(0)
   const lookBase = useRef(null), toastTimer = useRef(0), thumbCache = useRef({})
+  const sourceLoadSeq = useRef(0), pendingSourceCleanup = useRef(null), activeUrl = useRef(null)
   const videoTypes = useMemo(() => supportedVideoTypes(), [])
 
   const zoomMV = useMotionValue(1), zoomSpring = useSpring(zoomMV, { stiffness: 300, damping: 30 })
   const panX = useMotionValue(0), panY = useMotionValue(0)
 
   const say = useCallback((t) => { setToast(t); clearTimeout(toastTimer.current); toastTimer.current = setTimeout(() => setToast(''), 2600) }, [])
+  const releaseCurrentMedia = useCallback(() => {
+    const video = vidRef.current
+    vidRef.current = null
+    releaseMediaElement(video)
+    const audio = audioRef.current
+    audioRef.current = null
+    releaseAudioGraph(audio)
+    activeUrl.current?.release()
+    activeUrl.current = null
+  }, [])
+  const cancelPendingSource = useCallback(() => {
+    sourceLoadSeq.current += 1
+    pendingSourceCleanup.current?.()
+    pendingSourceCleanup.current = null
+    setLoading(false)
+  }, [])
 
   /* ---------------------------------- history ---------------------------------- */
   const commit = useCallback(() => {
@@ -125,61 +167,95 @@ export default function ImageStudio() {
 
   const openFile = useCallback(async ([f]) => {
     if (!f) return
+    pendingSourceCleanup.current?.()
+    pendingSourceCleanup.current = null
+    const seq = ++sourceLoadSeq.current
+    const kind = studioMediaKind(f)
+    if (!kind) { const message = 'Choose an image or video the browser can decode.'; setLoading(false); setFail(message); say(message); return }
     setLoading(true); setFail('')
+    let resource = null, url = null, element = null, candidateAudio = null, cancelWait = () => {}, transferred = false, released = false
+    const cleanupCandidate = () => {
+      if (released) return
+      released = true
+      cancelWait()
+      releaseAudioGraph(candidateAudio); candidateAudio = null
+      releaseMediaElement(element)
+      resource?.release(); resource = null
+    }
+
     try {
-      if (f.type.startsWith('video/')) {
-        const url = URL.createObjectURL(f)
-        const v = document.createElement('video')
-        v.src = url; v.loop = true; v.playsInline = true; v.preload = 'auto'; v.crossOrigin = 'anonymous'
-        await new Promise((res, rej) => { v.onloadeddata = res; v.onerror = () => rej(new Error('This browser cannot decode that video. Try MP4 (H.264) or WebM.')) })
-        if (v.currentTime === 0) { try { v.currentTime = 0.001 } catch {} }
-        vidRef.current?.pause()
-        vidRef.current = v
-        try { // route audio through WebAudio so it can be recorded on export
-          const ctx = new (window.AudioContext || window.webkitAudioContext)()
-          const node = ctx.createMediaElementSource(v), gain = ctx.createGain(), dest = ctx.createMediaStreamDestination()
-          node.connect(gain); gain.connect(ctx.destination); node.connect(dest)
-          audioRef.current = { ctx, gain, dest }
-        } catch { audioRef.current = null }
-        resetEditor()
-        setSrc({ kind: 'video', name: f.name, size: f.size, w: v.videoWidth, h: v.videoHeight, el: v, dur: Number.isFinite(v.duration) ? v.duration : 0 })
-        setMuted(false); setRate(1)
-      } else {
-        const url = URL.createObjectURL(f)
-        const img = new Image(); img.src = url
-        await img.decode()
-        vidRef.current?.pause(); vidRef.current = null; audioRef.current = null
-        resetEditor()
-        setSrc({ kind: 'image', name: f.name, size: f.size, w: img.naturalWidth, h: img.naturalHeight, el: img })
+      resource = createObjectUrlResource(f)
+      url = resource.url
+      element = kind === 'video' ? document.createElement('video') : new Image()
+      if (kind === 'video') {
+        element.loop = true; element.playsInline = true; element.preload = 'metadata'; element.crossOrigin = 'anonymous'
       }
+      const wait = waitForMediaElement(element, kind === 'video' ? 'loadeddata' : 'load', url)
+      cancelWait = wait.cancel
+      pendingSourceCleanup.current = cleanupCandidate
+      const status = await wait.promise
+      if (seq !== sourceLoadSeq.current || status?.cancelled) return
+      if (status?.error) throw new Error(status.error)
+
+      const w = kind === 'video' ? Number(element.videoWidth) : Number(element.naturalWidth)
+      const h = kind === 'video' ? Number(element.videoHeight) : Number(element.naturalHeight)
+      const dur = kind === 'video' ? Number(element.duration) : null
+      if (!w || !h || (kind === 'video' && (!Number.isFinite(dur) || dur <= 0))) {
+        throw new Error('The file has no usable dimensions or duration.')
+      }
+      if (kind === 'video') candidateAudio = makeAudioGraph(element)
+
+      releaseCurrentMedia()
+      if (kind === 'video') {
+        vidRef.current = element; audioRef.current = candidateAudio; candidateAudio = null
+        setMuted(false); setRate(1)
+      }
+      activeUrl.current = resource; resource = null; transferred = true
+      resetEditor(); setRenderInfo(null)
+      setSrc({ kind, name: f.name, size: f.size, w, h, el: element, url, dur: kind === 'video' ? dur : 0 })
       recentAction(`Edited ${f.name} in ImagePlayer Studio`)
     } catch (e) {
-      setFail(e.message || 'Could not open that file')
-    } finally { setLoading(false) }
-  }, [resetEditor])
+      if (seq === sourceLoadSeq.current) {
+        const message = e.message || 'Could not open that file'
+        setFail(message)
+        say(message)
+      }
+    } finally {
+      if (!transferred) cleanupCandidate()
+      if (pendingSourceCleanup.current === cleanupCandidate) pendingSourceCleanup.current = null
+      if (seq === sourceLoadSeq.current) setLoading(false)
+    }
+  }, [resetEditor, releaseCurrentMedia, say])
 
   const openSample = useCallback(() => {
+    cancelPendingSource()
+    releaseCurrentMedia()
     const c = makeSample(1600, 1000)
-    vidRef.current = null; audioRef.current = null
-    resetEditor()
-    setSrc({ kind: 'image', name: 'Sample sunset.png', size: 0, w: c.width, h: c.height, el: c })
-  }, [resetEditor])
+    resetEditor(); setFail(''); setRenderInfo(null)
+    setSrc({ kind: 'image', name: 'Sample sunset.png', size: 0, w: c.width, h: c.height, el: c, dur: 0 })
+  }, [cancelPendingSource, releaseCurrentMedia, resetEditor])
 
   // renderer lifecycle
   useEffect(() => {
     if (!src) return
-    if (!rRef.current) {
-      try {
-        rRef.current = createRenderer(canvasRef.current)
-        auxRef.current = createRenderer(document.createElement('canvas'))
-      } catch (e) { setFail(e.message); return }
-      if (!rRef.current) { setFail('This browser does not support WebGL 2, which the studio needs for real-time editing.'); return }
+    try {
+      if (!rRef.current) rRef.current = createRenderer(canvasRef.current)
+      if (!rRef.current) throw new Error('This browser does not support WebGL 2, which the studio needs for real-time editing.')
+      if (!auxRef.current) {
+        try { auxRef.current = createRenderer(document.createElement('canvas')) } catch { auxRef.current = null }
+      }
+      const isV = src.kind === 'video'
+      const info = rRef.current.setSource(src.el, src.w, src.h, isV)
+      try { auxRef.current?.setSource(src.el, src.w, src.h, isV) } catch {
+        auxRef.current?.destroy?.(); auxRef.current = null
+      }
+      setRenderInfo({ source: src, w: info.w, h: info.h, capped: info.capped, originalW: src.w, originalH: src.h })
+      setFail(''); setReady((n) => n + 1)
+    } catch (e) {
+      const message = e.message || 'Could not prepare this media for the GPU.'
+      setFail(message); say(message)
     }
-    const isV = src.kind === 'video'
-    rRef.current.setSource(src.el, src.w, src.h, isV)
-    auxRef.current?.setSource(src.el, src.w, src.h, isV)
-    setReady((n) => n + 1)
-  }, [src])
+  }, [src, say])
 
   // stage size
   useEffect(() => {
@@ -191,14 +267,12 @@ export default function ImageStudio() {
 
   /* ---------------------------------- derived view ---------------------------------- */
   const cropTab = section === 'crop'
-  const orient = useCallback((p) => {
-    const sw = p.rot % 2 === 1
-    return { ow: sw ? src.h : src.w, oh: sw ? src.w : src.h }
-  }, [src])
+  const sourceDims = renderInfo?.source === src ? renderInfo : src
   const dims = useMemo(() => {
     if (!src) return { ow: 1, oh: 1 }
-    const o = orient(params); return { ow: o.ow, oh: o.oh }
-  }, [src, params.rot, orient]) // eslint-disable-line
+    const sw = params.rot % 2 === 1
+    return { ow: sw ? sourceDims.h : sourceDims.w, oh: sw ? sourceDims.w : sourceDims.h }
+  }, [src, params.rot, sourceDims])
   const outDims = useMemo(() => ({ w: Math.max(1, Math.round(params.cw * dims.ow)), h: Math.max(1, Math.round(params.ch * dims.oh)) }), [params.cw, params.ch, dims])
 
   const effParams = useMemo(() => {
@@ -254,7 +328,16 @@ export default function ImageStudio() {
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
   }, [playing, drawNow])
-  useEffect(() => () => { vidRef.current?.pause(); cancelAnimationFrame(rafRef.current) }, [])
+  useEffect(() => () => {
+    sourceLoadSeq.current += 1
+    pendingSourceCleanup.current?.(); pendingSourceCleanup.current = null
+    abortRef.current?.abort()
+    cancelAnimationFrame(rafRef.current)
+    clearTimeout(timer.current); clearTimeout(toastTimer.current)
+    releaseCurrentMedia()
+    rRef.current?.destroy?.(); auxRef.current?.destroy?.()
+    rRef.current = null; auxRef.current = null
+  }, [releaseCurrentMedia])
 
   const togglePlay = useCallback(async () => {
     const v = vidRef.current; if (!v) return
@@ -324,25 +407,35 @@ export default function ImageStudio() {
     setAll(next, false, true)
   }
   const saveLook = (name) => {
-    const item = { id: 'mine-' + Date.now(), name, cat: 'Mine', p: lookOnly(pRef.current) }
-    const list = [...myLooks, item]; setMyLooks(list); localStorage.setItem('ttt.looks', JSON.stringify(list)); say(`Saved “${name}”`)
+    const safeName = safeLookName(name, 'My look')
+    const item = { id: 'mine-' + Date.now(), name: safeName, cat: 'Mine', p: lookOnly(pRef.current) }
+    const list = [...myLooks, item].slice(-MAX_SAVED_LOOKS)
+    setMyLooks(list)
+    say(persistLooks(list) ? `Saved “${safeName}”` : 'Look saved for this session, but browser storage is unavailable')
   }
-  const deleteLook = (id) => { const list = myLooks.filter((l) => l.id !== id); setMyLooks(list); localStorage.setItem('ttt.looks', JSON.stringify(list)); delete thumbCache.current[id] }
+  const deleteLook = (id) => {
+    const list = myLooks.filter((l) => l.id !== id)
+    setMyLooks(list); persistLooks(list); delete thumbCache.current[id]
+  }
   const exportLook = () => {
-    const json = JSON.stringify({ app: 'TheToolTable', type: 'look', name: activeLook?.name || 'My look', p: lookOnly(pRef.current) }, null, 2)
-    download(new Blob([json], { type: 'application/json' }), `${(activeLook?.name || 'my-look').toLowerCase().replace(/\s+/g, '-')}.look.json`)
+    const name = safeLookName(activeLook?.name, 'My look')
+    const json = JSON.stringify({ app: 'TheToolTable', type: 'look', name, p: lookOnly(pRef.current) }, null, 2)
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'my-look'
+    download(new Blob([json], { type: 'application/json' }), `${slug}.look.json`)
   }
   const importLook = () => lookFileRef.current?.click()
   const onLookFile = async (e) => {
     const f = e.target.files?.[0]; e.target.value = ''; if (!f) return
     try {
+      if (f.size > 128 * 1024) throw new Error()
       const j = JSON.parse(await f.text())
-      if (j.type !== 'look' || !j.p) throw new Error()
-      const p = {}; for (const k in j.p) if (k in DEFAULTS && !TRANSFORM_KEYS.includes(k) && Number.isFinite(j.p[k])) p[k] = j.p[k]
-      const item = { id: 'mine-' + Date.now(), name: j.name || 'Imported', cat: 'Mine', p }
-      const list = [...myLooks, item]; setMyLooks(list); localStorage.setItem('ttt.looks', JSON.stringify(list))
+      const p = safeLookParams(j?.p)
+      if (j?.type !== 'look' || !p || !Object.keys(p).length) throw new Error()
+      const item = { id: 'mine-' + Date.now(), name: safeLookName(j.name), cat: 'Mine', p }
+      const list = [...myLooks, item].slice(-MAX_SAVED_LOOKS)
+      setMyLooks(list); persistLooks(list)
       applyPreset(item); setSection('looks'); say(`Loaded “${item.name}”`)
-    } catch { say('That is not a TheToolTable look file') }
+    } catch { say('That is not a valid TheToolTable look file') }
   }
 
   /* ---------------------------------- auto enhance ---------------------------------- */
@@ -438,45 +531,65 @@ export default function ImageStudio() {
   const setExp = (patch) => setExpState((e) => ({ ...e, ...patch }))
   useEffect(() => { if (videoTypes.length && !videoTypes.find((t) => t.ext === exp.vext)) setExp({ vext: videoTypes[0].ext }) }, [videoTypes]) // eslint-disable-line
   const outName = (ext) => `${baseName(src.name)}_edit.${ext}`
+  const saveResult = () => { if (result?.blob) download(result.blob, result.name) }
 
   const exportImage = async () => {
     if (busy) return
+    const paramsForExport = { ...pRef.current }
+    const ext = exp.fmt === 'jpeg' ? 'jpg' : exp.fmt
+    const name = outName(ext)
     setBusy(true); setResult(null); exportingRef.current = true
     try {
-      await new Promise((r) => setTimeout(r, 60))
-      const r = await renderImage(rRef.current, pRef.current, { fmt: exp.fmt, quality: exp.quality / 100, scale: exp.scale })
-      const ext = exp.fmt === 'jpeg' ? 'jpg' : exp.fmt
-      download(r.blob, outName(ext))
-      setResult({ name: outName(ext), w: r.w, h: r.h, size: r.blob.size })
-      if (r.capped) say('Scaled down to your GPU’s maximum texture size')
-    } catch (e) { say(e.message) }
-    exportingRef.current = false; setBusy(false); drawNow()
+      await new Promise((resolve) => setTimeout(resolve, 60))
+      const rendered = await renderImage(rRef.current, paramsForExport, { fmt: exp.fmt, quality: exp.quality / 100, scale: exp.scale })
+      setResult({ name, w: rendered.w, h: rendered.h, size: rendered.blob.size, blob: rendered.blob })
+      try { download(rendered.blob, name) } catch { say('Image is ready. Use Save image below to download it.') }
+      if (rendered.capped) say('Scaled down to the maximum safe GPU texture size')
+    } catch (e) { say(e.message || 'Image export failed') }
+    finally { exportingRef.current = false; setBusy(false); drawNow() }
   }
   const copyImage = async () => {
+    if (busy) return
+    const paramsForExport = { ...pRef.current }
+    setBusy(true); exportingRef.current = true
     try {
-      exportingRef.current = true
-      const r = await renderImage(rRef.current, pRef.current, { fmt: 'png', scale: Math.min(exp.scale, 1) })
+      const rendered = await renderImage(rRef.current, paramsForExport, { fmt: 'png', scale: Math.min(exp.scale, 1) })
       exportingRef.current = false; drawNow()
-      await navigator.clipboard.write([new ClipboardItem({ 'image/png': r.blob })])
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': rendered.blob })])
       say('Copied to clipboard')
-    } catch { exportingRef.current = false; drawNow(); say('Clipboard access was blocked by the browser') }
+    } catch { say('Clipboard access was blocked by the browser') }
+    finally { exportingRef.current = false; setBusy(false); drawNow() }
   }
   const doRenderVideo = async () => {
     if (busy) return
     const t = videoTypes.find((x) => x.ext === exp.vext) || videoTypes[0]
     if (!t) return say('This browser cannot record video')
     const v = vidRef.current, a = audioRef.current
+    if (!v) return say('The source video is no longer available')
+    const paramsForExport = { ...pRef.current }
+    const name = outName(t.ext)
+    const controller = new AbortController()
+    abortRef.current = controller
     setBusy(true); setResult(null); setProgress(0); setPlaying(false); exportingRef.current = true
-    abortRef.current = new AbortController()
-    a?.ctx.resume?.()
-    const prevGain = a?.gain.gain.value
-    if (a) a.gain.gain.value = 0 // don't blast speakers while rendering; the recorder taps before the gain
+    v.pause()
+    let prevGain
     try {
-      const r = await renderVideo({ renderer: rRef.current, video: v, params: pRef.current, audioStream: exp.audio && a ? a.dest.stream : null, mime: t.mime, bps: exp.mbps * 1e6, fps: exp.fps, scale: exp.scale, speed: rate, onProgress: setProgress, signal: abortRef.current.signal })
-      if (r) { download(r.blob, outName(t.ext)); setResult({ name: outName(t.ext), w: r.w, h: r.h, size: r.blob.size }) } else say('Render cancelled')
+      if (a) {
+        try { await a.ctx.resume() } catch {}
+        prevGain = a.gain.gain.value
+        a.gain.gain.value = 0 // the recorder taps the WebAudio destination before the monitor gain
+      }
+      const rendered = await renderVideo({ renderer: rRef.current, video: v, params: paramsForExport, audioStream: exp.audio && a ? a.dest.stream : null, mime: t.mime, bps: exp.mbps * 1e6, fps: exp.fps, scale: exp.scale, speed: rate, onProgress: setProgress, signal: controller.signal })
+      if (rendered) {
+        setResult({ name, w: rendered.w, h: rendered.h, size: rendered.blob.size, blob: rendered.blob })
+        try { download(rendered.blob, name) } catch { say('Video is ready. Use Save video below to download it.') }
+      } else say('Render cancelled')
     } catch (e) { say(e.message || 'Rendering failed') }
-    if (a) a.gain.gain.value = muted ? 0 : (prevGain ?? 1)
-    exportingRef.current = false; setBusy(false); drawNow()
+    finally {
+      if (a) { try { a.gain.gain.value = muted ? 0 : (prevGain ?? 1) } catch {} }
+      if (abortRef.current === controller) abortRef.current = null
+      exportingRef.current = false; setBusy(false); drawNow()
+    }
   }
 
   /* ---------------------------------- panel context ---------------------------------- */
@@ -486,7 +599,7 @@ export default function ImageStudio() {
   const ctx = {
     params, upd, sl, src, dims, outDims, hist: hist3, thumbs, activeLook, strength, setStrength, applyPreset, setHover, myLooks, saveLook, deleteLook,
     channel, setChannel, pick, setPick, aspect, setAspect, swapAspect, rotate90, fillAngle, exp, setExp, busy, progress, result, videoTypes,
-    exportImage, copyImage, renderVideo: doRenderVideo, exportLook, importLook,
+    exportImage, copyImage, renderVideo: doRenderVideo, saveResult, exportLook, importLook,
   }
 
   const resetSection = () => {
@@ -534,9 +647,9 @@ export default function ImageStudio() {
 
   return (
     <motion.div className="relative" style={{ left: '50%', width: 'min(1480px, calc(100vw - 32px))', marginLeft: 'calc(min(1480px, calc(100vw - 32px)) / -2)' }} initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={SPRING}>
-      <input ref={fileRef} type="file" hidden accept="image/*,video/*" onChange={(e) => { const f = [...e.target.files]; e.target.value = ''; openFile(f) }} />
+      <input ref={fileRef} type="file" hidden disabled={busy} accept="image/*,video/*" onChange={(e) => { const f = [...e.target.files]; e.target.value = ''; openFile(f) }} />
       <input ref={lookFileRef} type="file" hidden accept=".json,application/json" onChange={onLookFile} />
-      <div className="card-raised rounded-3xl overflow-hidden flex flex-col lg:flex-row" style={{ height: 'clamp(620px, calc(100vh - 210px), 940px)', background: 'var(--surface)' }}>
+      <div className="card-raised rounded-3xl overflow-hidden flex flex-col lg:flex-row min-h-[790px] h-auto lg:min-h-0 lg:h-[clamp(620px,calc(100vh-210px),940px)]" style={{ background: 'var(--surface)' }}>
 
         {/* ---------------- section rail ---------------- */}
         <nav className="shrink-0 flex lg:flex-col gap-1 p-2 lg:py-4 lg:w-[78px] overflow-x-auto border-b lg:border-b-0 lg:border-r border-line" style={{ background: 'var(--surface2)' }}>
@@ -585,9 +698,12 @@ export default function ImageStudio() {
               <span className="w-7 h-7 rounded-full grid place-items-center shrink-0" style={{ background: 'var(--copper)', color: '#fff' }}><Icon n={isVideo ? 'film' : 'image'} s={14} /></span>
               <span className="min-w-0 leading-tight"><span className="block text-[11.5px] font-semibold truncate">{src.name}</span><span className="block text-[10px] opacity-60 tabular-nums">{src.w}×{src.h}{isVideo ? ` · ${fmtTime(src.dur)}` : ''}</span></span>
             </motion.div>
+            {renderInfo?.source === src && renderInfo.capped && <div className="absolute bottom-4 left-4 max-w-[62%] rounded-lg px-2.5 py-1.5 text-[10.5px] text-white" style={{ background: 'rgba(20,17,15,.82)' }}>
+              GPU limit: editing and export use {renderInfo.w}×{renderInfo.h} (source {src.w}×{src.h}).
+            </div>}
 
             {/* toolbar */}
-            <motion.div className="absolute top-4 left-1/2 flex items-center gap-0.5 p-1 rounded-full" initial={{ opacity: 0, y: -16, x: '-50%' }} animate={{ opacity: 1, y: 0, x: '-50%' }} transition={{ ...SPRING, delay: 0.2 }}
+            <motion.div className="absolute top-4 left-1/2 flex max-w-[calc(100%-16px)] items-center gap-0.5 p-1 rounded-full overflow-x-auto" initial={{ opacity: 0, y: -16, x: '-50%' }} animate={{ opacity: 1, y: 0, x: '-50%' }} transition={{ ...SPRING, delay: 0.2 }}
               style={{ background: 'rgba(20,17,15,.78)', color: '#eee', backdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,.09)', boxShadow: '0 12px 30px -10px rgba(0,0,0,.7)' }}>
               <TB icon="undo" label="Undo (Ctrl+Z)" disabled={!canUndo} onClick={undo} />
               <TB icon="redo" label="Redo (Ctrl+Shift+Z)" disabled={!canRedo} onClick={redo} />
@@ -597,7 +713,7 @@ export default function ImageStudio() {
               <TB icon="eye" label="Hold to see original" active={holdOrig} onDown={() => setHoldOrig(true)} onUp={() => setHoldOrig(false)} />
               <Sep />
               <TB icon="zoom" label={zoomPct > 102 ? 'Fit to screen' : '100% pixels'} active={zoomPct > 102} onClick={() => setZoom(zoomPct > 102 ? 1 : clamp(Math.max(showDims.w / dw, 2), 1, 8))} />
-              <TB icon="reset" label="Replace file" onClick={() => fileRef.current?.click()} />
+              <TB icon="reset" label="Replace file" disabled={busy} onClick={() => fileRef.current?.click()} />
             </motion.div>
 
             {/* zoom badge */}
@@ -624,7 +740,11 @@ export default function ImageStudio() {
                   </motion.div>
                 </motion.div>
               )}
-              {fail && <motion.div className="absolute inset-0 grid place-items-center text-white text-center p-8" style={{ background: 'rgba(12,10,9,.8)' }} initial={{ opacity: 0 }} animate={{ opacity: 1 }}><div className="max-w-sm"><div className="display text-[18px] font-semibold mb-2">Can’t start the editor</div><div className="text-[13px] opacity-80">{fail}</div></div></motion.div>}
+              {fail && <motion.div className="absolute inset-0 grid place-items-center text-white text-center p-8" style={{ background: 'rgba(12,10,9,.86)' }} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                <div className="max-w-sm"><div className="display text-[18px] font-semibold mb-2">Can’t use this media</div><div className="text-[13px] opacity-80">{fail}</div>
+                  <button className="btn mt-4" onClick={() => { setFail(''); fileRef.current?.click() }}>Choose another file</button>
+                </div>
+              </motion.div>}
             </AnimatePresence>
           </div>
 
@@ -691,12 +811,12 @@ function TB({ icon, label, onClick, onDown, onUp, active, disabled }) {
     <motion.button title={label} aria-label={label} disabled={disabled} onClick={onClick}
       onPointerDown={onDown} onPointerUp={onUp} onPointerLeave={onUp} onPointerCancel={onUp}
       whileHover={disabled ? {} : { scale: 1.14, y: -1 }} whileTap={disabled ? {} : { scale: 0.82 }}
-      className="w-9 h-9 rounded-full grid place-items-center" style={{ opacity: disabled ? 0.3 : 1, background: active ? 'var(--copper)' : 'transparent', color: '#fff' }}>
+      className="w-9 h-9 rounded-full grid place-items-center shrink-0" style={{ opacity: disabled ? 0.3 : 1, background: active ? 'var(--copper)' : 'transparent', color: '#fff' }}>
       <Icon n={icon} s={17} />
     </motion.button>
   )
 }
-const Sep = () => <span className="w-px h-5 mx-1" style={{ background: 'rgba(255,255,255,.15)' }} />
+const Sep = () => <span className="w-px h-5 mx-1 shrink-0" style={{ background: 'rgba(255,255,255,.15)' }} />
 
 function Ring({ value }) {
   const R = 38, C = 2 * Math.PI * R

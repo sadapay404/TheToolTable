@@ -81,7 +81,21 @@ export const subscribe = (f) => { listeners.add(f); f(view()); return () => list
 export const getState = () => view()
 export const getMode = () => active
 
-function killWorker(e) { try { e.worker?.terminate() } catch {} e.worker = null; e.readyPromise = null; e.pending.forEach((p) => p.reject(new Error('Engine restarted'))); e.pending.clear() }
+function killWorker(e) {
+  try { e.worker?.terminate() } catch {}
+  e.worker = null; e.readyPromise = null
+  e.pending.forEach((p) => p.reject(new Error('Engine stopped or restarted')))
+  e.pending.clear()
+}
+
+/** Release both model workers when the background-removal tool unmounts. */
+export function shutdown() {
+  for (const e of Object.values(engines)) {
+    killWorker(e)
+    e.plan = null
+    e.state = { phase: 'idle', value: 0, ready: false, error: '', backend: '', threads: 1, got: 0, total: 0, fromCache: false, note: '' }
+  }
+}
 
 function boot(e, plan) {
   killWorker(e)
@@ -93,7 +107,12 @@ function boot(e, plan) {
         ? new Worker(new URL('./worker.js', import.meta.url), { type: 'module' })
         : new Worker(new URL('./worker-pro.js', import.meta.url), { type: 'module' })
     } catch (err) { patch(e, { error: 'This browser cannot start a background worker.', phase: 'error' }); return reject(err) }
-    e.worker.onerror = (ev) => { const m = ev.message || 'The cut-out engine crashed'; patch(e, { error: m, phase: 'error' }); reject(new Error(m)) }
+    e.worker.onerror = (ev) => {
+      const err = new Error(ev.message || 'The cut-out engine crashed')
+      patch(e, { error: err.message, phase: 'error', ready: false })
+      e.pending.forEach((p) => p.reject(err)); e.pending.clear()
+      reject(err)
+    }
     e.worker.onmessage = (ev) => {
       const m = ev.data
       if (m.type === 'phase') patch(e, { phase: m.phase, value: m.value, ...(m.got != null ? { got: m.got, total: m.total } : {}), ...(m.fromCache != null ? { fromCache: m.fromCache } : {}) })
@@ -111,15 +130,17 @@ function boot(e, plan) {
   return e.readyPromise
 }
 
-async function start(e) {
+async function start(e, tier = active.tier) {
   if (e.readyPromise) return e.readyPromise
   if (e.kind === 'offline') return boot(e, null)
   const gpu = await detectGPU(); gpuInfo = gpu
-  const plan = planFor(active.tier, gpu)
-  if (!plan) { patch(e, { error: `${TIERS[active.tier].name} needs a WebGPU graphics card, which this browser doesn’t expose. Choose Pro, or switch to Offline.`, phase: 'error' }); return Promise.reject(new Error(e.state.error)) }
+  const plan = planFor(tier, gpu)
+  if (!plan) { patch(e, { error: `${TIERS[tier].name} needs a WebGPU graphics card, which this browser doesn’t expose. Choose Pro, or switch to Offline.`, phase: 'error' }); return Promise.reject(new Error(e.state.error)) }
   try { return await boot(e, plan) } catch (err) {
     // WebGPU can fail on odd drivers — Pro quietly falls back to the CPU weights.
-    if (plan.ep === 'webgpu' && active.tier === 'pro' && !localStorage.getItem('ttt.bg.devModel')) {
+    let devModel = false
+    try { devModel = !!localStorage.getItem('ttt.bg.devModel') } catch {}
+    if (plan.ep === 'webgpu' && tier === 'pro' && !devModel) {
       const p2 = cpuPlan('pro')
       const r = boot(e, p2); patch(e, { note: 'WebGPU failed here — using the CPU weights instead.' }); return r
     }
@@ -127,13 +148,17 @@ async function start(e) {
   }
 }
 
-export function warmUp() { return start(engines[active.mode]) }
+export function warmUp() { return start(engines[active.mode], active.tier) }
 
 /** Switch engine. Starting the online engine begins the (cached) model download straight away. */
 export function setEngine(mode, tier = active.tier) {
-  const tierChanged = tier !== active.tier
+  if (!Object.hasOwn(engines, mode)) return Promise.reject(new RangeError('Choose the Offline or Online cut-out engine'))
+  if (!Object.hasOwn(TIERS, tier)) tier = 'pro'
+  const previous = active
+  const tierChanged = tier !== previous.tier
   active = { mode, tier }
   try { localStorage.setItem('ttt.bg.engine', JSON.stringify(active)) } catch {}
+  if (previous.mode !== mode) killWorker(engines[previous.mode])
   if (tierChanged) killWorker(engines.online)
   emitAll()
   return warmUp().catch(() => {})
@@ -167,15 +192,17 @@ function preprocess(source, norm) {
 
 /** → { mask: Uint8Array(1024²), size, ms, mode } using whichever engine is active. */
 export async function segment(source) {
-  const e = engines[active.mode]
-  await start(e)
+  const { mode, tier } = active
+  const e = engines[mode]
+  await start(e, tier)
   const id = nextId++
   const data = preprocess(source, e.plan?.norm === 'imagenet' ? 'imagenet' : 'half')
   const r = await new Promise((resolve, reject) => {
     e.pending.set(id, { resolve, reject })
-    e.worker.postMessage({ type: 'run', id, data, size: NET_SIZE }, [data.buffer])
+    try { e.worker.postMessage({ type: 'run', id, data, size: NET_SIZE }, [data.buffer]) }
+    catch (error) { e.pending.delete(id); reject(error) }
   })
-  return { ...r, mode: active.mode, tier: active.tier }
+  return { ...r, mode, tier }
 }
 
 /** Clear a failed state and try booting the active engine again. */

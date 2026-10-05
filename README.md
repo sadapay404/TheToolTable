@@ -1,6 +1,6 @@
 # TheToolTable — Universal Multi-Tool Studio
 
-A growing set of desktop-grade tools in one ultra-slick, 3D-animated web studio. **Everything runs 100% client-side** — no uploads, no server, no quality loss unless a tool explicitly exists to compress (Tool 3).
+A personal multi-tool studio with 20 browser-first utilities. Most file processing stays in the browser; the Downloader can use a local or separately hosted yt-dlp companion engine, and the Metadata Extractor contacts OpenStreetMap only when you explicitly request a place lookup or map. Files are not uploaded by default. No re-encoding unless a tool explicitly offers it (notably Tool 03 and selected Converter outputs).
 
 ## Branding
 
@@ -11,9 +11,9 @@ A growing set of desktop-grade tools in one ultra-slick, 3D-animated web studio.
 ## Stack (Phase 1 — Web)
 
 - **Vite + React 18** — instant HMR dev, static production build for Vercel.
-- **Tailwind CSS** + CSS-variable **theme engine** (5 themes, persisted in `localStorage`).
+- **Tailwind CSS** + CSS-variable **theme engine** (Material You plus six alternate themes, persisted in `localStorage`).
 - **Framer Motion** — spring physics (`stiffness 300 / damping 25`), 3D card tilt, press-depth, glow reflections.
-- **FFmpeg WASM** (`@ffmpeg/ffmpeg`) — convert / target-size compress / trim, single-threaded core loaded from CDN at runtime.
+- **FFmpeg WASM** (`@ffmpeg/ffmpeg`) — convert / target-size compress / trim using the single-threaded core bundled with the app.
 - **onnxruntime-web** (WASM, in a module worker) — runs the bundled IS-Net model for background removal. No GPU or network needed.
 - **qrcode**, **gifenc**, **exifr** — QR vector studio, GIF export, metadata parsing.
 
@@ -23,9 +23,9 @@ A growing set of desktop-grade tools in one ultra-slick, 3D-animated web studio.
 |---|------|--------|
 | 01 | Metadata Extractor (EXIF/IPTC/XMP/GPS + map + hex, Scrub & Sanitize) | exifr, lossless segment/chunk stripping |
 | 02 | Any-to-Any Converter (image/video/audio/document, batch) | canvas + FFmpeg WASM |
-| 03 | Target-Size Compressor (2-pass bitrate math, live size preview) | FFmpeg WASM |
+| 03 | Target-Size Compressor (audio/video size budgets, 2-pass H.264 video, AAC audio) | FFmpeg WASM |
 | 04 | Media Clipper & Downloader (waveform timeline, stream-copy clips) | WebAudio + FFmpeg WASM |
-| 05 | ImagePlayer Studio (12 color sliders, LUTs, crop/rotate/flip) | Canvas, lossless PNG |
+| 05 | ImagePlayer Studio (image/video grading, saved looks, crop, and exports) | WebGL2 + Canvas + MediaRecorder |
 | 06 | AI Background Remover (bundled IS-Net, refine brush, backgrounds, shadow, batch ZIP) | onnxruntime-web WASM worker |
 | 07 | Frame Extractor & Clipper (frame step, snapshots, GIF maker) | canvas + gifenc + FFmpeg WASM |
 | 08 | Audio Visualizer Video (bars/radial/wave/particles, social ratios) | WebAudio + MediaRecorder |
@@ -44,7 +44,7 @@ A growing set of desktop-grade tools in one ultra-slick, 3D-animated web studio.
 
 ## Zero-compression policy
 
-No tool may downsample/re-encode originals except **Tool 3** (explicit target-size compression). Lossless by default: PNG/WebP q-max export, `copy` stream trims, CRF-16 targets.
+Source files are never modified in place. Re-encoding happens only when the user explicitly requests a format conversion or compression; **Tool 03** is the size-budget compressor. Media trims use stream copy where supported, and metadata scrubbing retains the JPEG/PNG compressed image data without re-encoding (orientation/color profiles may be removed).
 
 ## Run
 
@@ -69,15 +69,18 @@ yt-dlp is a native program, so one tiny engine layer (`src/lib/engine.js`) picks
 
 | Where the app runs | How yt-dlp is provided | User setup |
 |---|---|---|
-| Windows / Android app | bundled **inside** the installer / APK (Tauri sidecar / youtubedl-android) | none |
-| Web (dev, Vercel) | companion engine (`server/ytdlp-api.js`, zero npm deps) | run it, or paste its address |
+| Windows Tauri app | yt-dlp + FFmpeg sidecars when built with the sidecar config; installer can also be built without them | none when bundled |
+| Android Tauri app | the Android runner/plugin is not integrated yet | downloader is not available as a bundled offline feature yet |
+| Web dev/preview | Vite companion endpoint (`/api/ytdlp`) | install yt-dlp once with the setup script |
+| Static hosting (including Vercel) | separately hosted companion engine | enter its `/api/ytdlp` address below; configure CORS for the app origin |
 
 `npm run setup:engine` and `npm run engine` are **developer-only** (run in this project folder on your own PC, for the web build).
 Shipped apps never need them. Full native plan: [docs/NATIVE-ENGINE.md](docs/NATIVE-ENGINE.md).
 
 - Web dev: `npm run setup:engine` once (creates `~/.ytvenv` with yt-dlp + ffmpeg), then `npm run dev` — the engine mounts at `/api/ytdlp`.
 - Self-host: `npm run engine` → `http://127.0.0.1:8787/api/ytdlp` (env: `PORT`, `HOST`, `YTDLP_PATH`, `FFMPEG_PATH`, `YTDLP_CORS`, `YTDLP_ALLOW_PRIVATE=1`).
-- Windows installer prep: `node scripts/fetch-sidecars.mjs`.
+- A static Vercel deployment does **not** run this Node engine; configure an independently hosted engine address in the downloader and allow the site origin through CORS.
+- Windows installer prep: `node scripts/fetch-sidecars.mjs`; Windows sidecars are optional unless the build uses `src-tauri/tauri.sidecars.conf.json`.
 - Input is never passed to a shell; options are whitelisted; web engine only accepts public http(s) URLs.
 
 ## Notes on the newer tools

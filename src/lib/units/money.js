@@ -92,12 +92,54 @@ const LS = 'ttt.rates.v2'
 const sampleDown = (arr, n) => (arr && arr.length > n ? Array.from({ length: n }, (_, i) => arr[Math.floor((i * (arr.length - 1)) / (n - 1))]) : arr || null)
 
 function snapshot() {
-  return { fiat: FIAT_SNAPSHOT, fiatAt: 0, crypto: CRYPTO_SNAPSHOT.map(([id, sym, name, usd], i) => ({ id, sym, name, usd, rank: i + 1 })), cryptoAt: 0, source: 'snapshot' }
+  return { fiat: FIAT_SNAPSHOT, fiatAt: 0, crypto: CRYPTO_SNAPSHOT.map(([id, sym, name, usd], i) => ({ id, sym, name, usd, rank: i + 1 })), cryptoAt: 0, source: 'snapshot', error: '' }
+}
+
+const isRecord = (value) => value !== null && typeof value === 'object' && !Array.isArray(value)
+function cleanFiat(value) {
+  if (!isRecord(value)) return null
+  const fiat = {}
+  for (const [rawCode, rawRate] of Object.entries(value)) {
+    const code = rawCode.toUpperCase(), rate = Number(rawRate)
+    if (/^[A-Z]{3}$/.test(code) && Number.isFinite(rate) && rate > 0) fiat[code] = rate
+  }
+  if (!Number.isFinite(fiat.USD) || fiat.USD <= 0) return null
+  fiat.USD = 1
+  return fiat
+}
+function cleanCrypto(value) {
+  if (!Array.isArray(value)) return null
+  const coins = []
+  for (const coin of value) {
+    if (!isRecord(coin)) continue
+    const id = typeof coin.id === 'string' ? coin.id.trim() : ''
+    const sym = typeof coin.sym === 'string' ? coin.sym.trim().toUpperCase() : ''
+    const name = typeof coin.name === 'string' ? coin.name.trim() : ''
+    const usd = Number(coin.usd)
+    if (!id || id.length > 100 || !/^[A-Z0-9.]{1,16}$/.test(sym) || !name || name.length > 100 || !Number.isFinite(usd) || usd <= 0) continue
+    const rank = Number(coin.rank)
+    const change = coin.ch24 == null ? null : Number(coin.ch24)
+    const sparkValues = Array.isArray(coin.spark) ? coin.spark.map(Number).filter((n) => Number.isFinite(n) && n > 0) : []
+    const spark = sparkValues.length >= 2 ? sampleDown(sparkValues, 28) : null
+    coins.push({ id, sym, name, usd, img: typeof coin.img === 'string' ? coin.img : '', ch24: Number.isFinite(change) ? change : null, spark, rank: Number.isFinite(rank) && rank > 0 ? rank : null })
+  }
+  return coins.length ? coins : null
+}
+const rateTime = (value) => {
+  const ts = Number(value)
+  return Number.isFinite(ts) && ts > 0 && ts <= Date.now() + 5 * 60e3 ? ts : 0
+}
+function normalizeRates(value, source = value?.source || 'cache') {
+  if (!isRecord(value)) return null
+  const fiat = cleanFiat(value.fiat), crypto = cleanCrypto(value.crypto)
+  if (!fiat || !crypto) return null
+  return { fiat, fiatAt: rateTime(value.fiatAt), crypto, cryptoAt: rateTime(value.cryptoAt), source, error: typeof value.error === 'string' ? value.error : '' }
 }
 export function loadRates() {
   try {
-    const c = JSON.parse(localStorage.getItem(LS))
-    if (c && c.fiat && c.crypto) return { ...c, source: 'cache' }
+    const c = JSON.parse(localStorage.getItem(LS) || 'null')
+    const normalized = normalizeRates(c, 'cache')
+    if (normalized) return normalized
   } catch {}
   return snapshot()
 }
@@ -111,27 +153,38 @@ async function getJson(url, ms = 12000) {
 }
 export async function fetchFiat() {
   const j = await getJson('https://open.er-api.com/v6/latest/USD')
-  if (!j || j.result !== 'success' || !j.rates) throw new Error('bad fiat payload')
-  return { rates: j.rates, at: (j.time_last_update_unix || 0) * 1000 || Date.now() }
+  const rates = j?.result === 'success' ? cleanFiat(j.rates) : null
+  if (!rates) throw new Error('bad fiat payload')
+  const timestamp = Number(j.time_last_update_unix) * 1000
+  return { rates, at: Number.isFinite(timestamp) && timestamp > 0 && timestamp <= Date.now() + 5 * 60e3 ? timestamp : Date.now() }
 }
 export async function fetchCrypto() {
   try {
     const j = await getJson('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=1&sparkline=true&price_change_percentage=24h')
-    if (!Array.isArray(j) || !j.length) throw new Error('empty')
-    return j.filter((x) => x.current_price != null).map((x) => ({ id: x.id, sym: String(x.symbol).toUpperCase(), name: x.name, usd: x.current_price, img: x.image, ch24: x.price_change_percentage_24h, spark: sampleDown(x.sparkline_in_7d && x.sparkline_in_7d.price, 28), rank: x.market_cap_rank }))
+    const coins = Array.isArray(j) && cleanCrypto(j.map((x) => ({
+      id: x?.id, sym: typeof x?.symbol === 'string' ? x.symbol.toUpperCase() : '', name: x?.name, usd: x?.current_price, img: x?.image,
+      ch24: x?.price_change_percentage_24h, spark: x?.sparkline_in_7d?.price, rank: x?.market_cap_rank,
+    })))
+    if (!coins) throw new Error('empty or invalid crypto payload')
+    return coins
   } catch {
     const j = await getJson('https://api.coinpaprika.com/v1/tickers?limit=250')
-    if (!Array.isArray(j) || !j.length) throw new Error('empty')
-    return j.filter((x) => x.quotes && x.quotes.USD && x.quotes.USD.price != null).map((x) => ({ id: x.id, sym: String(x.symbol).toUpperCase(), name: x.name, usd: x.quotes.USD.price, ch24: x.quotes.USD.percent_change_24h, rank: x.rank }))
+    const coins = Array.isArray(j) && cleanCrypto(j.map((x) => ({
+      id: x?.id, sym: typeof x?.symbol === 'string' ? x.symbol.toUpperCase() : '', name: x?.name, usd: x?.quotes?.USD?.price,
+      ch24: x?.quotes?.USD?.percent_change_24h, rank: x?.rank,
+    })))
+    if (!coins) throw new Error('empty or invalid crypto payload')
+    return coins
   }
 }
 export async function refreshAll(prev) {
-  const out = { ...prev }
+  const base = normalizeRates(prev) || snapshot()
+  const out = { ...base }
   let ok = 0
   const [f, c] = await Promise.allSettled([fetchFiat(), fetchCrypto()])
-  if (f.status === 'fulfilled') { out.fiat = { USD: 1, ...f.value.rates }; out.fiatAt = f.value.at; ok++ }
+  if (f.status === 'fulfilled') { out.fiat = { ...f.value.rates, USD: 1 }; out.fiatAt = f.value.at; ok++ }
   if (c.status === 'fulfilled') { out.crypto = c.value; out.cryptoAt = Date.now(); ok++ }
-  out.source = ok ? 'live' : prev.source
+  out.source = ok ? 'live' : base.source
   out.error = ok === 2 ? '' : ok === 0 ? 'offline' : f.status === 'rejected' ? 'fiat' : 'crypto'
   if (ok) try { localStorage.setItem(LS, JSON.stringify({ fiat: out.fiat, fiatAt: out.fiatAt, crypto: out.crypto, cryptoAt: out.cryptoAt })) } catch {}
   return out
@@ -139,10 +192,13 @@ export async function refreshAll(prev) {
 
 /** Flat list of everything convertible, with USD value of one unit. */
 export function buildItems(r) {
-  const items = []
-  for (const [code, rate] of Object.entries(r.fiat)) if (rate > 0) items.push({ key: 'f:' + code, kind: 'fiat', code, name: fiatName(code), usd: 1 / rate, flag: FIAT_FLAG[code] || '', rate })
+  const safe = normalizeRates(r) || snapshot(), items = []
+  for (const [code, rawRate] of Object.entries(safe.fiat)) {
+    const rate = Number(rawRate), usd = 1 / rate
+    if (Number.isFinite(rate) && rate > 0 && Number.isFinite(usd) && usd > 0) items.push({ key: 'f:' + code, kind: 'fiat', code, name: fiatName(code), usd, flag: FIAT_FLAG[code] || '', rate })
+  }
   const seen = new Set()
-  for (const c of r.crypto) { if (seen.has(c.id)) continue; seen.add(c.id); items.push({ key: 'c:' + c.id, kind: 'crypto', code: c.sym, name: c.name, usd: c.usd, img: c.img, ch24: c.ch24, spark: c.spark, rank: c.rank }) }
+  for (const c of safe.crypto) { if (seen.has(c.id)) continue; seen.add(c.id); items.push({ key: 'c:' + c.id, kind: 'crypto', code: c.sym, name: c.name, usd: c.usd, img: c.img, ch24: c.ch24, spark: c.spark, rank: c.rank }) }
   return items
 }
 export const convertMoney = (amount, a, b) => (a && b && b.usd ? (amount * a.usd) / b.usd : NaN)

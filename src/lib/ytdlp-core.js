@@ -93,10 +93,11 @@ export function buildArgs(o, ctx) {
     const h = num(o.height, 100, 4320)
     const c = ['mp4', 'mkv', 'webm'].includes(o.container) ? o.container : 'mp4'
     const hf = h ? `[height<=${h}]` : ''
-    // Prefer codecs that already fit the container → stream copy, never re-encode.
-    const sel = c === 'mp4' ? `bv*${hf}[ext=mp4]+ba[ext=m4a]/bv*${hf}+ba/b${hf}/b`
-      : c === 'webm' ? `bv*${hf}[ext=webm]+ba[ext=webm]/bv*${hf}+ba/b${hf}/b`
-        : `bv*${hf}+ba/b${hf}/b`
+    // Select a video-only stream when pairing it with separate audio; use a muxed fallback when needed.
+    // Prefer codecs that fit the requested container, then let yt-dlp/ffmpeg choose the compatible fallback.
+    const sel = c === 'mp4' ? `bv${hf}[ext=mp4]+ba[ext=m4a]/bv${hf}+ba/b${hf}/b`
+      : c === 'webm' ? `bv${hf}[ext=webm]+ba[ext=webm]/bv${hf}+ba/b${hf}/b`
+        : `bv${hf}+ba/b${hf}/b`
     args.push('-f', sel, '--merge-output-format', c, '--remux-video', c) // remux = container swap only
   }
   const s = num(o.start, 0, 86400 * 3), e = num(o.end, 0, 86400 * 3)

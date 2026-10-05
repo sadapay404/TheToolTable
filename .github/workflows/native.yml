@@ -75,14 +75,25 @@ jobs:
         with: { name: TheToolTable-Android, path: TheToolTable.apk }
 
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') ||
+      (github.ref == 'refs/heads/arena/01a10743-thetooltable' && contains(github.event.head_commit.message, '[publish v1.1.0]'))
     needs: [windows, android]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
       - uses: softprops/action-gh-release@v2
         with:
-          prerelease: ${{ contains(github.ref_name, '-') }}
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'v1.1.0' }}
+          target_commitish: ${{ github.sha }}
+          name: TheToolTable v1.1.0
+          body_path: docs/RELEASE-NOTES-v1.1.0.md
+          prerelease: ${{ startsWith(github.ref, 'refs/tags/v') && contains(github.ref_name, '-') }}
+          make_latest: true
+          fail_on_unmatched_files: true
           files: |
             TheToolTable-Windows/**
             TheToolTable-Android/*.apk

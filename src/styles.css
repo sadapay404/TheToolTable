@@ -81,46 +81,74 @@ html[data-theme="oled"] body::after, html[data-theme="cyberpunk"] body::after, h
 }
 .card:hover { box-shadow: var(--shadow-lg); }
 
-/* ---------- 3D tool card ---------- */
-.tilt-stage { perspective: 1100px; }
+/* ---------- interactive 3D tool cards ---------- */
+.tilt-stage { perspective: 1100px; transform-style: preserve-3d; }
 .card3d {
   position: relative;
   transform-style: preserve-3d;
+  transform-origin: center center;
+  backface-visibility: hidden;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 18px;
   box-shadow: var(--shadow);
   cursor: pointer;
-  transition: box-shadow 0.4s ease, border-color 0.4s ease;
+  touch-action: manipulation;
+  transition: box-shadow 0.32s ease, border-color 0.32s ease;
   overflow: hidden;
   height: 100%;
 }
-.card3d:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); box-shadow: var(--shadow-lg); }
-.card3d .inner { transform: translateZ(34px); transform-style: preserve-3d; }
-html[data-theme="material"] .card3d .inner,
-html[data-theme="material-dark"] .card3d .inner { transform: none; transform-style: flat; }
+.card3d:hover, .card3d:focus-visible {
+  border-color: color-mix(in srgb, var(--primary, var(--accent)) 45%, var(--border));
+  box-shadow: var(--shadow-lg);
+}
+.card3d:focus-visible { outline: 3px solid color-mix(in srgb, var(--primary, var(--accent)) 38%, transparent); outline-offset: 3px; }
+.card3d .inner { position: relative; z-index: 1; transform: translateZ(30px); transform-style: preserve-3d; }
+.card3d .card-content { transform-style: preserve-3d; }
 html[data-theme="material"] .card-raised::before,
 html[data-theme="material-dark"] .card-raised::before,
 html[data-theme="material"] .hero-tint,
 html[data-theme="material-dark"] .hero-tint { display: none; }
 .card3d .sheen {
-  position: absolute; inset: 0; pointer-events: none;
-  background: radial-gradient(440px at var(--mx, 50%) var(--my, 50%), var(--glow), transparent 68%);
-  opacity: 0; transition: opacity 0.35s ease;
+  position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  background: radial-gradient(440px circle at var(--mx, 50%) var(--my, 50%), var(--glow), transparent 68%);
+  opacity: 0; transition: opacity 0.24s ease;
 }
-.card3d:hover .sheen { opacity: 1; }
-.card3d .rule {
-  height: 2px; width: 28px; background: var(--copper);
-  transition: width 0.45s cubic-bezier(.22,.9,.3,1);
+.card3d:hover .sheen, .card3d:focus-visible .sheen { opacity: 0.9; }
+.card3d::after {
+  content: ""; position: absolute; inset: 0; z-index: 2; pointer-events: none; border-radius: inherit;
+  background: linear-gradient(115deg, transparent 30%, color-mix(in srgb, var(--surface) 72%, transparent) 48%, transparent 65%);
+  opacity: 0.34; transform: translateX(-135%);
+  transition: transform 0.72s cubic-bezier(.2,.75,.25,1);
 }
-.card3d:hover .rule { width: 64px; }
-.ghost-num {
+.card3d:hover::after, .card3d:focus-visible::after { transform: translateX(135%); }
+.card3d .tool-icon {
+  display: grid; place-items: center; width: 40px; height: 40px; border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--primary, var(--accent)) 18%, var(--border));
+  background: color-mix(in srgb, var(--primary-container, var(--surface2)) 70%, var(--surface));
+  color: var(--primary, var(--accent)); font-size: 22px; line-height: 1;
+  transform-style: preserve-3d;
+}
+.card3d .rule { height: 2px; width: 28px; background: var(--primary, var(--copper)); transform-origin: left center; }
+.card3d .ghost-num {
   font-family: Fraunces, Georgia, serif;
   font-size: 44px; line-height: 1; font-weight: 500;
-  color: var(--ink); opacity: 0.08;
-  transition: opacity 0.35s ease, color 0.35s ease;
+  color: var(--ink); opacity: 0.08; transition: color 0.3s ease;
 }
-.card3d:hover .ghost-num { opacity: 0.16; color: var(--accent); }
+.card3d:hover .ghost-num, .card3d:focus-visible .ghost-num { color: var(--primary, var(--accent)); }
+.card3d .card-arrow {
+  display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%;
+  color: var(--primary, var(--accent)); background: color-mix(in srgb, var(--primary-container, var(--surface2)) 64%, var(--surface));
+  font-size: 17px; line-height: 1;
+}
+
+/* Scroll-linked page progress and the keyboard/touch-friendly card controls. */
+.scroll-progress {
+  position: fixed; inset: 0 0 auto; z-index: 70; height: 3px; pointer-events: none;
+  transform-origin: left center;
+  background: linear-gradient(90deg, var(--primary, var(--accent)), var(--secondary, var(--accent2)), var(--primary, var(--accent)));
+  box-shadow: 0 1px 8px color-mix(in srgb, var(--primary, var(--accent)) 34%, transparent);
+}
 
 /* ---------- controls ---------- */
 .btn {
@@ -147,9 +175,13 @@ html[data-theme="material-dark"] .card-raised {
   box-shadow: var(--shadow);
 }
 html[data-theme="material"] .card3d,
-html[data-theme="material-dark"] .card3d { border-radius: 24px; box-shadow: none; }
-html[data-theme="material"] .card3d .sheen,
-html[data-theme="material-dark"] .card3d .sheen { display: none; }
+html[data-theme="material-dark"] .card3d { border-radius: 24px; box-shadow: var(--shadow); }
+html[data-theme="material"] .card3d:hover,
+html[data-theme="material-dark"] .card3d:hover,
+html[data-theme="material"] .card3d:focus-visible,
+html[data-theme="material-dark"] .card3d:focus-visible { box-shadow: var(--shadow-lg); }
+html[data-theme="material"] .card3d .inner,
+html[data-theme="material-dark"] .card3d .inner { transform: translateZ(30px); transform-style: preserve-3d; }
 html[data-theme="material"] .btn-sheen::after,
 html[data-theme="material-dark"] .btn-sheen::after { display: none; }
 
@@ -271,11 +303,11 @@ html[data-perf="lite"] { --shadow: 0 1px 4px rgba(0,0,0,.09) !important; --shado
 html[data-perf="lite"] body::after { display: none; }
 html[data-perf="lite"] * { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
 html[data-perf="lite"] header.sticky { background: var(--bg) !important; }
-html[data-perf="lite"] .hero-tint, html[data-perf="lite"] .card3d .sheen { display: none; }
+html[data-perf="lite"] .hero-tint { display: none; }
 html[data-perf="lite"] .shimmer, html[data-perf="lite"] .ex-ticker, html[data-perf="lite"] .btn-sheen::after,
 html[data-perf="lite"] .dropzone[data-hot="true"] { animation: none !important; }
-html[data-perf="lite"] .card3d { transform-style: flat; }
-html[data-perf="lite"] .card3d .inner { transform: none; transform-style: flat; }
+html[data-perf="lite"] .card3d { transition-duration: .2s; }
+html[data-perf="lite"] .card3d .inner { transform: translateZ(20px); }
 html[data-perf="balanced"] .hero-tint { display: none; }
 
 /* Material 3 typography, shape and mobile comfort. */
@@ -286,7 +318,9 @@ html[data-theme="material-dark"] .ghost-num { font-family: Roboto, "Noto Sans", 
 html[data-theme="material"] .label,
 html[data-theme="material-dark"] .label { letter-spacing: .04em; font-weight: 500; }
 html[data-theme="material"] .card3d:hover,
-html[data-theme="material-dark"] .card3d:hover { border-color: var(--outline); box-shadow: var(--shadow); }
+html[data-theme="material-dark"] .card3d:hover,
+html[data-theme="material"] .card3d:focus-visible,
+html[data-theme="material-dark"] .card3d:focus-visible { border-color: var(--outline); box-shadow: var(--shadow-lg); }
 html[data-theme="material"] .dropzone,
 html[data-theme="material-dark"] .dropzone { border-radius: 24px; }
 html[data-theme="material"] .input:focus,
@@ -301,4 +335,6 @@ html[data-theme="material-dark"] .input:focus { border-color: var(--primary); bo
 
 @media (prefers-reduced-motion: reduce) {
   html[data-theme="material"] *, html[data-theme="material-dark"] * { scroll-behavior: auto !important; }
+  .card3d::after { display: none; }
+  .card3d .sheen { transition: none; }
 }

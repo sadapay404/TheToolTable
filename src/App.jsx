@@ -1,7 +1,7 @@
 import Footer from './components/Footer.jsx'
 import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import ReactDOM from 'react-dom'
-import { AnimatePresence, MotionConfig, motion } from 'framer-motion'
+import { AnimatePresence, MotionConfig, motion, useMotionValue, useReducedMotion, useScroll, useSpring, useTransform } from 'framer-motion'
 import { usePerf, setPerfMode, runBenchmark } from './lib/perf.js'
 import { TOOLS } from './toolsRegistry.jsx'
 import { THEMES, THEME_ORDER, applyTheme, savedTheme } from './themes.js'
@@ -38,37 +38,130 @@ function SearchIcon() {
   )
 }
 
-function TiltCard({ tool, onOpen, i }) {
+const CARD_ICON_VARIANTS = {
+  rest: { rotateY: 0, rotateZ: 0, scale: 1 },
+  hover: { rotateY: 180, rotateZ: -8, scale: 1.12, transition: { type: 'spring', stiffness: 300, damping: 18 } },
+}
+const CARD_NUMBER_VARIANTS = {
+  rest: { opacity: 0.08, scale: 1, rotateZ: 0, y: 0 },
+  hover: { opacity: 0.22, scale: 1.12, rotateZ: 5, y: -3, transition: SPRING },
+}
+const CARD_TITLE_VARIANTS = {
+  rest: { y: 0 },
+  hover: { y: -3, transition: SPRING },
+}
+const CARD_DESCRIPTION_VARIANTS = {
+  rest: { y: 0, opacity: 0.9 },
+  hover: { y: -1, opacity: 1, transition: SPRING },
+}
+const CARD_RULE_VARIANTS = {
+  rest: { scaleX: 1 },
+  hover: { scaleX: 2.3, transition: { type: 'spring', stiffness: 260, damping: 22 } },
+}
+const CARD_CTA_VARIANTS = {
+  rest: { x: 0 },
+  hover: { x: 3, transition: SPRING },
+}
+const CARD_ARROW_VARIANTS = {
+  rest: { x: 0, y: 0, rotate: 0, scale: 1 },
+  hover: { x: 5, y: -2, rotate: 8, scale: 1.12, transition: SPRING },
+}
+
+function TiltCard({ tool, onOpen, i, level = 'full' }) {
+  const reduceMotion = useReducedMotion()
+  const maxTilt = reduceMotion ? 0 : level === 'lite' ? 4 : level === 'balanced' ? 7 : 11
+  const pointerX = useMotionValue(0)
+  const pointerY = useMotionValue(0)
+  const smoothX = useSpring(pointerX, { stiffness: 180, damping: 22, mass: 0.45 })
+  const smoothY = useSpring(pointerY, { stiffness: 180, damping: 22, mass: 0.45 })
+  const rotateX = useTransform(smoothY, [-1, 1], [maxTilt, -maxTilt])
+  const rotateY = useTransform(smoothX, [-1, 1], [-maxTilt, maxTilt])
+  const lightX = useTransform(smoothX, [-1, 1], ['8%', '92%'])
+  const lightY = useTransform(smoothY, [-1, 1], ['8%', '92%'])
+  const contentX = useTransform(smoothX, [-1, 1], [-2.5, 2.5])
+  const contentY = useTransform(smoothY, [-1, 1], [-1.5, 1.5])
+  const hoverLift = reduceMotion ? -1 : level === 'lite' ? -3 : -7
+  const hoverDepth = reduceMotion ? 0 : level === 'lite' ? 5 : 20
+  const revealY = level === 'lite' ? 18 : 34
+  const revealScale = level === 'lite' ? 0.97 : 0.92
+
+  function trackPointer(event) {
+    if (reduceMotion || event.pointerType === 'touch') return
+    const bounds = event.currentTarget.getBoundingClientRect()
+    if (!bounds.width || !bounds.height) return
+    pointerX.set(Math.max(-1, Math.min(1, ((event.clientX - bounds.left) / bounds.width) * 2 - 1)))
+    pointerY.set(Math.max(-1, Math.min(1, ((event.clientY - bounds.top) / bounds.height) * 2 - 1)))
+  }
+
+  function resetPointer() {
+    pointerX.set(0)
+    pointerY.set(0)
+  }
+
+  const cardVariants = {
+    rest: { y: 0, z: 0, scale: 1, transition: SPRING },
+    hover: {
+      y: hoverLift,
+      z: hoverDepth,
+      scale: reduceMotion ? 1 : level === 'lite' ? 1.01 : 1.025,
+      transition: { ...SPRING, staggerChildren: 0.035, delayChildren: 0.015 },
+    },
+    tap: { y: 0, z: 0, scale: reduceMotion ? 1 : 0.985, transition: { duration: 0.12 } },
+  }
+
   return (
     <motion.div
-      initial={{ opacity: 0, y: 18 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ ...SPRING, delay: 0.035 * i }}
-      className="h-full"
+      className="tilt-stage h-full"
+      initial={{ opacity: 0, y: revealY, scale: revealScale, filter: level === 'lite' || reduceMotion ? 'blur(0px)' : 'blur(8px)' }}
+      whileInView={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
+      viewport={{ once: true, amount: 0.16 }}
+      transition={{ ...SPRING, delay: 0.025 * (i % 4) }}
+      style={{ perspective: level === 'lite' ? 850 : 1100 }}
     >
       <motion.button
         type="button"
-        className="card3d block w-full text-left"
-        whileHover={{ y: -2 }}
-        whileTap={{ scale: 0.99 }}
+        className="card3d group block w-full text-left"
+        variants={cardVariants}
+        initial="rest"
+        animate="rest"
+        whileHover="hover"
+        whileFocus="hover"
+        whileTap="tap"
+        onPointerMove={trackPointer}
+        onPointerLeave={resetPointer}
         onPointerEnter={() => tool.comp.preload?.()}
         onFocus={() => tool.comp.preload?.()}
         onClick={() => onOpen(tool)}
+        style={{
+          rotateX: reduceMotion ? 0 : rotateX,
+          rotateY: reduceMotion ? 0 : rotateY,
+          transformStyle: 'preserve-3d',
+          '--mx': lightX,
+          '--my': lightY,
+        }}
       >
-        <div className="sheen" />
-        <div className="inner relative p-5 sm:p-7 flex flex-col gap-4 sm:gap-5">
-          <div className="flex items-start justify-between">
-            <span className="eyebrow">{tool.tag}</span>
-            <span className="ghost-num">{String(tool.n).padStart(2, '0')}</span>
-          </div>
-          <div>
-            <h3 className="display font-semibold text-[19px] sm:text-[21px] leading-snug">{tool.name}</h3>
-            <p className="text-[13.5px] leading-relaxed mt-2" style={{ color: 'var(--muted)' }}>{tool.desc}</p>
-          </div>
-          <div className="mt-auto">
-            <div className="rule" />
-            <div className="text-[11px] font-semibold tracking-[0.08em] uppercase mt-3" style={{ color: 'var(--muted)' }}>Open tool</div>
-          </div>
+        <div className="sheen" aria-hidden="true" />
+        <div className="inner relative h-full p-5 sm:p-7">
+          <motion.div className="card-content flex min-h-full flex-col gap-4 sm:gap-5" style={{ x: reduceMotion ? 0 : contentX, y: reduceMotion ? 0 : contentY }}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <motion.span className="tool-icon shrink-0" variants={CARD_ICON_VARIANTS} aria-hidden="true">{tool.icon}</motion.span>
+                <span className="eyebrow truncate">{tool.tag}</span>
+              </div>
+              <motion.span className="ghost-num shrink-0" variants={CARD_NUMBER_VARIANTS} aria-hidden="true">{String(tool.n).padStart(2, '0')}</motion.span>
+            </div>
+            <div className="min-h-[88px]">
+              <motion.h3 className="display font-semibold text-[19px] sm:text-[21px] leading-snug" variants={CARD_TITLE_VARIANTS}>{tool.name}</motion.h3>
+              <motion.p className="text-[13.5px] leading-relaxed mt-2" style={{ color: 'var(--muted)' }} variants={CARD_DESCRIPTION_VARIANTS}>{tool.desc}</motion.p>
+            </div>
+            <div className="mt-auto">
+              <motion.div className="rule" variants={CARD_RULE_VARIANTS} style={{ originX: 0 }} />
+              <div className="mt-3 flex items-center justify-between">
+                <motion.span className="text-[11px] font-semibold tracking-[0.08em] uppercase" style={{ color: 'var(--muted)' }} variants={CARD_CTA_VARIANTS}>Open tool</motion.span>
+                <motion.span className="card-arrow" variants={CARD_ARROW_VARIANTS} aria-hidden="true">↗</motion.span>
+              </div>
+            </div>
+          </motion.div>
         </div>
       </motion.button>
     </motion.div>
@@ -218,10 +311,16 @@ export default function App() {
   const ActiveComp = useMemo(() => active?.comp, [active])
 
   const perfNow = usePerf()
+  const reduceMotion = useReducedMotion()
+  const { scrollY, scrollYProgress } = useScroll()
+  const heroY = useTransform(scrollY, [0, 520], [0, -38])
+  const heroOpacity = useTransform(scrollY, [0, 520], [1, 0.84])
+  const heroScale = useTransform(scrollY, [0, 520], [1, 0.98])
   useEffect(() => { runBenchmark() }, [])
   return (
-    <MotionConfig reducedMotion={perfNow.mode === 'lite' ? 'always' : 'user'}>
+    <MotionConfig reducedMotion="user">
     <div className="min-h-screen relative overflow-x-clip">
+      <motion.div className="scroll-progress" style={{ scaleX: scrollYProgress }} aria-hidden="true" />
       <div className="hero-tint" />
 
       {/* Top bar */}
@@ -258,7 +357,10 @@ export default function App() {
           {!active ? (
             <motion.div key="home" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -14 }} transition={SPRING}>
               {/* Masthead */}
-              <section className="pt-12 pb-10 sm:pt-20 sm:pb-16 text-center relative">
+              <motion.section
+                className="pt-12 pb-10 sm:pt-20 sm:pb-16 text-center relative"
+                style={{ y: reduceMotion || perfNow.level === 'lite' ? 0 : heroY, opacity: reduceMotion || perfNow.level === 'lite' ? 1 : heroOpacity, scale: reduceMotion || perfNow.level === 'lite' ? 1 : heroScale }}
+              >
                 <motion.div
                   className="inline-block mb-5 sm:mb-8"
                   initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ ...SPRING, delay: 0.05 }}
@@ -283,7 +385,7 @@ export default function App() {
                 >
                   A private workbench for your files. Everything is processed on this device — nothing is uploaded, and nothing is re-encoded unless you choose to.
                 </motion.p>
-              </section>
+              </motion.section>
 
               {/* The table */}
               <motion.div className="flex flex-wrap items-end justify-between gap-1.5 mb-5 sm:mb-7" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}>
@@ -292,7 +394,7 @@ export default function App() {
               </motion.div>
 
               <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-5">
-                {TOOLS.map((t, i) => <TiltCard key={t.id} tool={t} i={i} onOpen={openTool} />)}
+                {TOOLS.map((t, i) => <TiltCard key={t.id} tool={t} i={i} level={perfNow.level} onOpen={openTool} />)}
               </section>
 
             </motion.div>
@@ -309,7 +411,9 @@ export default function App() {
                   <h2 className="display font-semibold text-[20px] sm:text-[26px] leading-tight">{active.name}</h2>
                 </div>
               </div>
-              <Suspense fallback={<ToolLoading />}><ActiveComp /></Suspense>
+              <MotionConfig reducedMotion={perfNow.level === 'lite' ? 'always' : 'user'}>
+                <Suspense fallback={<ToolLoading />}><ActiveComp /></Suspense>
+              </MotionConfig>
             </motion.div>
           )}
         </AnimatePresence>

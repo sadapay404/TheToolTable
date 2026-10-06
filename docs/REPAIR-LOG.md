@@ -22,9 +22,11 @@ The requested 20-tool repair is tracked in ten parts, two consecutively numbered
 - `git diff --check`: clean.
 - The Vite preview remains available on port 5173.
 
-## Final release
+## Releases
 
-- Published **v1.1.0** on [GitHub Releases](https://github.com/sadapay404/TheToolTable/releases/tag/v1.1.0).
+- Stable **v1.1.0** was published on [GitHub Releases](https://github.com/sadapay404/TheToolTable/releases/tag/v1.1.0).
+- Stable **v1.1.1** is now the latest release: [GitHub Releases](https://github.com/sadapay404/TheToolTable/releases/tag/v1.1.1). It includes the restored interactive 3D tool-card tilt, additional hover and scroll motion, and the Android Gradle dependency retry/cache hardening.
+- The v1.1.1 release workflow completed successfully in GitHub Actions run [37395413929](https://github.com/sadapay404/TheToolTable/actions/runs/37395413929): Android APK build and signing, Windows NSIS/MSI builds, and release publication all passed.
 - Release assets: signed Android APK, Windows NSIS installer, and Windows MSI. The Windows installers require and include yt-dlp/FFmpeg/FFprobe sidecars.
 - Android’s Downloader uses a network-reachable HTTPS companion engine; the APK does not bundle yt-dlp. This limitation is stated on the release page and in the Android UI.
-- The repository is private; release downloads are restricted to accounts with repository access. The older `v1.1.0-rc1` remains a prerelease; use stable `v1.1.0`.
+- The repository is private; release downloads are restricted to accounts with repository access. The older `v1.1.0-rc1` remains a prerelease; use stable `v1.1.1`.

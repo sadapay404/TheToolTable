@@ -61,8 +61,38 @@ jobs:
           echo "NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npx tauri android init
+      - name: Configure Gradle retries for transient Maven rate limits
+        shell: bash
+        run: |
+          cat >> src-tauri/gen/android/gradle.properties <<'EOF'
+          # Give transient Maven Central 429 responses time to clear.
+          systemProp.org.gradle.internal.repository.max.retries=8
+          systemProp.org.gradle.internal.repository.initial.backoff=1000
+          EOF
+      - name: Cache Gradle dependencies
+        uses: gradle/actions/setup-gradle@v4
       - name: Build APK (64-bit + 32-bit phones)
-        run: npx tauri android build --apk --target aarch64 --target armv7
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            log="android-build-${attempt}.log"
+            echo "Android build attempt ${attempt}/3"
+            if npx tauri android build --apk --target aarch64 --target armv7 2>&1 | tee "$log"; then
+              exit 0
+            fi
+            build_status=${PIPESTATUS[0]}
+            if ! grep -Eiq 'status code[[:space:]]+429|HTTP[^[:digit:]]*429|too many requests|rate.?limit' "$log"; then
+              echo "Build failed for a non-rate-limit reason; not retrying." >&2
+              exit "$build_status"
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "Maven rate limit persisted after three build attempts." >&2
+              exit "$build_status"
+            fi
+            delay=$((attempt * 45))
+            echo "Maven Central returned 429; retrying in ${delay}s." >&2
+            sleep "$delay"
+          done
       - name: Sign APK
         env:
           KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -82,7 +112,7 @@ jobs:
   release:
     if: >-
       startsWith(github.ref, 'refs/tags/v') ||
-      (github.ref == 'refs/heads/arena/01a10743-thetooltable' && contains(github.event.head_commit.message, '[publish v1.1.0]'))
+      (github.ref == 'refs/heads/arena/01a10743-thetooltable' && contains(github.event.head_commit.message, '[publish v1.1.1]'))
     needs: [windows, android]
     runs-on: ubuntu-latest
     permissions:
@@ -92,10 +122,10 @@ jobs:
       - uses: actions/download-artifact@v4
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'v1.1.0' }}
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'v1.1.1' }}
           target_commitish: ${{ github.sha }}
-          name: TheToolTable v1.1.0
-          body_path: docs/RELEASE-NOTES-v1.1.0.md
+          name: TheToolTable v1.1.1
+          body_path: docs/RELEASE-NOTES-v1.1.1.md
           prerelease: ${{ startsWith(github.ref, 'refs/tags/v') && contains(github.ref_name, '-') }}
           make_latest: true
           fail_on_unmatched_files: true

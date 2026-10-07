@@ -201,7 +201,9 @@ jobs:
           # Give transient Maven Central 429 responses time to clear.
           systemProp.org.gradle.internal.repository.max.retries=8
           systemProp.org.gradle.internal.repository.initial.backoff=1000
-          # Tauri's generated scripts still use AGP's legacy variant DSL.
+          # Compatibility flags for silvermine/tauri-plugin-download's legacy Android Gradle script on AGP 9.
+          android.proguard.failOnMissingFiles=false
+          android.builtInKotlin=false
           android.newDsl=false
           EOF
       - name: Cache Gradle dependencies

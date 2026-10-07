@@ -129,6 +129,8 @@ jobs:
               sleep "$delay"
               continue
             fi
+            tail_text=$(tail -n 60 "$log" | tr '\n' ' ' | sed 's/%/%25/g; s/\r/%0D/g')
+            echo "::error title=Android build log details::$tail_text"
             {
               echo "## Android build failed (attempt ${attempt})"
               echo '```text'

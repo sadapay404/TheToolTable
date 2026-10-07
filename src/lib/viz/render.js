@@ -23,6 +23,11 @@ export class VizRenderer {
     this.stars = null; this.noise = null
   }
 
+  destroy() {
+    for (const canvas of [this.L, this.G1, this.G2, this.tl?.cv, this.noise]) if (canvas) { canvas.width = 1; canvas.height = 1 }
+    this.st = {}; this.stars = null; this.noise = null; this.tl = null
+  }
+
   resize(W, H) {
     if (this.L.width !== W || this.L.height !== H) { this.L.width = W; this.L.height = H }
     const w1 = Math.max(8, W >> 2), h1 = Math.max(8, H >> 2), w2 = Math.max(6, W >> 4), h2 = Math.max(6, H >> 4)

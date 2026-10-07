@@ -44,13 +44,13 @@ export default function CommandPalette({ open, onClose, onTool, onTheme }) {
     <AnimatePresence>
       {open && (
         <motion.div
-          className="fixed inset-0 z-50 flex items-start justify-center pt-[12vh] px-4"
+          className="fixed inset-0 z-[80] flex items-start justify-center px-3 pt-[calc(env(safe-area-inset-top)+8vh)] pb-[calc(env(safe-area-inset-bottom)+16px)] sm:px-4 sm:pt-[12vh]"
           style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(6px)' }}
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
           onMouseDown={onClose}
         >
           <motion.div
-            className="card w-full max-w-xl overflow-hidden"
+            className="card flex w-full max-w-xl flex-col overflow-hidden"
             initial={{ y: -24, scale: 0.94, opacity: 0 }} animate={{ y: 0, scale: 1, opacity: 1 }} exit={{ y: -18, scale: 0.96, opacity: 0 }}
             transition={SPRING}
             onMouseDown={(e) => e.stopPropagation()}
@@ -73,7 +73,7 @@ export default function CommandPalette({ open, onClose, onTool, onTheme }) {
               />
               <span className="kbd">esc</span>
             </div>
-            <div className="max-h-[46vh] overflow-y-auto p-2">
+            <div className="max-h-[62dvh] overflow-y-auto p-2 sm:max-h-[46vh]">
               {items.length === 0 && <div className="p-6 text-center text-sm" style={{ color: 'var(--muted)' }}>No matches for “{q}”</div>}
               {items.map((it, i) => (
                 <motion.button

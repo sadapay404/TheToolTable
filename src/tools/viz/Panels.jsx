@@ -11,7 +11,7 @@ const Block = ({ i = 0, children, className = '' }) => (
   <motion.div className={className} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ ...SPRING, delay: 0.03 + i * 0.055 }}>{children}</motion.div>
 )
 const Label = ({ children, right }) => <div className="flex items-center justify-between mb-2.5"><div className="eyebrow">{children}</div>{right}</div>
-const Seg = ({ value, onChange, options }) => <div className="flex flex-wrap gap-1.5">{options.map(([k, l]) => <Chip key={k} on={value === k} onClick={() => onChange(k)}>{l}</Chip>)}</div>
+const Seg = ({ value, onChange, options, disabled = false }) => <div className="flex flex-wrap gap-1.5">{options.map(([k, l]) => <Chip key={k} disabled={disabled} on={value === k} onClick={() => onChange(k)}>{l}</Chip>)}</div>
 const Pill = ({ children, onClick, icon, primary, disabled }) => (
   <motion.button type="button" disabled={disabled} whileHover={{ y: -2 }} whileTap={{ scale: 0.93 }} onClick={onClick} className={`btn ${primary ? 'btn-primary' : ''} !py-2 !px-3.5 text-[12.5px]`} style={{ opacity: disabled ? 0.5 : 1 }}>
     {icon && <Icon n={icon} s={15} />} {children}
@@ -296,7 +296,14 @@ export function ExportPanel({ c }) {
   const pct = Math.round(prog * 100), R = 38, C = 2 * Math.PI * R
   const Wd = c.outDims[0], Hd = c.outDims[1]
   const resRef = useRef(null)
-  useEffect(() => { if (result) setTimeout(() => resRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 250) }, [result])
+  useEffect(() => {
+    if (!result) return
+    const timer = setTimeout(() => resRef.current?.scrollIntoView({
+      behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ? 'auto' : 'smooth',
+      block: 'nearest',
+    }), 250)
+    return () => clearTimeout(timer)
+  }, [result])
   return (
     <div className="space-y-6">
       <Block i={0}>
@@ -313,15 +320,15 @@ export function ExportPanel({ c }) {
         <div className="text-[11.5px] mt-2" style={{ color: 'var(--muted)' }}>{{ '16:9': 'YouTube, desktop', '9:16': 'Reels, Shorts, TikTok', '1:1': 'Instagram, Telegram', '4:5': 'Instagram portrait', '21:9': 'Cinematic banner' }[exp.ratio]}</div>
       </Block>
       <Block i={1} className="space-y-4">
-        <div><Label>Resolution</Label><Seg value={exp.res} onChange={(v) => setExp({ res: v })} options={Object.keys(RES).map((k) => [k, k])} /></div>
-        <div><Label>Frame rate</Label><Seg value={String(exp.fps)} onChange={(v) => setExp({ fps: +v })} options={[['24', '24 fps'], ['30', '30 fps'], ['60', '60 fps']]} /></div>
-        <div><Label>Quality</Label><Seg value={exp.q} onChange={(v) => setExp({ q: v })} options={[['draft', 'Draft'], ['good', 'Balanced'], ['max', 'Maximum']]} /></div>
-        <div><Label>Container</Label><Seg value={exp.fmt} onChange={(v) => setExp({ fmt: v })} options={[...(c.canMp4 ? [['mp4', 'MP4']] : []), ['webm', 'WebM']]} /></div>
-        <Switch on={exp.audio} onChange={(v) => setExp({ audio: v })} label="Include audio" hint="Turn off to export a silent loop" />
+        <div><Label>Resolution</Label><Seg value={exp.res} onChange={(v) => setExp({ res: v })} disabled={busy} options={Object.keys(RES).map((k) => [k, k])} /></div>
+        <div><Label>Frame rate</Label><Seg value={String(exp.fps)} onChange={(v) => setExp({ fps: +v })} disabled={busy} options={[['24', '24 fps'], ['30', '30 fps'], ['60', '60 fps']]} /></div>
+        <div><Label>Quality</Label><Seg value={exp.q} onChange={(v) => setExp({ q: v })} disabled={busy} options={[['draft', 'Draft'], ['good', 'Balanced'], ['max', 'Maximum']]} /></div>
+        <div><Label>Container</Label><Seg value={exp.fmt} onChange={(v) => setExp({ fmt: v })} disabled={busy} options={[...(c.canMp4 ? [['mp4', 'MP4']] : []), ['webm', 'WebM']]} /></div>
+        <Switch disabled={busy} on={exp.audio} onChange={(v) => setExp({ audio: v })} label="Include audio" hint="Turn off to export a silent loop" />
       </Block>
       <Divider />
       <Block i={2} className="space-y-4">
-        <Label right={<button className="text-[11px] font-semibold underline underline-offset-2" style={{ color: 'var(--muted)' }} onClick={() => c.setRange(null)}>Whole track</button>}>Range</Label>
+        <Label right={<button type="button" disabled={busy} className="text-[11px] font-semibold underline underline-offset-2 disabled:opacity-50" style={{ color: 'var(--muted)' }} onClick={() => c.setRange(null)}>Whole track</button>}>Range</Label>
         <div className="grid grid-cols-3 gap-2 text-center">
           {[['Start', clock(c.range[0])], ['Length', clock(c.range[1] - c.range[0])], ['End', clock(c.range[1])]].map(([k, v]) => (
             <div key={k} className="rounded-xl py-2.5" style={{ background: 'var(--surface2)', border: '1px solid var(--border)' }}><div className="eyebrow !text-[9.5px]">{k}</div><div className="mono font-semibold text-[15px] mt-0.5 tabular-nums">{v}</div></div>

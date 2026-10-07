@@ -4,7 +4,7 @@ import { Dropzone, Note, AnimatedNumber, LiveProgress } from '../components/ui.j
 import RangeTrack, { TimeField, clock } from '../components/RangeTrack.jsx'
 import Downloader from './Downloader.jsx'
 import { Icon } from './studio/controls.jsx'
-import { clipMediaFile } from '../lib/media-clip.js'
+import { clipMediaFile, probeMediaDuration } from '../lib/media-clip.js'
 import { fmtBytes, download, baseName, extName, recentAction } from '../lib/utils.js'
 
 const SPRING = { type: 'spring', stiffness: 300, damping: 25 }
@@ -85,10 +85,30 @@ function ClipFile() {
     const id = ++loadId.current
     stopPreview.current?.()
     setFile(f); setMsg(''); setPeaks(null); setDone(null); setNow(0); setDuration(0); setRange([0, 0])
+    const readDuration = async (video) => {
+      try { return await readMediaDuration(f, video) }
+      catch (browserError) {
+        if (id !== loadId.current) return null
+        // FFprobe can inspect more containers than the platform WebView, but its
+        // virtual filesystem needs a full input copy. Keep that fallback bounded.
+        const narrowScreen = window.matchMedia?.('(max-width: 640px)')?.matches || false
+        const maxProbeBytes = (narrowScreen ? 64 : 192) * 1024 * 1024
+        if (f.size > maxProbeBytes) {
+          throw new Error(`${browserError.message}. FFmpeg’s safe metadata fallback is limited to ${narrowScreen ? '64 MB on phones' : '192 MB'}; try a supported MP4/WebM file or a smaller source.`)
+        }
+        setMsg('This browser cannot inspect the container. Checking its duration with the bundled FFmpeg probe…')
+        const probed = await probeMediaDuration(f)
+        if (id !== loadId.current) return null
+        const ext = extName(f.name).toUpperCase() || 'media'
+        setMsg(`The browser cannot preview this ${ext} file, but FFmpeg read its duration. You can still make a clip.`)
+        return probed
+      }
+    }
+
     try {
       if (isVideoFile(f)) {
-        const d = await readMediaDuration(f, true)
-        if (id !== loadId.current) return
+        const d = await readDuration(true)
+        if (id !== loadId.current || !d) return
         setDuration(d); setRange([0, d])
         return
       }
@@ -101,12 +121,12 @@ function ClipFile() {
           if (id !== loadId.current) return
           setPeaks(p); setDuration(d); setRange([0, d])
           return
-        } catch { /* fall back to browser metadata; clipping itself is still available */ }
+        } catch { /* fall back to metadata; clipping itself is still available */ }
       } else {
         setMsg('Waveform preview skipped for this large audio file to protect memory. Clipping is still available.')
       }
-      const d = await readMediaDuration(f, false)
-      if (id !== loadId.current) return
+      const d = await readDuration(false)
+      if (id !== loadId.current || !d) return
       setDuration(d); setRange([0, d])
     } catch (e) {
       if (id === loadId.current) setMsg(e.message || 'Could not read this media file')

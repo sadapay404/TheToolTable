@@ -1,6 +1,6 @@
-import { perf } from '../lib/perf.js'
+import { perf, usePerf } from '../lib/perf.js'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import fixWebm from 'fix-webm-duration'
 import { Dropzone, AnimatedNumber } from '../components/ui.jsx'
 import { Icon, Slider, SPRING } from './studio/controls.jsx'
@@ -8,7 +8,7 @@ import { LooksPanel, StylePanel, ColourPanel, BackdropPanel, TextPanel, MotionPa
 import { WaveScrubber, HeroBars, clock } from './viz/parts.jsx'
 import { Analyzer, synth, bandsFromAnalyser, NB } from '../lib/viz/analyzer.js'
 import { VizRenderer } from '../lib/viz/render.js'
-import { DEFAULTS, LOOKS, PALETTES, STYLES, KEEP, SECTION_KEYS, RATIOS, exportDims, applyLook, randomLook } from '../lib/viz/params.js'
+import { DEFAULTS, LOOKS, PALETTES, STYLES, KEEP, SECTION_KEYS, RATIOS, exportDims, applyLook, randomLook, sanitizeVizParams, sanitizeVizPatch } from '../lib/viz/params.js'
 import { makeDemoTrack } from '../lib/viz/demo.js'
 import { download, baseName, recentAction, fmtBytes } from '../lib/utils.js'
 
@@ -18,19 +18,49 @@ const ICON = { looks: 'looks', style: 'viz', colour: 'palette', backdrop: 'image
 const TITLES = { looks: ['Looks', 'One click restyles everything — your words and pictures stay.'], style: ['Visual style', 'Pick a visualizer, then shape it.'], colour: ['Colour & light', 'Palettes, gradients and glow.'], backdrop: ['Backdrop', 'Behind the visuals.'], text: ['Text & cover', 'Titles, progress and album art.'], motion: ['Audio response', 'How the picture reacts to sound.'], export: ['Export', 'Render a shareable video.'] }
 const PANEL = { looks: LooksPanel, style: StylePanel, colour: ColourPanel, backdrop: BackdropPanel, text: TextPanel, motion: MotionPanel, export: ExportPanel }
 const LS_P = 'ttt.viz.params', LS_L = 'ttt.viz.looks'
+const MAX_SAVED_LOOKS = 60, MAX_LOOK_DATA_BYTES = 512 * 1024
+const safeLookName = (value, fallback = 'Imported look') => (typeof value === 'string' ? value.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 28) : '') || fallback
+const makeLookId = () => `u${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`}`
 
 function loadParams() {
   try {
-    const p = { ...DEFAULTS, ...JSON.parse(localStorage.getItem(LS_P) || '{}') }
-    if (p.bgType === 'image') p.bgType = 'gradient'
-    return p
+    const stored = localStorage.getItem(LS_P) || '{}'
+    if (stored.length > MAX_LOOK_DATA_BYTES) return { ...DEFAULTS }
+    return sanitizeVizParams(JSON.parse(stored))
   } catch { return { ...DEFAULTS } }
 }
-const loadLooks = () => { try { return JSON.parse(localStorage.getItem(LS_L) || '[]') } catch { return [] } }
+function loadLooks() {
+  try {
+    const stored = localStorage.getItem(LS_L) || '[]'
+    if (stored.length > MAX_LOOK_DATA_BYTES) return []
+    const raw = JSON.parse(stored)
+    if (!Array.isArray(raw)) return []
+    const seen = new Set(), safe = []
+    for (const [index, look] of raw.slice(-MAX_SAVED_LOOKS).entries()) {
+      if (!look || typeof look !== 'object' || Array.isArray(look)) continue
+      const p = sanitizeVizPatch(look.p)
+      if (p.bgType === 'image') p.bgType = 'gradient'
+      if (!Object.keys(p).length) continue
+      let id = typeof look.id === 'string' && look.id.length <= 100 ? look.id : `u-saved-${index}`
+      if (seen.has(id)) continue
+      seen.add(id)
+      safe.push({ id, name: safeLookName(look.name), p })
+    }
+    return safe
+  } catch { return [] }
+}
 const MP4 = ['video/mp4;codecs=avc1.640028,mp4a.40.2', 'video/mp4;codecs=avc1,mp4a.40.2', 'video/mp4']
 const WEBM = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm']
 const supported = (list) => typeof MediaRecorder !== 'undefined' ? list.find((m) => MediaRecorder.isTypeSupported(m)) : null
 const BASE_MBPS = { draft: 4, good: 8, max: 14 }
+const MAX_ASSET_BYTES = 32 * 1024 * 1024, MAX_ASSET_PIXELS = 32_000_000
+
+function releaseAudioGraph(graph) {
+  if (!graph) return
+  for (const node of [graph.src, graph.node, graph.outGain]) { try { node?.disconnect?.() } catch {} }
+  try { graph.msd?.stream?.getTracks?.().forEach((track) => track.stop()) } catch {}
+  try { const closing = graph.ctx?.close?.(); closing?.catch?.(() => {}) } catch {}
+}
 const MAX_EXPORT_BYTES = 256 * 1024 * 1024
 const MAX_ANALYSIS_FILE_BYTES = 80 * 1024 * 1024
 
@@ -68,6 +98,7 @@ const TBtn = ({ icon, label, onClick, disabled, active }) => (
 )
 
 export default function Visualizer() {
+  const perfNow = usePerf(), reduceMotion = useReducedMotion() || perfNow.level === 'lite'
   const [file, setFile] = useState(null)
   const [url, setUrl] = useState('')
   const [dur, setDur] = useState(0)
@@ -105,7 +136,7 @@ export default function Visualizer() {
   const exportRef = useRef(null), mountedRef = useRef(false)
   const mediaUrlRef = useRef(''), resultUrlRef = useRef('')
   const assetBitmapsRef = useRef({ bg: null, cover: null }), assetUrlsRef = useRef({ bg: '', cover: '' })
-  const assetLoadToken = useRef({ bg: 0, cover: 0 })
+  const assetLoadToken = useRef({ bg: 0, cover: 0 }), demoTokenRef = useRef(0)
   const past = useRef([]), future = useRef([]), group = useRef({ open: false, t: 0 })
   const expRef = useRef(exp); expRef.current = exp
   const rangeRef = useRef([0, 0])
@@ -140,15 +171,17 @@ export default function Visualizer() {
     clearTimeout(g.t); g.t = setTimeout(() => { g.open = false }, commit ? 0 : 650)
   }
   const upd = useCallback((patch, commit = false) => {
+    if (exportRef.current) return
     beginGroup(commit)
     const next = { ...PR.current, ...patch }; PR.current = next; setP(next); setActiveLook(null); touch()
   }, [])
   const setWhole = (next, lookId = null) => {
+    if (exportRef.current) return
     group.current.open = false; beginGroup(true)
     PR.current = next; setP(next); setActiveLook(lookId); touch()
   }
-  const undo = () => { if (!past.current.length) return; future.current.push(PR.current); const p = past.current.pop(); PR.current = p; setP(p); setActiveLook(null); touch() }
-  const redo = () => { if (!future.current.length) return; past.current.push(PR.current); const p = future.current.pop(); PR.current = p; setP(p); setActiveLook(null); touch() }
+  const undo = () => { if (exportRef.current || !past.current.length) return; future.current.push(PR.current); const p = past.current.pop(); PR.current = p; setP(p); setActiveLook(null); touch() }
+  const redo = () => { if (exportRef.current || !future.current.length) return; past.current.push(PR.current); const p = future.current.pop(); PR.current = p; setP(p); setActiveLook(null); touch() }
   const sl = (key, label, o = {}) => <Slider key={key} label={label} value={P[key]} def={DEFAULTS[key]} onChange={(v) => upd({ [key]: v })} {...o} />
 
   /* ---------------- looks ---------------- */
@@ -157,45 +190,56 @@ export default function Visualizer() {
   const surprise = () => { setWhole(randomLook(PR.current)); setDiceTick((n) => n + 1) }
   const saveLook = (name) => {
     const p = { ...PR.current }; KEEP.forEach((k) => delete p[k])
-    const l = { id: 'u' + Date.now(), name: name.trim() || `My look ${myLooks.length + 1}`, p }
-    setMyLooks((a) => [l, ...a]); setActiveLook(l.id)
+    const l = { id: makeLookId(), name: safeLookName(name, `My look ${myLooks.length + 1}`), p }
+    setMyLooks((a) => [l, ...a].slice(0, MAX_SAVED_LOOKS)); setActiveLook(l.id)
   }
   const deleteLook = (id) => setMyLooks((a) => a.filter((l) => l.id !== id))
   const exportLooks = () => download(new Blob([JSON.stringify(myLooks, null, 2)], { type: 'application/json' }), 'thetooltable-visualizer-looks.json')
   const onLookFile = async (e) => {
     const f = e.target.files[0]; e.target.value = ''; if (!f) return
     try {
-      const arr = JSON.parse(await f.text()), list = (Array.isArray(arr) ? arr : [arr]).filter((l) => l && l.p && typeof l.p === 'object')
-      if (!list.length) throw new Error()
-      setMyLooks((a) => [...list.map((l, i) => ({ id: 'u' + Date.now() + i, name: String(l.name || 'Imported look').slice(0, 28), p: l.p })), ...a])
-    } catch { setErr('That file is not a TheToolTable look export.') }
+      if (f.size > MAX_LOOK_DATA_BYTES) throw new Error('Look file is too large')
+      const parsed = JSON.parse(await f.text())
+      const entries = (Array.isArray(parsed) ? parsed : [parsed]).slice(0, MAX_SAVED_LOOKS)
+      const list = entries.flatMap((look) => {
+        if (!look || typeof look !== 'object' || Array.isArray(look)) return []
+        const p = sanitizeVizPatch(look.p)
+        if (p.bgType === 'image') p.bgType = 'gradient'
+        return Object.keys(p).length ? [{ id: makeLookId(), name: safeLookName(look.name), p }] : []
+      })
+      if (!list.length) throw new Error('No usable looks')
+      setMyLooks((current) => [...list, ...current].slice(0, MAX_SAVED_LOOKS))
+    } catch { setErr('That file is not a valid, safe TheToolTable look export.') }
   }
 
   /* ---------------- images ---------------- */
   const loadAsset = async (kind, f) => {
-    if (!f) return
+    if (!f || exportRef.current) return
+    if (f.size > MAX_ASSET_BYTES) { setErr(`Choose an image smaller than ${fmtBytes(MAX_ASSET_BYTES)}.`); return }
     const token = ++assetLoadToken.current[kind]
     let bmp = null, objectUrl = ''
     try {
       if (typeof createImageBitmap !== 'function') throw new Error('Image decoding is unavailable')
       bmp = await createImageBitmap(f)
-      if (!mountedRef.current || token !== assetLoadToken.current[kind]) { bmp.close?.(); return }
+      if (!mountedRef.current || token !== assetLoadToken.current[kind] || exportRef.current) { bmp.close?.(); return }
+      if (!bmp.width || !bmp.height || bmp.width * bmp.height > MAX_ASSET_PIXELS) throw new Error('That image is too large to use safely. Choose one under 32 megapixels.')
       objectUrl = URL.createObjectURL(f)
       replaceAsset(kind, bmp, objectUrl)
       if (kind === 'bg') upd({ bgType: 'image' }, true)
       else upd({ cover: PR.current.cover === 'off' ? 'circle' : PR.current.cover }, true)
-    } catch {
+    } catch (error) {
       try { bmp?.close?.() } catch {}
       if (objectUrl) { try { URL.revokeObjectURL(objectUrl) } catch {} }
-      if (mountedRef.current && token === assetLoadToken.current[kind]) setErr('Could not read that image.')
+      if (mountedRef.current && token === assetLoadToken.current[kind]) setErr(error.message || 'Could not read that image.')
     }
   }
-  const clearBg = () => { assetLoadToken.current.bg++; replaceAsset('bg', null, ''); upd({ bgType: 'gradient' }, true) }
-  const clearCover = () => { assetLoadToken.current.cover++; replaceAsset('cover', null, ''); upd({ cover: 'off' }, true) }
+  const clearBg = () => { if (exportRef.current) return; assetLoadToken.current.bg++; replaceAsset('bg', null, ''); upd({ bgType: 'gradient' }, true) }
+  const clearCover = () => { if (exportRef.current) return; assetLoadToken.current.cover++; replaceAsset('cover', null, ''); upd({ cover: 'off' }, true) }
 
   /* ---------------- file ---------------- */
-  const openFile = (files) => {
-    const f = files?.[0]; if (!f) return
+  const openFile = (files, fromDemo = false) => {
+    const f = files?.[0]; if (!f || exportRef.current) return
+    if (!fromDemo) { demoTokenRef.current++; setLoading(false) }
     let nextUrl
     try { nextUrl = URL.createObjectURL(f) } catch { setErr('Could not open that media file.'); return }
     audioRef.current?.pause()
@@ -205,12 +249,13 @@ export default function Visualizer() {
     setUrl(nextUrl)
   }
   const openDemo = async () => {
+    const token = ++demoTokenRef.current
     setLoading(true)
     try {
       const demo = await makeDemoTrack()
-      if (mountedRef.current) openFile([demo])
-    } catch { if (mountedRef.current) setErr('Could not build the demo track.') }
-    finally { if (mountedRef.current) setLoading(false) }
+      if (mountedRef.current && token === demoTokenRef.current) openFile([demo], true)
+    } catch { if (mountedRef.current && token === demoTokenRef.current) setErr('Could not build the demo track.') }
+    finally { if (mountedRef.current && token === demoTokenRef.current) setLoading(false) }
   }
 
   useEffect(() => {
@@ -254,8 +299,10 @@ export default function Visualizer() {
   const ensureGraph = () => {
     const el = audioRef.current; if (!el) return null
     if (gRef.current && gRef.current.el === el) return gRef.current
-    try { gRef.current?.ctx.close() } catch {}
-    const AC = window.AudioContext || window.webkitAudioContext, ctx = new AC()
+    releaseAudioGraph(gRef.current); gRef.current = null
+    const AC = window.AudioContext || window.webkitAudioContext
+    if (!AC) throw new Error('Audio playback is unavailable in this browser.')
+    const ctx = new AC()
     const src = ctx.createMediaElementSource(el), node = ctx.createAnalyser()
     node.fftSize = 4096; node.minDecibels = -90; node.maxDecibels = -25; node.smoothingTimeConstant = 0.35
     const outGain = ctx.createGain(); outGain.gain.value = volRef.current
@@ -282,7 +329,7 @@ export default function Visualizer() {
     const prev = new VizRenderer()
     const frame = (ts) => {
       id = requestAnimationFrame(frame)
-      if (!exportRef.current && lastRun && ts - lastRun < 1000 / perf.fps() - 3) return; lastRun = ts
+      if (!exportRef.current && lastRun && ts - lastRun < 1000 / (reduceMotion ? 12 : perf.fps()) - 3) return; lastRun = ts
       const el = audioRef.current, cv = canvasRef.current, a = an.current, Pm = PR.current, g = gRef.current, ex = exportRef.current
       if (!cv || !el) return
       const dt = last ? Math.min(0.1, (ts - last) / 1000) : 0.016; last = ts
@@ -290,7 +337,7 @@ export default function Visualizer() {
       a.setRange(Pm.fmin, Pm.fmax)
       let bass
       if (live) bass = bandsFromAnalyser(g.node, g.ctx.sampleRate, a.freqs, raw, wave, tmp)
-      else bass = synth(ts / 1000, raw, wave, 0.85)
+      else bass = synth(reduceMotion && !ex ? 0 : ts / 1000, raw, wave, 0.85)
       a.feed(raw, wave, dt, Pm.smooth, bass, Pm.beatSens)
       const [rs, re] = ex ? [ex.start, ex.end] : [0, el.duration || 0]
       a.time = live || ex ? Math.max(0, el.currentTime - rs) : undefined
@@ -300,12 +347,16 @@ export default function Visualizer() {
       const tw = Math.max(2, Math.round((pdRef.current[0] * q) / 2) * 2), th = Math.max(2, Math.round((pdRef.current[1] * q) / 2) * 2)
       if (cv.width !== tw || cv.height !== th) { cv.width = tw; cv.height = th }
       // while exporting, the capture canvas gets priority and the on-screen preview refreshes less often
-      if (ex?.ready && ts - ex.last >= 1000 / ex.fps - 4) { ex.last = ts; ex.n = (ex.n || 0) + 1; ex.rd.draw(ex.ctx, ex.cv.width, ex.cv.height, a, Pm, assetsRef.current, ts) }
-      else if (!ex || !ex.ready || fr++ % 3 === 0) prev.draw(cv.getContext('2d'), cv.width, cv.height, a, Pm, assetsRef.current, ts)
+      if (ex?.ready && ts - ex.last >= 1000 / ex.fps - 4) { ex.last = ts; ex.n = (ex.n || 0) + 1; ex.rd.draw(ex.ctx, ex.cv.width, ex.cv.height, a, ex.params, ex.assets, ts) }
+      else if (!ex || !ex.ready || fr++ % 3 === 0) {
+        const still = reduceMotion && !live && !ex
+        const previewP = still ? { ...Pm, spin: 0, shake: 0, zoom: 0, flash: 0, cycle: 0, bgPulse: 0, tanim: 'none', coverSpin: 0 } : (ex?.params || Pm)
+        prev.draw(cv.getContext('2d'), cv.width, cv.height, a, previewP, ex?.assets || assetsRef.current, still ? 0 : ts)
+      }
     }
     id = requestAnimationFrame(frame)
-    return () => cancelAnimationFrame(id)
-  }, [file])
+    return () => { cancelAnimationFrame(id); prev.destroy() }
+  }, [file, reduceMotion])
 
   /* ---------------- stage size + fullscreen ---------------- */
   useEffect(() => {
@@ -412,6 +463,7 @@ export default function Visualizer() {
 
     const ex = {
       start, end, fps, last: 0, cancelled: false, stopped: false, ready: false, completed: false,
+      params: { ...PR.current }, assets: { ...assetsRef.current },
       bytes: 0, tracksToStop: new Set(), sharedAudioTracks: new Set(),
       previousTime: el.currentTime, wasPlaying: !el.paused,
     }
@@ -516,6 +568,8 @@ export default function Visualizer() {
     } finally {
       finishExport(ex)
       releaseExportStream(ex)
+      ex.rd?.destroy?.()
+      if (ex.cv) { ex.cv.width = 1; ex.cv.height = 1 }
       if (exportRef.current === ex) exportRef.current = null
       try { el.pause() } catch {}
       try { if (Number.isFinite(ex.previousTime)) el.currentTime = ex.previousTime } catch {}
@@ -527,11 +581,19 @@ export default function Visualizer() {
   }
   const saveResult = () => result && download(result.blob, result.name)
   const exportPng = () => {
+    if (exportRef.current) return
     const [W, H] = outRef.current, cv = document.createElement('canvas'); cv.width = W; cv.height = H
     const rd = new VizRenderer(), c2 = cv.getContext('2d'), a = an.current, t0 = performance.now()
-    a.dur = dur; a.progress = dur && audioRef.current ? audioRef.current.currentTime / dur : 0
-    for (let i = 0; i < 4; i++) rd.draw(c2, W, H, a, PR.current, assetsRef.current, t0 + i * 33)
-    cv.toBlob((b) => b && download(b, `${baseName(file.name)}-visualizer.png`), 'image/png')
+    if (!c2) { rd.destroy(); return setErr('Could not create the PNG export canvas.') }
+    try {
+      a.dur = dur; a.progress = dur && audioRef.current ? audioRef.current.currentTime / dur : 0
+      for (let i = 0; i < 4; i++) rd.draw(c2, W, H, a, PR.current, assetsRef.current, t0 + i * 33)
+      cv.toBlob((blob) => {
+        rd.destroy(); cv.width = 1; cv.height = 1
+        if (blob) download(blob, `${baseName(file.name)}-visualizer.png`)
+        else if (mountedRef.current) setErr('The browser could not encode this PNG.')
+      }, 'image/png')
+    } catch (error) { rd.destroy(); cv.width = 1; cv.height = 1; setErr(error.message || 'PNG export failed.') }
   }
 
   useEffect(() => {
@@ -539,7 +601,10 @@ export default function Visualizer() {
     return () => {
       mountedRef.current = false
       const ex = exportRef.current
-      if (ex) { ex.cancelled = true; finishExport(ex); releaseExportStream(ex) }
+      if (ex) {
+        ex.cancelled = true; ex.ready = false; finishExport(ex); releaseExportStream(ex)
+        ex.rd?.destroy?.(); if (ex.cv) { ex.cv.width = 1; ex.cv.height = 1 }
+      }
       try { audioRef.current?.pause() } catch {}
       if (mediaUrlRef.current) { try { URL.revokeObjectURL(mediaUrlRef.current) } catch {}; mediaUrlRef.current = '' }
       if (resultUrlRef.current) { try { URL.revokeObjectURL(resultUrlRef.current) } catch {}; resultUrlRef.current = '' }
@@ -548,7 +613,7 @@ export default function Visualizer() {
         if (assetUrlsRef.current[kind]) { try { URL.revokeObjectURL(assetUrlsRef.current[kind]) } catch {} }
         assetLoadToken.current[kind]++
       }
-      try { const closing = gRef.current?.ctx.close(); closing?.catch?.(() => {}) } catch {}
+      releaseAudioGraph(gRef.current); gRef.current = null
     }
   }, [])
 
@@ -635,17 +700,17 @@ export default function Visualizer() {
               style={{ background: 'rgba(20,17,15,.72)', color: '#eee', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,.08)' }}>
               <span className="w-7 h-7 rounded-full grid place-items-center shrink-0" style={{ background: 'var(--copper)', color: '#fff' }}><Icon n="music" s={14} /></span>
               <span className="min-w-0 leading-tight"><span className="block text-[11.5px] font-semibold truncate">{file.name}</span><span className="block text-[10px] opacity-60 tabular-nums">{clock(dur)} · {fmtBytes(file.size)}</span></span>
-              <button aria-label="Change file" title="Change file" className="shrink-0 opacity-70 hover:opacity-100" onClick={() => !busy && fileRef.current?.click()}><Icon n="reset" s={13} /></button>
+              <button type="button" aria-label="Change file" title="Change file" disabled={busy} className="shrink-0 opacity-70 hover:opacity-100 disabled:opacity-35" onClick={() => fileRef.current?.click()}><Icon n="reset" s={13} /></button>
             </motion.div>
 
             {/* toolbar */}
             <motion.div className="absolute top-[58px] xl:top-3.5 left-1/2 z-10 flex items-center gap-0.5 p-1 rounded-full max-w-[calc(100%-16px)]" initial={{ opacity: 0, y: -16, x: '-50%' }} animate={{ opacity: 1, y: 0, x: '-50%' }} transition={{ ...SPRING, delay: 0.2 }}
               style={{ background: 'rgba(20,17,15,.78)', color: '#eee', backdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,.09)', boxShadow: '0 12px 30px -10px rgba(0,0,0,.7)' }}>
-              <TBtn icon="undo" label="Undo (Ctrl+Z)" onClick={undo} disabled={!canUndo} />
-              <TBtn icon="redo" label="Redo (Ctrl+Shift+Z)" onClick={redo} disabled={!canRedo} />
+              <TBtn icon="undo" label="Undo (Ctrl+Z)" onClick={undo} disabled={busy || !canUndo} />
+              <TBtn icon="redo" label="Redo (Ctrl+Shift+Z)" onClick={redo} disabled={busy || !canRedo} />
               <span className="w-px h-4 mx-1" style={{ background: 'rgba(255,255,255,.15)' }} />
-              <TBtn icon="dice" label="Surprise me" onClick={surprise} />
-              <TBtn icon="reset" label="Reset everything" onClick={() => setWhole({ ...DEFAULTS, title: PR.current.title, subtitle: PR.current.subtitle })} />
+              <TBtn icon="dice" label="Surprise me" onClick={surprise} disabled={busy} />
+              <TBtn icon="reset" label="Reset everything" onClick={() => setWhole({ ...DEFAULTS, title: PR.current.title, subtitle: PR.current.subtitle })} disabled={busy} />
               <span className="w-px h-4 mx-1" style={{ background: 'rgba(255,255,255,.15)' }} />
               <TBtn icon="expand" label={full ? 'Exit full screen' : 'Full screen'} onClick={goFull} active={full} />
             </motion.div>
@@ -653,9 +718,10 @@ export default function Visualizer() {
             {/* status */}
             <motion.div aria-label={busy ? `Recording ${Math.round(prog * 100)} percent` : playing ? 'Audio playing' : 'Preview signal'} title={busy ? `Recording ${Math.round(prog * 100)}%` : playing ? 'Live audio' : 'Preview signal'} className="absolute top-3 right-2 sm:top-3.5 sm:right-4 flex items-center gap-2 px-2 sm:px-3 py-1.5 rounded-full text-[10.5px] font-bold uppercase tracking-wider" initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ ...SPRING, delay: 0.25 }}
               style={{ background: 'rgba(20,17,15,.72)', color: '#eee', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,.08)' }}>
-              <motion.span className="w-2 h-2 rounded-full" style={{ background: busy ? '#e5483a' : playing ? '#46d38c' : '#c9a24a' }} animate={{ scale: [1, 1.5, 1], opacity: [1, 0.5, 1] }} transition={{ duration: busy ? 0.8 : 1.6, repeat: Infinity }} />
+              <motion.span className="w-2 h-2 rounded-full" style={{ background: busy ? '#e5483a' : playing ? '#46d38c' : '#c9a24a' }} animate={reduceMotion ? { scale: 1, opacity: 1 } : { scale: [1, 1.5, 1], opacity: [1, 0.5, 1] }} transition={reduceMotion ? { duration: 0 } : { duration: busy ? 0.8 : 1.6, repeat: Infinity }} />
               <AnimatePresence mode="wait" initial={false}><motion.span className="hidden sm:inline" key={busy ? 'r' : playing ? 'l' : 'p'} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.15 }}>{busy ? `Rec ${Math.round(prog * 100)}%` : playing ? 'Live' : 'Preview signal'}</motion.span></AnimatePresence>
             </motion.div>
+            {busy && <button type="button" className="absolute left-3 bottom-3 z-20 btn !min-h-9 !py-1.5 !px-3 text-[12px]" onClick={cancelExport}><span aria-hidden="true">×</span> Cancel render</button>}
           </div>
           <Transport audioRef={audioRef} peaks={peaks} peaksLoading={peaksLoading} dur={dur} range={range ? rangeEff : (section === 'export' ? rangeEff : null)} onRange={(a, b) => setRange([a, b])} playing={playing} toggle={toggle} vol={vol} setVol={setVol} disabled={busy} />
         </div>
@@ -669,12 +735,12 @@ export default function Visualizer() {
                 <div className="text-[11.5px] truncate" style={{ color: 'var(--muted)' }}>{ps}</div>
               </motion.div>
             </AnimatePresence>
-            {resetKeys && <motion.button whileHover={{ y: -2 }} whileTap={{ scale: 0.9 }} onClick={resetSection} className="shrink-0 flex items-center gap-1.5 text-[11.5px] font-semibold px-2.5 py-1.5 rounded-full border border-line" style={{ color: 'var(--muted)' }}><Icon n="reset" s={12} w={2.2} /> Reset</motion.button>}
+            {resetKeys && <motion.button type="button" disabled={busy} whileHover={{ y: busy ? 0 : -2 }} whileTap={{ scale: busy ? 1 : 0.9 }} onClick={resetSection} className="shrink-0 flex items-center gap-1.5 text-[11.5px] font-semibold px-2.5 py-1.5 rounded-full border border-line disabled:opacity-50" style={{ color: 'var(--muted)' }}><Icon n="reset" s={12} w={2.2} /> Reset</motion.button>}
           </div>
           <div className="flex-1 min-h-0 overflow-y-auto px-5 py-5">
             <AnimatePresence mode="wait" initial={false}>
               <motion.div key={section} initial={{ opacity: 0, x: 18 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -18 }} transition={{ duration: 0.18 }}>
-                <Panel c={c} />
+                {section === 'export' ? <Panel c={c} /> : <fieldset disabled={busy} className="min-w-0 border-0 p-0 m-0"><Panel c={c} /></fieldset>}
               </motion.div>
             </AnimatePresence>
           </div>

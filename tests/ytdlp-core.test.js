@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { buildArgs, normalizeUrl } from '../src/lib/ytdlp-core.js'
+import { buildArgs, isPlaylistUrl, normalizeUrl } from '../src/lib/ytdlp-core.js'
 
 const ctx = { outTemplate: '/downloads/%(title)s.%(ext)s', tempDir: '/downloads/.tmp' }
 
@@ -8,6 +8,13 @@ test('downloader only accepts HTTP(S) and normalizes the pasted URL', () => {
   assert.equal(normalizeUrl('  https://example.com/watch?v=abc  '), 'https://example.com/watch?v=abc')
   assert.throws(() => normalizeUrl('file:///etc/passwd'), /Only http\(s\) URLs are supported/)
   assert.throws(() => normalizeUrl('http://127.0.0.1/admin'), /Private \/ local addresses are blocked/)
+})
+
+test('playlist detection catches list links without treating one selected video as a full playlist', () => {
+  assert.equal(isPlaylistUrl('https://www.youtube.com/playlist?list=PL123'), true)
+  assert.equal(isPlaylistUrl('https://soundcloud.com/artist/sets/mix'), true)
+  assert.equal(isPlaylistUrl('https://www.youtube.com/watch?v=video&list=PL123'), false)
+  assert.equal(isPlaylistUrl('not a URL'), false)
 })
 
 test('video download format selector uses a video-only stream before pairing audio', () => {

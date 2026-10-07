@@ -28,7 +28,7 @@ export function Dropzone({ onFiles, multiple = false, accept, label = 'Drop file
   const ref = useRef(null)
   return (
     <div
-      className="dropzone p-10 text-center cursor-pointer"
+      className="app-dropzone dropzone p-10 text-center cursor-pointer"
       data-hot={hot}
       onClick={() => ref.current?.click()}
       onDragOver={(e) => { e.preventDefault(); setHot(true) }}

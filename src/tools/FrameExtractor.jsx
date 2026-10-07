@@ -23,7 +23,12 @@ function StepBtn({ onStep, children, label, wide }) {
   return (
     <motion.button type="button" aria-label={label} whileHover={{ y: -2 }} whileTap={{ scale: 0.88 }}
       className={`btn !rounded-xl !py-2 ${wide ? '!px-3.5' : '!px-3'} text-[12px] font-bold flex items-center gap-1.5 select-none`}
-      onPointerDown={(e) => { e.currentTarget.setPointerCapture?.(e.pointerId); onStep(); stop(); to.current = setTimeout(() => { iv.current = setInterval(onStep, 65) }, 380) }}
+      onClick={(e) => { if (e.detail === 0) onStep() }}
+      onPointerDown={(e) => {
+        if (e.button !== 0 || e.isPrimary === false) return
+        e.currentTarget.setPointerCapture?.(e.pointerId); onStep(); stop()
+        to.current = setTimeout(() => { iv.current = setInterval(onStep, 65) }, 380)
+      }}
       onPointerUp={stop} onPointerLeave={stop} onPointerCancel={stop}>
       {children}
     </motion.button>
@@ -156,26 +161,34 @@ export default function FrameExtractor() {
     return () => { off = true }
   }, [url, meta?.d]) // eslint-disable-line
 
-  /* Keep the playhead synced without re-rendering the complete inspector on every display refresh. */
+  /* Keep the playhead smooth during playback, but do not spin an animation loop while paused. */
   useEffect(() => {
     if (!file) return
-    let raf, lastPaint = 0
+    let raf = 0, lastPaint = 0
+    const v = videoRef.current
+    const syncTime = () => {
+      const node = videoRef.current
+      if (!node) return
+      const currentTime = node.currentTime, frameRate = live.current.fps
+      setT((prev) => Math.floor(prev * frameRate + 1e-6) === Math.floor(currentTime * frameRate + 1e-6) ? prev : currentTime)
+    }
+    if (!playing) {
+      v?.addEventListener('seeked', syncTime); v?.addEventListener('timeupdate', syncTime)
+      syncTime()
+      return () => { v?.removeEventListener('seeked', syncTime); v?.removeEventListener('timeupdate', syncTime) }
+    }
     const loop = (now = 0) => {
-      const v = videoRef.current
-      if (v) {
+      const node = videoRef.current
+      if (node) {
         const L = live.current
-        if (L.playing && L.loopSel && v.currentTime >= L.end) v.currentTime = L.start
-        if (now - lastPaint >= 33) {
-          lastPaint = now
-          const currentTime = v.currentTime
-          setT((prev) => Math.floor(prev * L.fps + 1e-6) === Math.floor(currentTime * L.fps + 1e-6) ? prev : currentTime)
-        }
+        if (L.loopSel && node.currentTime >= L.end) node.currentTime = L.start
+        if (now - lastPaint >= 33) { lastPaint = now; syncTime() }
       }
       raf = requestAnimationFrame(loop)
     }
     raf = requestAnimationFrame(loop)
     return () => cancelAnimationFrame(raf)
-  }, [file])
+  }, [file, playing])
 
   /* stage geometry */
   useEffect(() => {

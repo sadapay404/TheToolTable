@@ -8,12 +8,25 @@
     "fs:default",
     "opener:default",
     "shell:default",
+    "notification:default",
+    "upload:default",
+    "download:default",
+    "background-service:default",
     { "identifier": "shell:allow-spawn", "allow": [{ "name": "binaries/yt-dlp", "sidecar": true, "args": true }] },
     { "identifier": "shell:allow-execute", "allow": [
       { "name": "binaries/yt-dlp", "sidecar": true, "args": true },
       { "name": "binaries/ffmpeg", "sidecar": true, "args": ["-version"] }
     ] },
-    { "identifier": "fs:allow-mkdir", "allow": [{ "path": "$DOWNLOAD/TheToolTable" }] },
-    { "identifier": "fs:allow-stat", "allow": [{ "path": "$DOWNLOAD/TheToolTable/**" }] }
+    { "identifier": "fs:allow-mkdir", "allow": [
+      { "path": "$DOWNLOAD/TheToolTable" },
+      { "path": "$APPCACHE/TheToolTable/**" }
+    ] },
+    { "identifier": "fs:allow-stat", "allow": [
+      { "path": "$DOWNLOAD/TheToolTable/**" },
+      { "path": "$APPCACHE/TheToolTable/**" }
+    ] },
+    { "identifier": "fs:allow-exists", "allow": [{ "path": "$APPCACHE/TheToolTable/**" }] },
+    { "identifier": "fs:allow-read-dir", "allow": [{ "path": "$APPCACHE/TheToolTable/**" }] },
+    { "identifier": "fs:allow-remove", "allow": [{ "path": "$APPCACHE/TheToolTable/**" }] }
   ]
 }

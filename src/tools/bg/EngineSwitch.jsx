@@ -1,8 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { isTauri } from '@tauri-apps/api/core'
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import { Icon } from '../studio/controls.jsx'
 import { AnimatedNumber } from '../../components/ui.jsx'
 import { fmtBytes } from '../../lib/utils.js'
+import { usePerf } from '../../lib/perf.js'
 import { TIERS, MODEL_BYTES, setEngine, retry, cachedSet, clearModelCache, planFor } from '../../lib/bg/engine.js'
 
 const SPRING = { type: 'spring', stiffness: 300, damping: 25 }
@@ -39,7 +41,9 @@ export function EngineBar({ eng }) {
 }
 
 function Dot({ eng }) {
-  return <motion.span className="w-2.5 h-2.5 rounded-full shrink-0" animate={{ scale: eng.ready ? [1, 1.35, 1] : [1, 0.7, 1], opacity: [1, 0.6, 1] }} transition={{ repeat: Infinity, duration: 1.6 }} style={{ background: eng.error ? '#D04841' : eng.ready ? '#4E937A' : 'var(--accent)' }} />
+  const perfNow = usePerf()
+  const reduceMotion = useReducedMotion() || perfNow.level === 'lite'
+  return <motion.span className="w-2.5 h-2.5 rounded-full shrink-0" animate={reduceMotion ? { scale: 1, opacity: 1 } : { scale: eng.ready ? [1, 1.35, 1] : [1, 0.7, 1], opacity: [1, 0.6, 1] }} transition={reduceMotion ? { duration: 0 } : { repeat: Infinity, duration: 1.6 }} style={{ background: eng.error ? '#D04841' : eng.ready ? '#4E937A' : 'var(--accent)' }} />
 }
 
 /* ---------------------------------- tier picker ---------------------------------- */
@@ -102,7 +106,7 @@ export function EngineChooser({ eng }) {
       <div className="eyebrow text-center mb-3">Cut-out engine</div>
       <div className="flex flex-wrap gap-4 justify-center max-w-[760px] mx-auto">
         <EngineCard online={online} id="offline" icon="lock" title="Offline" sub="Bundled · instant · default" bullets={[`Ships inside the site (${mb(MODEL_BYTES)} MB), nothing to download`, 'Works with no internet at all', 'Great for products, people and logos']} />
-        <EngineCard online={online} id="online" icon="globe" title="Online" sub="BiRefNet · state-of-the-art" bullets={['Downloads a far stronger model once, then caches it', 'Hair, fur, glass and fine edges come out cleaner', 'Photos still never leave your device']} />
+        <EngineCard online={online} id="online" icon="globe" title="Online" sub="BiRefNet · state-of-the-art" bullets={[`Downloads a far stronger model once, then caches it ${isTauri() ? 'on this device' : 'in this browser'}`, 'Hair, fur, glass and fine edges come out cleaner', 'Photos still never leave your device']} />
       </div>
       <AnimatePresence initial={false}>
         {online && (
@@ -131,7 +135,7 @@ function StatusStrip({ eng, cached, onCleared }) {
       </div>
       {online && eng.note && <div className="text-[11.5px] mt-1.5" style={{ color: 'var(--muted)' }}>{eng.note}</div>}
       {online && busy && <div className="mt-2.5"><EngineBar eng={eng} /></div>}
-      {online && busy && eng.phase === 'model' && !eng.fromCache && <div className="mt-1.5 text-[11px]" style={{ color: 'var(--muted)' }}>One-time download · saved in your browser so next time it opens instantly, even offline.</div>}
+      {online && busy && eng.phase === 'model' && !eng.fromCache && <div className="mt-1.5 text-[11px]" style={{ color: 'var(--muted)' }}>One-time download · saved {isTauri() ? 'in app storage on this device' : 'in this browser'} so next time it opens instantly, even offline.</div>}
     </motion.div>
   )
 }
@@ -190,7 +194,7 @@ export function EnginePill({ eng, canRedo, onRedo }) {
             {online ? (
               <>
                 <div className="mt-3"><TierPicker eng={eng} cached={cached} compact /></div>
-                <div className="text-[11px] mt-3 leading-snug" style={{ color: 'var(--muted)' }}>BiRefNet is MIT-licensed. The weights download once and are cached here; your photos are never uploaded.</div>
+                <div className="text-[11px] mt-3 leading-snug" style={{ color: 'var(--muted)' }}>BiRefNet is MIT-licensed. The weights download once and are cached {isTauri() ? 'on this device' : 'in this browser'}; your photos are never uploaded.</div>
                 {eng.note && <div className="text-[11px] mt-1.5 font-semibold" style={{ color: 'var(--accent)' }}>{eng.note}</div>}
               </>
             ) : (

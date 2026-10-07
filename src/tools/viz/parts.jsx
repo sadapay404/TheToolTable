@@ -1,8 +1,9 @@
 import React, { memo, useEffect, useMemo, useRef } from 'react'
-import { motion } from 'framer-motion'
+import { motion, useReducedMotion } from 'framer-motion'
 import { Icon, SPRING } from '../studio/controls.jsx'
 import { VizRenderer } from '../../lib/viz/render.js'
 import { Analyzer, synth, NB } from '../../lib/viz/analyzer.js'
+import { usePerf } from '../../lib/perf.js'
 
 export const clock = (s) => { s = Math.max(0, s || 0); return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}` }
 export const clock1 = (s) => { s = Math.max(0, s || 0); return `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, '0')}` }
@@ -28,13 +29,21 @@ export const thumbParams = (P) => ({ ...P, title: '', subtitle: '', watermark: '
 
 export function LiveThumb({ P, assets, className = '' }) {
   const cv = useRef(null), pr = useRef(P), as = useRef(assets), vis = useRef(false)
+  const perfNow = usePerf(), reduceMotion = useReducedMotion() || perfNow.level === 'lite'
   pr.current = P; as.current = assets
   useEffect(() => {
-    const el = cv.current, ctx = el.getContext('2d'), rd = new VizRenderer(), W = el.width, H = el.height
+    const el = cv.current, ctx = el?.getContext('2d'), rd = new VizRenderer(), W = el?.width || 256, H = el?.height || 144
+    if (!ctx) { rd.destroy(); return }
+    if (reduceMotion) {
+      const bass = synth(0, raw, wave, 1)
+      thumbAn.feed(raw, wave, 0.016, 0.55, bass, 1)
+      rd.draw(ctx, W, H, thumbAn, thumbParams(pr.current), as.current, 0)
+      return () => rd.destroy()
+    }
     const io = new IntersectionObserver(([e]) => { vis.current = e.isIntersecting }, { threshold: 0.01 }); io.observe(el)
     const un = subscribe((ts) => { if (vis.current) rd.draw(ctx, W, H, thumbAn, thumbParams(pr.current), as.current, ts) })
-    return () => { un(); io.disconnect() }
-  }, [])
+    return () => { un(); io.disconnect(); rd.destroy() }
+  }, [reduceMotion, P, assets])
   return <canvas ref={cv} width={256} height={144} className={`block w-full h-full ${className}`} />
 }
 
@@ -71,16 +80,19 @@ export function ColorField({ label, value, onChange }) {
 /* ------------------------------------------------ live level meter (reads the analyzer; no React re-renders) ------------------------------------------------ */
 export function LiveMeter({ an, field, label, hue }) {
   const bar = useRef(null), peak = useRef(null), txt = useRef(null)
+  const perfNow = usePerf(), reduceMotion = useReducedMotion() || perfNow.level === 'lite'
   useEffect(() => {
-    let id, pk = 0
-    const f = () => {
-      id = requestAnimationFrame(f)
+    let id, timer, pk = 0, last = performance.now()
+    const update = () => {
+      const now = performance.now(), dt = Math.min(0.1, Math.max(0, (now - last) / 1000)); last = now
       const a = an.current; if (!a || !bar.current) return
-      const v = Math.min(1, a[field] * 1.6); pk = Math.max(v, pk - 0.012)
+      const v = Math.min(1, a[field] * 1.6); pk = Math.max(v, pk - 0.7 * dt)
       bar.current.style.transform = `scaleX(${v})`; peak.current.style.left = `${pk * 100}%`; txt.current.textContent = Math.round(v * 100)
     }
-    f(); return () => cancelAnimationFrame(id)
-  }, [])
+    if (reduceMotion) { update(); timer = setInterval(update, 200) }
+    else { const f = () => { id = requestAnimationFrame(f); update() }; f() }
+    return () => { cancelAnimationFrame(id); clearInterval(timer) }
+  }, [an, field, reduceMotion])
   return (
     <div>
       <div className="flex justify-between text-[11px] font-semibold mb-1"><span>{label}</span><span ref={txt} className="mono tabular-nums" style={{ color: 'var(--muted)' }}>0</span></div>
@@ -92,11 +104,12 @@ export function LiveMeter({ an, field, label, hue }) {
   )
 }
 export function BeatDot({ an }) {
-  const el = useRef(null)
+  const el = useRef(null), perfNow = usePerf(), reduceMotion = useReducedMotion() || perfNow.level === 'lite'
   useEffect(() => {
+    if (reduceMotion) { if (el.current) { el.current.style.transform = 'scale(1)'; el.current.style.opacity = '0.75' } return }
     let id; const f = () => { id = requestAnimationFrame(f); const a = an.current; if (!a || !el.current) return; el.current.style.transform = `scale(${0.55 + a.beat * 0.8})`; el.current.style.opacity = 0.25 + a.beat * 0.75 }
     f(); return () => cancelAnimationFrame(id)
-  }, [])
+  }, [an, reduceMotion])
   return <span ref={el} className="inline-block w-3.5 h-3.5 rounded-full" style={{ background: 'var(--copper)', boxShadow: '0 0 14px var(--copper)' }} />
 }
 
@@ -116,28 +129,57 @@ export function WaveScrubber({ peaks, loading, time, dur, range, onSeek, onRange
   const box = useRef(null), drag = useRef(null)
   const fake = useMemo(() => Array.from({ length: 120 }, (_, i) => 0.25 + 0.5 * Math.abs(Math.sin(i * 0.37) * Math.cos(i * 0.11))), [])
   const validDur = Number.isFinite(dur) && dur > 0
-  const pos = (e) => { const r = box.current.getBoundingClientRect(); return (validDur ? Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * dur : 0) }
+  const pos = (e) => {
+    const r = box.current?.getBoundingClientRect()
+    if (!validDur || !r?.width) return 0
+    return Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * dur
+  }
   const frac = validDur ? Math.min(1, Math.max(0, time / dur)) : 0
   const a = range && validDur ? Math.min(1, Math.max(0, range[0] / dur)) : 0, b = range && validDur ? Math.min(1, Math.max(0, range[1] / dur)) : 1
   const down = (e) => { if (disabled || !validDur) return; e.currentTarget.setPointerCapture(e.pointerId); drag.current = 'seek'; onSeek(pos(e)) }
+  const seekKey = (e) => {
+    if (disabled || !validDur) return
+    const step = e.shiftKey ? 10 : 2
+    let next
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') next = time - step
+    else if (e.key === 'ArrowRight' || e.key === 'ArrowUp') next = time + step
+    else if (e.key === 'Home') next = 0
+    else if (e.key === 'End') next = dur
+    else return
+    e.preventDefault(); onSeek(Math.min(dur, Math.max(0, next)))
+  }
+  const rangeKey = (k, e) => {
+    if (disabled || !range) return
+    const start = k === 'a', current = start ? range[0] : range[1], minSpan = Math.min(0.5, dur)
+    const min = start ? 0 : Math.min(dur, range[0] + minSpan), max = start ? Math.max(0, range[1] - minSpan) : dur
+    const step = e.shiftKey ? 5 : minSpan
+    let next
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') next = current - step
+    else if (e.key === 'ArrowRight' || e.key === 'ArrowUp') next = current + step
+    else if (e.key === 'Home') next = min
+    else if (e.key === 'End') next = max
+    else return
+    e.preventDefault(); e.stopPropagation(); next = Math.min(max, Math.max(min, next))
+    onRange(start ? next : range[0], start ? range[1] : next)
+  }
   const move = (e) => {
-    if (!drag.current) return
+    if (disabled || !drag.current) return
     const t = pos(e)
     if (drag.current === 'seek') onSeek(t)
-    else if (drag.current === 'a') onRange(Math.min(t, range[1] - 0.5), range[1])
-    else if (drag.current === 'b') onRange(range[0], Math.max(t, range[0] + 0.5))
+    else if (drag.current === 'a') { const span = Math.min(0.5, dur); onRange(Math.max(0, Math.min(t, range[1] - span)), range[1]) }
+    else if (drag.current === 'b') { const span = Math.min(0.5, dur); onRange(range[0], Math.min(dur, Math.max(t, range[0] + span))) }
   }
   const up = () => { drag.current = null }
   const handle = (k, f) => (
-    <motion.div className="absolute top-[-4px] bottom-[-4px] w-5 -ml-2.5 cursor-ew-resize touch-none z-20 grid place-items-center" style={{ left: `${f * 100}%` }}
-      onPointerDown={(e) => { e.stopPropagation(); e.currentTarget.setPointerCapture(e.pointerId); drag.current = k }} onPointerMove={move} onPointerUp={up} whileHover={{ scale: 1.2 }} whileTap={{ scale: 1.35 }}>
+    <motion.div role="slider" aria-label={`${k === 'a' ? 'Start' : 'End'} of export range`} aria-valuemin={k === 'a' ? 0 : Math.min(dur, range[0] + Math.min(0.5, dur))} aria-valuemax={k === 'a' ? Math.max(0, range[1] - Math.min(0.5, dur)) : dur} aria-valuenow={Math.round(k === 'a' ? range[0] : range[1])} aria-valuetext={clock1(k === 'a' ? range[0] : range[1])} aria-disabled={disabled} tabIndex={disabled ? -1 : 0} className={`absolute top-[-4px] bottom-[-4px] w-5 -ml-2.5 ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-ew-resize'} touch-none z-20 grid place-items-center`} style={{ left: `${f * 100}%` }}
+      onKeyDown={(e) => rangeKey(k, e)} onPointerDown={(e) => { if (disabled || !validDur) return; e.stopPropagation(); e.currentTarget.setPointerCapture(e.pointerId); drag.current = k }} onPointerMove={move} onPointerUp={up} onPointerCancel={up} whileHover={disabled ? undefined : { scale: 1.2 }} whileTap={disabled ? undefined : { scale: 1.35 }}>
       <span className="w-[5px] h-full rounded-full" style={{ background: 'var(--copper)', boxShadow: '0 0 0 1px rgba(0,0,0,.35), 0 2px 8px rgba(0,0,0,.5)' }} />
       <span className="absolute top-1/2 -translate-y-1/2 w-3 h-5 rounded-md" style={{ background: 'var(--copper)', boxShadow: '0 2px 6px rgba(0,0,0,.5)', left: k === 'a' ? 10 : -2 }}/>
     </motion.div>
   )
   const arr = peaks || fake
   return (
-    <div ref={box} className="relative h-[52px] select-none cursor-pointer touch-none" onPointerDown={down} onPointerMove={move} onPointerUp={up} role="slider" aria-label="Seek" aria-valuenow={Math.round(time)}>
+    <div ref={box} className={`relative h-[52px] select-none ${disabled ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'} touch-none`} onKeyDown={seekKey} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} role="group" tabIndex={disabled ? -1 : 0} aria-label={`Audio waveform. Use arrow keys to seek; current position ${clock(time)} of ${clock(dur)}.`} aria-disabled={disabled}>
       <div className={`absolute inset-0 ${peaks ? '' : loading ? 'shimmer' : ''}`} style={{ opacity: peaks ? 1 : 0.35 }}><PeakBars key={peaks ? 'real' : 'fake'} peaks={arr} color="rgba(255,255,255,.28)" grow /></div>
       <div className="absolute inset-y-0 left-0 overflow-hidden" style={{ width: `${frac * 100}%`, transition: 'width 70ms linear' }}>
         <div className="absolute inset-y-0 left-0" style={{ width: box.current ? box.current.clientWidth : 600 }}><PeakBars peaks={arr} color="var(--copper)" /></div>

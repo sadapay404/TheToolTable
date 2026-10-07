@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Panel, Label, Btn, Drop, Bar, KIco, SPRING, Chips, Empty, Seg, useToast, save, fmtSize, uid } from './kit/ui.jsx'
 import { Peer, MAX_BEAM_FILE_SIZE, MAX_BEAM_CHAT_CHARS } from '../lib/beam/peer.js'
+import { beginBackgroundTransfer, createTransferNotifier } from '../lib/backgroundTransfers.js'
 import { CodeOut, CodeIn, Step } from './beam/parts.jsx'
 
 const percent = (got, size) => size > 0 ? Math.min(100, Math.max(0, (got / size) * 100)) : 100
@@ -32,23 +33,77 @@ function Choose({ onPick, mode, setMode }) {
 function Room({ peer, onLeave, toast }) {
   const [items, setItems] = useState([]), [chat, setChat] = useState([]), [msg, setMsg] = useState(''), [state, setState] = useState(peer.state), endRef = useRef(null)
   const patch = useCallback((id, p) => setItems((l) => l.map((x) => (x.id === id ? { ...x, ...p } : x))), [])
+  const releaseService = useRef(null)
+  const transferNotes = useRef(new Map())
+  const toastRef = useRef(toast)
+  useEffect(() => { toastRef.current = toast }, [toast])
+  const noteFor = (key, title) => {
+    let note = transferNotes.current.get(key)
+    if (!note) { note = createTransferNotifier(title); transferNotes.current.set(key, note) }
+    return note
+  }
+  const finishNote = (key, message) => {
+    transferNotes.current.get(key)?.finish(message)
+    transferNotes.current.delete(key)
+  }
+  useEffect(() => {
+    let active = true
+    if (state === 'connected') {
+      beginBackgroundTransfer('TheToolTable beam connected').then((release) => {
+        if (active) releaseService.current = release
+        else release()
+      }).catch((error) => toastRef.current?.(`Background transfer service unavailable: ${error.message || error}`, 'err'))
+    } else if (releaseService.current) {
+      releaseService.current()
+      releaseService.current = null
+    }
+    return () => {
+      active = false
+      if (releaseService.current) {
+        releaseService.current()
+        releaseService.current = null
+      }
+    }
+  }, [state])
+  useEffect(() => () => {
+    transferNotes.current.forEach((note) => note.finish('Transfer stopped'))
+    transferNotes.current.clear()
+  }, [])
   useEffect(() => {
     const handlers = {
       state: setState,
       chat: (t) => setChat((c) => [...c, { me: false, t, at: Date.now() }].slice(-500)),
-      incoming: (m) => setItems((l) => [{ id: 'r' + m.id, name: m.name, size: m.size, dir: 'in', pct: m.size === 0 ? 100 : 0, at: Date.now() }, ...l].slice(0, 250)),
-      recv: (id, got, size) => patch('r' + id, { pct: percent(got, size) }),
-      received: (id, blob, name) => { patch('r' + id, { pct: 100, blob, done: true }); toast(`Received ${name}`) },
-      sent: (id, off, size, done) => patch('s' + id, { pct: percent(off, size), done: !!done }),
-      fail: (id, e) => { patch('s' + id, { err: e }); toast(e, 'err') },
-      transferError: (id, e) => { if (id) patch('r' + id, { err: e }); toast(e, 'err') },
+      incoming: (m) => {
+        noteFor('r' + m.id, m.name).update(0, m.size)
+        setItems((l) => [{ id: 'r' + m.id, name: m.name, size: m.size, dir: 'in', pct: m.size === 0 ? 100 : 0, at: Date.now() }, ...l].slice(0, 250))
+      },
+      recv: (id, got, size) => { noteFor('r' + id, 'Receiving file').update(got, size); patch('r' + id, { pct: percent(got, size) }) },
+      received: (id, blob, name) => { patch('r' + id, { pct: 100, blob, done: true }); finishNote('r' + id, `${name} received`); toast(`Received ${name}`) },
+      sent: (id, off, size, done) => {
+        noteFor('s' + id, 'Sending file').update(off, size)
+        patch('s' + id, { pct: percent(off, size), done: !!done })
+        if (done) finishNote('s' + id, 'File sent')
+      },
+      fail: (id, e) => { patch('s' + id, { err: e }); finishNote('s' + id, 'Upload failed'); toast(e, 'err') },
+      transferError: (id, e) => { if (id) { patch('r' + id, { err: e }); finishNote('r' + id, 'Download failed') } toast(e, 'err') },
       error: (e) => toast(e, 'err'),
     }
     Object.entries(handlers).forEach(([event, handler]) => peer.on(event, handler))
     return () => Object.keys(handlers).forEach((event) => peer.off(event))
   }, [peer, patch, toast])
-  useEffect(() => { endRef.current?.scrollTo({ top: 1e6, behavior: 'smooth' }) }, [chat])
-  const send = (files) => files.forEach((f) => { const id = uid(); setItems((l) => [{ id: 's' + id, name: f.name, size: f.size, dir: 'out', pct: 0, at: Date.now() }, ...l]); peer.sendFile(f, id) })
+  useEffect(() => {
+    endRef.current?.scrollTo({
+      top: 1e6,
+      behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ? 'auto' : 'smooth',
+    })
+  }, [chat])
+  const send = (files) => files.forEach((f) => {
+    const id = uid()
+    noteFor('s' + id, f.name).update(0, f.size)
+    setItems((l) => [{ id: 's' + id, name: f.name, size: f.size, dir: 'out', pct: 0, at: Date.now() }, ...l])
+    try { peer.sendFile(f, id) }
+    catch (error) { finishNote('s' + id, 'Upload failed'); patch('s' + id, { err: error.message || 'Could not send file' }); toast(error.message || 'Could not send file', 'err') }
+  })
   const live = state === 'connected'
   const say = () => { const t = msg.trim(); if (!t || !live) return; try { peer.sendText(t); setChat((c) => [...c, { me: true, t, at: Date.now() }].slice(-500)); setMsg('') } catch (e) { toast(e.message || 'Could not send that message.', 'err') } }
   return (

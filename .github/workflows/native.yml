@@ -61,6 +61,8 @@ jobs:
           echo "NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npx tauri android init
+      - name: Declare Android foreground-service and notification permissions
+        run: node scripts/ensure-android-transfer-permissions.mjs
       - name: Configure Gradle retries for transient Maven rate limits
         shell: bash
         run: |

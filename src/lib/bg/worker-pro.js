@@ -27,11 +27,19 @@ function fromHalf(h) {
   return (s ? -1 : 1) * Math.pow(2, e - 15) * (1 + m / 1024)
 }
 
-async function fetchModel({ url, cacheName, fallbackSize }) {
+function isAppAsset(url) {
+  try {
+    const parsed = new URL(url, self.location.href)
+    return parsed.protocol === 'asset:' || parsed.protocol === 'file:' || parsed.hostname === 'asset.localhost' || parsed.hostname.endsWith('.localhost')
+  } catch { return false }
+}
+
+async function fetchModel({ url, cacheName, fallbackSize, nativeCache = false }) {
+  const appAsset = isAppAsset(url)
   let cache = null
-  try { cache = await self.caches.open(cacheName) } catch {}
+  if (!appAsset) { try { cache = await self.caches.open(cacheName) } catch {} }
   let res = cache ? await cache.match(url).catch(() => null) : null
-  const fromCache = !!res
+  const fromCache = !!res || !!nativeCache
   if (!res) {
     try { res = await fetch(url, { mode: 'cors', credentials: 'omit' }) }
     catch { throw new Error('Couldn’t reach the model host (huggingface.co). Check your internet connection — or switch to Offline mode, which needs no network.') }
@@ -50,7 +58,7 @@ async function fetchModel({ url, cacheName, fallbackSize }) {
     if (now - lastPost > 80) { lastPost = now; post({ type: 'phase', phase: 'model', value: total ? Math.min(1, got / total) : 0, got, total: total || got, fromCache }) }
   }
   post({ type: 'phase', phase: 'model', value: 1, got, total: got, fromCache })
-  if (!fromCache && cache) {
+  if (!fromCache && cache && !appAsset) {
     try { await cache.put(url, new Response(new Blob(chunks), { headers: { 'content-type': 'application/octet-stream', 'content-length': String(got) } })) } catch {}
   }
   const out = new Uint8Array(got); let o = 0
@@ -59,14 +67,14 @@ async function fetchModel({ url, cacheName, fallbackSize }) {
 }
 
 let stretch = false
-async function init({ modelUrl, modelSize, ep, cacheName, sigmoid, stretch: st }) {
+async function init({ modelUrl, modelSize, ep, cacheName, sigmoid, stretch: st, nativeCache }) {
   stretch = !!st
   post({ type: 'phase', phase: 'engine', value: 0 })
   ort.env.wasm.wasmPaths = { wasm: new URL(wasmUrl, self.location.href).href, mjs: new URL(mjsUrl, self.location.href).href }
   ort.env.wasm.numThreads = self.crossOriginIsolated ? Math.max(1, Math.min(4, Math.floor((self.navigator.hardwareConcurrency || 2) / 2))) : 1
   ort.env.wasm.proxy = false
   useSigmoid = sigmoid !== false
-  const bytes = await fetchModel({ url: modelUrl, cacheName, fallbackSize: modelSize })
+  const bytes = await fetchModel({ url: modelUrl, cacheName, fallbackSize: modelSize, nativeCache })
   post({ type: 'phase', phase: 'compile', value: 0 })
   session = await ort.InferenceSession.create(bytes, { executionProviders: [ep === 'webgpu' ? 'webgpu' : 'wasm'], graphOptimizationLevel: 'all' })
   inputName = session.inputNames.includes('input_image') ? 'input_image' : session.inputNames[0]

@@ -1,6 +1,6 @@
-import { perf } from '../lib/perf.js'
+import { perf, usePerf } from '../lib/perf.js'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { motion, AnimatePresence, useMotionValue, useSpring } from 'framer-motion'
+import { motion, AnimatePresence, useMotionValue, useSpring, useReducedMotion } from 'framer-motion'
 import { Dropzone, AnimatedNumber } from '../components/ui.jsx'
 import { Icon, SPRING, computeHistogram } from './studio/controls.jsx'
 import CropOverlay, { fitAspect } from './studio/CropOverlay.jsx'
@@ -146,7 +146,7 @@ export default function ImageStudio() {
   useEffect(() => {
     const onKey = (e) => {
       const t = e.target
-      if (t && (t.tagName === 'TEXTAREA' || (t.tagName === 'INPUT' && t.type === 'text'))) return
+      if (t?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t?.tagName)) return
       if (!(e.ctrlKey || e.metaKey)) return
       const k = e.key.toLowerCase()
       if (k === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo() }
@@ -341,7 +341,7 @@ export default function ImageStudio() {
 
   const togglePlay = useCallback(async () => {
     const v = vidRef.current; if (!v) return
-    audioRef.current?.ctx.resume?.()
+    try { audioRef.current?.ctx.resume?.()?.catch?.(() => {}) } catch {}
     if (v.paused) { try { await v.play(); setPlaying(true) } catch { say('Playback was blocked by the browser') } }
     else { v.pause(); setPlaying(false) }
   }, [say])
@@ -693,7 +693,7 @@ export default function ImageStudio() {
             </div>
 
             {/* file chip */}
-            <motion.div className="absolute top-4 left-4 flex items-center gap-2.5 pl-2 pr-3.5 py-1.5 rounded-full max-w-[34%]" initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} transition={{ ...SPRING, delay: 0.15 }}
+            <motion.div className="absolute top-[58px] md:top-4 left-3 md:left-4 flex items-center gap-2.5 pl-2 pr-3.5 py-1.5 rounded-full max-w-[34%]" initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} transition={{ ...SPRING, delay: 0.15 }}
               style={{ background: 'rgba(20,17,15,.72)', color: '#eee', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,.08)' }}>
               <span className="w-7 h-7 rounded-full grid place-items-center shrink-0" style={{ background: 'var(--copper)', color: '#fff' }}><Icon n={isVideo ? 'film' : 'image'} s={14} /></span>
               <span className="min-w-0 leading-tight"><span className="block text-[11.5px] font-semibold truncate">{src.name}</span><span className="block text-[10px] opacity-60 tabular-nums">{src.w}×{src.h}{isVideo ? ` · ${fmtTime(src.dur)}` : ''}</span></span>
@@ -710,7 +710,7 @@ export default function ImageStudio() {
               <Sep />
               <TB icon="wand" label="Auto enhance" onClick={autoEnhance} />
               <TB icon="compare" label="Before / after" active={split != null} onClick={() => setSplit(split == null ? 0.5 : null)} />
-              <TB icon="eye" label="Hold to see original" active={holdOrig} onDown={() => setHoldOrig(true)} onUp={() => setHoldOrig(false)} />
+              <TB icon="eye" label="Hold to see original" active={holdOrig} onDown={() => setHoldOrig(true)} onUp={() => setHoldOrig(false)} onKeyDown={(e) => { if (e.code === 'Space' || e.key === 'Enter') setHoldOrig(true) }} onKeyUp={(e) => { if (e.code === 'Space' || e.key === 'Enter') setHoldOrig(false) }} onBlur={() => setHoldOrig(false)} />
               <Sep />
               <TB icon="zoom" label={zoomPct > 102 ? 'Fit to screen' : '100% pixels'} active={zoomPct > 102} onClick={() => setZoom(zoomPct > 102 ? 1 : clamp(Math.max(showDims.w / dw, 2), 1, 8))} />
               <TB icon="reset" label="Replace file" disabled={busy} onClick={() => fileRef.current?.click()} />
@@ -752,25 +752,25 @@ export default function ImageStudio() {
           <AnimatePresence initial={false}>
             {isVideo && (
               <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 62, opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={SPRING} className="shrink-0 overflow-hidden" style={{ background: '#1a1613', borderTop: '1px solid rgba(255,255,255,.07)' }}>
-                <div className="h-[62px] px-5 flex items-center gap-4 text-white">
+                <div className="h-[62px] px-2 sm:px-5 flex items-center gap-2 sm:gap-4 text-white">
                   <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.86 }} onClick={togglePlay} aria-label={playing ? 'Pause' : 'Play'} className="w-10 h-10 rounded-full grid place-items-center shrink-0" style={{ background: 'var(--copper)' }}>
                     <AnimatePresence mode="wait" initial={false}><motion.span key={playing ? 'p' : 'q'} initial={{ scale: 0.4, rotate: -45, opacity: 0 }} animate={{ scale: 1, rotate: 0, opacity: 1 }} exit={{ scale: 0.4, opacity: 0 }} transition={{ duration: 0.14 }}><Icon n={playing ? 'pause' : 'play'} s={17} w={2} /></motion.span></AnimatePresence>
                   </motion.button>
-                  <span className="mono text-[11.5px] tabular-nums opacity-80 w-[92px] shrink-0">{fmtTime(vt)} / {fmtTime(src.dur)}</span>
+                  <span className="mono text-[10px] sm:text-[11.5px] tabular-nums opacity-80 w-[72px] sm:w-[92px] shrink-0">{fmtTime(vt)} / {fmtTime(src.dur)}</span>
                   <div className="relative flex-1 h-6 flex items-center group">
                     <div className="absolute left-0 right-0 h-[5px] rounded-full" style={{ background: 'rgba(255,255,255,.14)' }} />
                     <div className="absolute left-0 h-[5px] rounded-full" style={{ width: `${(vt / (src.dur || 1)) * 100}%`, background: 'var(--copper)' }} />
                     <div className="absolute w-3.5 h-3.5 rounded-full -ml-[7px] transition-transform group-hover:scale-125" style={{ left: `${(vt / (src.dur || 1)) * 100}%`, background: '#fff', boxShadow: '0 2px 8px rgba(0,0,0,.6)' }} />
                     <input type="range" min={0} max={src.dur || 1} step={0.01} value={vt} onChange={(e) => scrub(+e.target.value)} aria-label="Seek" className="absolute inset-0 w-full opacity-0 cursor-pointer" />
                   </div>
-                  <div className="flex gap-1 shrink-0">
+                  <div className="flex gap-0.5 sm:gap-1 shrink-0">
                     {[0.5, 1, 1.5, 2].map((r) => (
-                      <button key={r} onClick={() => setRate(r)} className="relative px-2 py-1 rounded-full text-[10.5px] font-bold" style={{ color: rate === r ? '#111' : 'rgba(255,255,255,.65)' }}>
+                      <button key={r} onClick={() => setRate(r)} className="relative px-1 sm:px-2 py-1 rounded-full text-[9px] sm:text-[10.5px] font-bold" style={{ color: rate === r ? '#111' : 'rgba(255,255,255,.65)' }}>
                         <motion.span className="absolute inset-0 rounded-full" style={{ background: '#fff' }} initial={false} animate={{ opacity: rate === r ? 1 : 0, scale: rate === r ? 1 : 0.6 }} transition={SPRING} /><span className="relative">{r}×</span>
                       </button>
                     ))}
                   </div>
-                  <motion.button whileTap={{ scale: 0.82 }} onClick={toggleMute} aria-label="Mute" className="opacity-80 hover:opacity-100 shrink-0"><Icon n={muted ? 'mute' : 'vol'} s={18} /></motion.button>
+                  <motion.button whileTap={{ scale: 0.82 }} onClick={toggleMute} aria-label={muted ? 'Unmute' : 'Mute'} aria-pressed={muted} className="opacity-80 hover:opacity-100 shrink-0"><Icon n={muted ? 'mute' : 'vol'} s={18} /></motion.button>
                 </div>
               </motion.div>
             )}
@@ -806,10 +806,10 @@ export default function ImageStudio() {
 }
 
 /* ----------------------------------- small pieces ----------------------------------- */
-function TB({ icon, label, onClick, onDown, onUp, active, disabled }) {
+function TB({ icon, label, onClick, onDown, onUp, onKeyDown, onKeyUp, onBlur, active, disabled }) {
   return (
-    <motion.button title={label} aria-label={label} disabled={disabled} onClick={onClick}
-      onPointerDown={onDown} onPointerUp={onUp} onPointerLeave={onUp} onPointerCancel={onUp}
+    <motion.button title={label} aria-label={label} aria-pressed={active == null ? undefined : active} disabled={disabled} onClick={onClick}
+      onPointerDown={onDown} onPointerUp={onUp} onPointerLeave={onUp} onPointerCancel={onUp} onKeyDown={onKeyDown} onKeyUp={onKeyUp} onBlur={onBlur}
       whileHover={disabled ? {} : { scale: 1.14, y: -1 }} whileTap={disabled ? {} : { scale: 0.82 }}
       className="w-9 h-9 rounded-full grid place-items-center shrink-0" style={{ opacity: disabled ? 0.3 : 1, background: active ? 'var(--copper)' : 'transparent', color: '#fff' }}>
       <Icon n={icon} s={17} />
@@ -832,13 +832,16 @@ function Ring({ value }) {
 }
 
 function HeroSwatches({ loading }) {
+  const perfNow = usePerf()
+  const reduceMotion = useReducedMotion() || perfNow.level === 'lite'
   const cols = ['#E8A33D', '#C0563B', '#7A4E9C', '#2F6F9E', '#2F9C95', '#6E9C3B']
   return (
     <div className="py-6">
       <div className="flex justify-center items-end gap-2.5 h-[66px] mb-5">
         {cols.map((c, i) => (
           <motion.span key={c} className="block w-9 rounded-full" style={{ background: `linear-gradient(180deg, ${c}, color-mix(in srgb, ${c} 55%, #000))`, boxShadow: `0 8px 18px -6px ${c}` }}
-            animate={{ height: loading ? [30, 66, 30] : [34, 58 - (i % 3) * 8, 34] }} transition={{ repeat: Infinity, duration: loading ? 0.9 : 2.6, delay: i * 0.15, ease: 'easeInOut' }} />
+            animate={reduceMotion ? { height: loading ? 48 : 42 + (i % 3) * 6 } : { height: loading ? [30, 66, 30] : [34, 58 - (i % 3) * 8, 34] }}
+            transition={reduceMotion ? { duration: 0 } : { repeat: Infinity, duration: loading ? 0.9 : 2.6, delay: i * 0.15, ease: 'easeInOut' }} />
         ))}
       </div>
       <div className="display font-semibold text-[19px] text-center">{loading ? 'Opening…' : 'Drop a photo or a video'}</div>

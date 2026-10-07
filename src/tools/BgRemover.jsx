@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { motion, AnimatePresence, useMotionValue, useSpring } from 'framer-motion'
+import { motion, AnimatePresence, useMotionValue, useSpring, useReducedMotion } from 'framer-motion'
 import { zipSync } from 'fflate'
 import { Dropzone, AnimatedNumber } from '../components/ui.jsx'
 import { Icon, SPRING } from './studio/controls.jsx'
+import { usePerf } from '../lib/perf.js'
 import { BackgroundPanel, RefinePanel } from './bg/Panels.jsx'
 import { DownloadPanel } from './bg/Dock.jsx'
 import { warmUp, subscribe, segment, retry, setEngine, shutdown, TIERS } from '../lib/bg/engine.js'
@@ -24,6 +25,9 @@ const VIEWS = [['result', 'Result'], ['original', 'Original'], ['matte', 'Matte'
 const PAD = { l: 36, r: 36, t: 82, b: 24 }
 
 export default function BgRemover() {
+  const perfNow = usePerf()
+  const reduceMotion = useReducedMotion() || perfNow.level === 'lite'
+
   /* ---------------------------------- engine ---------------------------------- */
   const [eng, setEng] = useState({ phase: 'idle', value: 0, ready: false, error: '' })
   useEffect(() => {
@@ -48,6 +52,7 @@ export default function BgRemover() {
   const [selId, setSelId] = useState(null)
   const [rev, setRev] = useState(0)
   const [reveal, setReveal] = useState(null)
+  useEffect(() => { if (reduceMotion) setReveal(null) }, [reduceMotion])
   const [elapsed, setElapsed] = useState(0)
   const busyRef = useRef(false)
 
@@ -185,7 +190,8 @@ export default function BgRemover() {
         const r = await segment(d.work.canvas)
         d.M = netMaskToWork(r.mask, r.size, d.work.w, d.work.h); d.M0 = d.M.slice()
         patch(next.id, { status: 'done', ms: r.ms, via: r.mode === 'online' ? `BiRefNet ${TIERS[r.tier].name}` : 'IS-Net · offline' })
-        setRev((n) => n + 1); setReveal(next.id)
+        setRev((n) => n + 1)
+        if (!reduceMotion) setReveal(next.id)
         recentAction(`Removed background from ${next.name}`)
       } catch (e) {
         if (e?.message === 'Engine stopped or restarted' && alive.current) patch(next.id, { status: 'queued', error: '' })
@@ -193,7 +199,7 @@ export default function BgRemover() {
       }
       busyRef.current = false
     })()
-  }, [items, eng.error, patch])
+  }, [items, eng.error, patch, reduceMotion])
 
   useEffect(() => {
     if (sel?.status !== 'working') { setElapsed(0); return }
@@ -231,10 +237,10 @@ export default function BgRemover() {
 
   // reveal underlay (original) while the cut-out wipes in
   useEffect(() => {
-    if (reveal && reveal === selId && underRef.current && selData) {
+    if (!reduceMotion && reveal && reveal === selId && underRef.current && selData) {
       const u = underRef.current, { w, h, canvas } = selData.work; u.width = w; u.height = h; u.getContext('2d').drawImage(canvas, 0, 0)
     }
-  }, [reveal, selId, selData])
+  }, [reveal, selId, selData, reduceMotion])
 
   useEffect(() => { zoomMV.set(1); panX.set(0); panY.set(0); setZoomPct(100); setTool('none') }, [selId]) // eslint-disable-line
 
@@ -298,10 +304,21 @@ export default function BgRemover() {
   }
   const onStageUp = () => { painting.current = null }
   const undoStroke = useCallback(() => { const d = selData; const m = d?.undo.pop(); if (m) { d.M = m; d.dirty = d.undo.length > 0; setUndoN((n) => n + 1); setRev((n) => n + 1) } }, [selData])
-  const resetMask = () => { const d = selData; if (!d?.M0) return; d.undo.push(d.M.slice()); d.M = d.M0.slice(); d.dirty = false; setUndoN((n) => n + 1); setRev((n) => n + 1); say('Back to the original AI cut') }
+  const resetMask = () => {
+    const d = selData
+    if (!d?.M0) return
+    d.undo.push(d.M.slice())
+    if (d.undo.length > MAX_UNDO_STROKES) d.undo.shift()
+    d.M = d.M0.slice(); d.dirty = false
+    setUndoN((n) => n + 1); setRev((n) => n + 1); say('Back to the original AI cut')
+  }
   const dirty = !!selData?.dirty
   useEffect(() => {
-    const onKey = (e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !(e.target.tagName === 'INPUT')) { e.preventDefault(); undoStroke() } }
+    const onKey = (e) => {
+      const target = e.target
+      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'z' || target?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target?.tagName)) return
+      e.preventDefault(); undoStroke()
+    }
     window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey)
   }, [undoStroke])
 
@@ -406,6 +423,7 @@ export default function BgRemover() {
 
   /* ============================================ EDITOR ============================================ */
   const working = sel && (sel.status === 'working' || sel.status === 'queued' || sel.status === 'loading')
+  const revealActive = !reduceMotion && reveal === selId
   const ringPx = ring && tool !== 'none' ? { left: `${ring.x * 100}%`, top: `${ring.y * 100}%`, width: `${(radiusWork() * 2 / ww) * 100}%` } : null
   const Panel = tab === 'background' ? BackgroundPanel : tab === 'refine' ? RefinePanel : DownloadPanel
   const ahead = items.filter((i) => i.status === 'queued' || i.status === 'working').findIndex((i) => i.id === selId)
@@ -426,20 +444,20 @@ export default function BgRemover() {
             <div className="absolute inset-0 grid place-items-center" style={{ paddingTop: PAD.t, paddingBottom: PAD.b, paddingLeft: PAD.l, paddingRight: PAD.r }}>
               <motion.div ref={wrapRef} className="relative rounded-md" initial={false} animate={{ width: dw, height: dh }} transition={SPRING}
                 style={{ scale: zoomSpring, x: panX, y: panY, background: CHECKER, boxShadow: '0 40px 70px -28px rgba(26,24,23,.55), 0 14px 26px -14px rgba(26,24,23,.35), 0 0 0 1px var(--border)' }}>
-                <canvas ref={underRef} className="absolute inset-0 w-full h-full rounded-md" style={{ display: reveal && reveal === selId ? 'block' : 'none' }} />
-                <motion.canvas key={reveal === selId ? 'r' : 'n'} ref={canvasRef} className="absolute inset-0 w-full h-full rounded-md"
-                  initial={reveal && reveal === selId ? { clipPath: 'inset(0 100% 0 0)' } : false} animate={{ clipPath: 'inset(0 0% 0 0)', filter: working ? 'saturate(.55) brightness(.92)' : 'saturate(1) brightness(1)' }}
-                  transition={{ clipPath: { duration: 1.15, ease: [0.22, 1, 0.36, 1] }, filter: { duration: 0.4 } }} onAnimationComplete={() => reveal && setReveal(null)} />
-                {reveal && reveal === selId && <motion.div className="absolute top-0 bottom-0 w-[3px] pointer-events-none" initial={{ left: '0%', opacity: 1 }} animate={{ left: '100%', opacity: [1, 1, 0] }} transition={{ duration: 1.15, ease: [0.22, 1, 0.36, 1] }} style={{ background: 'linear-gradient(180deg, transparent, var(--copper), transparent)', boxShadow: '0 0 24px 6px var(--copper)' }} />}
+                <canvas ref={underRef} className="absolute inset-0 w-full h-full rounded-md" style={{ display: revealActive ? 'block' : 'none' }} />
+                <motion.canvas key={revealActive ? 'r' : 'n'} ref={canvasRef} className="absolute inset-0 w-full h-full rounded-md"
+                  initial={revealActive ? { clipPath: 'inset(0 100% 0 0)' } : false} animate={{ clipPath: 'inset(0 0% 0 0)', filter: working ? 'saturate(.55) brightness(.92)' : 'saturate(1) brightness(1)' }}
+                  transition={{ clipPath: { duration: reduceMotion ? 0 : 1.15, ease: [0.22, 1, 0.36, 1] }, filter: { duration: reduceMotion ? 0 : 0.4 } }} onAnimationComplete={() => revealActive && setReveal(null)} />
+                {revealActive && <motion.div className="absolute top-0 bottom-0 w-[3px] pointer-events-none" initial={{ left: '0%', opacity: 1 }} animate={{ left: '100%', opacity: [1, 1, 0] }} transition={{ duration: reduceMotion ? 0 : 1.15, ease: [0.22, 1, 0.36, 1] }} style={{ background: 'linear-gradient(180deg, transparent, var(--copper), transparent)', boxShadow: '0 0 24px 6px var(--copper)' }} />}
 
                 {/* scanning treatment */}
                 <AnimatePresence>
                   {working && (
                     <motion.div className="absolute inset-0 overflow-hidden rounded-md pointer-events-none" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                      <motion.div className="absolute left-0 right-0 h-28" animate={{ top: ['-20%', '100%'] }} transition={{ repeat: Infinity, duration: 1.8, ease: 'easeInOut', repeatType: 'reverse' }}
+                      <motion.div className="absolute left-0 right-0 h-28" animate={reduceMotion ? { top: '40%' } : { top: ['-20%', '100%'] }} transition={reduceMotion ? { duration: 0 } : { repeat: Infinity, duration: 1.8, ease: 'easeInOut', repeatType: 'reverse' }}
                         style={{ background: 'linear-gradient(180deg, transparent, color-mix(in srgb, var(--copper) 35%, transparent) 70%, var(--copper))', borderBottom: '2px solid #fff', boxShadow: '0 10px 30px color-mix(in srgb, var(--copper) 70%, transparent)' }} />
                       {[['top-3 left-3', { borderTopWidth: 3, borderLeftWidth: 3 }], ['top-3 right-3', { borderTopWidth: 3, borderRightWidth: 3 }], ['bottom-3 left-3', { borderBottomWidth: 3, borderLeftWidth: 3 }], ['bottom-3 right-3', { borderBottomWidth: 3, borderRightWidth: 3 }]].map(([pos, b]) => (
-                        <motion.span key={pos} className={`absolute w-7 h-7 ${pos}`} animate={{ scale: [1, 1.12, 1], opacity: [0.9, 1, 0.9] }} transition={{ repeat: Infinity, duration: 1.4 }}
+                        <motion.span key={pos} className={`absolute w-7 h-7 ${pos}`} animate={reduceMotion ? { scale: 1, opacity: 1 } : { scale: [1, 1.12, 1], opacity: [0.9, 1, 0.9] }} transition={reduceMotion ? { duration: 0 } : { repeat: Infinity, duration: 1.4 }}
                           style={{ ...b, borderStyle: 'solid', borderColor: '#fff', borderRadius: 6 }} />
                       ))}
                     </motion.div>
@@ -585,9 +603,10 @@ function StatusCard({ eng, sel, elapsed, ahead }) {
 }
 
 function Hero({ eng, onRetry }) {
+  const reduceMotion = useReducedMotion()
   return (
     <div className="py-7">
-      <HeroArt />
+      <HeroArt reduceMotion={reduceMotion} />
       <div className="display font-semibold text-[22px] text-center mt-5">Drop photos to cut out the background</div>
       <div className="text-[13px] mt-1.5 text-center" style={{ color: 'var(--muted)' }}>Up to 6 images · paste with Ctrl+V · originals stay on your device</div>
       <EngineChooser eng={eng} />
@@ -595,14 +614,14 @@ function Hero({ eng, onRetry }) {
   )
 }
 
-function HeroArt() {
+function HeroArt({ reduceMotion }) {
   return (
     <div className="mx-auto w-[280px] h-[170px] relative">
       <div className="absolute inset-0 rounded-2xl overflow-hidden" style={{ background: CHECKER, boxShadow: '0 24px 40px -20px rgba(26,24,23,.5), 0 0 0 1px var(--border)' }}>
-        <motion.div className="absolute inset-y-0 w-24" animate={{ left: ['-30%', '120%'] }} transition={{ repeat: Infinity, duration: 2.6, ease: 'easeInOut' }}
+        <motion.div className="absolute inset-y-0 w-24" animate={reduceMotion ? { left: '50%' } : { left: ['-30%', '120%'] }} transition={reduceMotion ? { duration: 0 } : { repeat: Infinity, duration: 2.6, ease: 'easeInOut' }}
           style={{ background: 'linear-gradient(90deg, transparent, color-mix(in srgb, var(--copper) 45%, transparent), transparent)', borderRight: '2px solid var(--copper)' }} />
       </div>
-      <motion.svg viewBox="0 0 280 170" className="absolute inset-0" animate={{ y: [0, -7, 0] }} transition={{ repeat: Infinity, duration: 3, ease: 'easeInOut' }} style={{ filter: 'drop-shadow(0 12px 10px rgba(0,0,0,.28))' }}>
+      <motion.svg viewBox="0 0 280 170" className="absolute inset-0" animate={reduceMotion ? { y: 0 } : { y: [0, -7, 0] }} transition={reduceMotion ? { duration: 0 } : { repeat: Infinity, duration: 3, ease: 'easeInOut' }} style={{ filter: 'drop-shadow(0 12px 10px rgba(0,0,0,.28))' }}>
         <defs><linearGradient id="hg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#E0935F" /><stop offset="1" stopColor="#B4715A" /></linearGradient></defs>
         <circle cx="140" cy="62" r="30" fill="url(#hg)" />
         <path d="M70 170c0-38 28-60 70-60s70 22 70 60Z" fill="url(#hg)" />

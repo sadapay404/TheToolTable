@@ -6,6 +6,9 @@
 //            with WebGPU (or the CPU when WebGPU is missing). Photos are never uploaded in either mode —
 //            "online" only means "fetch a bigger model from the internet".
 
+import { isTauri } from '@tauri-apps/api/core'
+import { appFileUrl, clearNativeModelCache, downloadToAppCache, isAppCacheFilePresent } from '../backgroundTransfers.js'
+
 const BASE = () => import.meta.env.BASE_URL || '/'
 const OFFLINE_URL = () => new URL(`${BASE()}models/isnet-quint8.onnx`, location.href).href
 export const MODEL_BYTES = 44342436
@@ -48,23 +51,39 @@ export function planFor(tier, gpu) {
 const cpuPlan = (tier) => ({ tier, url: `${HF}/${TIERS[tier].repo}/resolve/main/onnx/model.onnx`, ep: 'wasm', bytes: TIERS[tier].cpuMB * 1e6, mb: TIERS[tier].cpuMB, norm: 'imagenet', sigmoid: true, file: 'fp32' })
 
 /* ----------------------------------- cache helpers ----------------------------------- */
+function nativeModelName(plan) {
+  const tierName = plan.tier === 'max' ? 'max' : 'lite'
+  return `birefnet-${tierName}-${plan.file || 'model'}.onnx`
+}
+
 export async function cachedSet() {
   const out = {}
+  const gpu = await detectGPU()
+  if (isTauri()) {
+    for (const tier of Object.keys(TIERS)) {
+      const plans = [planFor(tier, gpu), tier === 'pro' ? cpuPlan(tier) : null].filter(Boolean)
+      for (const plan of plans) {
+        if (await isAppCacheFilePresent(nativeModelName(plan), plan.bytes, 'TheToolTable/models')) out[tier] = true
+      }
+    }
+  }
   try {
-    const c = await caches.open(CACHE_NAME)
-    const gpu = await detectGPU()
-    for (const t of Object.keys(TIERS)) {
-      const urls = [planFor(t, gpu)?.url, t === 'pro' ? cpuPlan(t).url : null].filter(Boolean)
-      for (const u of urls) if (await c.match(u)) out[t] = true
+    const cache = await caches.open(CACHE_NAME)
+    for (const tier of Object.keys(TIERS)) {
+      const urls = [planFor(tier, gpu)?.url, tier === 'pro' ? cpuPlan(tier).url : null].filter(Boolean)
+      for (const url of urls) if (await cache.match(url)) out[tier] = true
     }
   } catch {}
   return out
 }
-export async function clearModelCache() { try { await caches.delete(CACHE_NAME) } catch {} }
+export async function clearModelCache() {
+  try { await caches.delete(CACHE_NAME) } catch {}
+  await clearNativeModelCache()
+}
 
 /* ----------------------------------- engine instances ----------------------------------- */
 const listeners = new Set()
-const mk = (kind) => ({ kind, worker: null, readyPromise: null, pending: new Map(), plan: null, state: { phase: 'idle', value: 0, ready: false, error: '', backend: '', threads: 1, got: 0, total: 0, fromCache: false, note: '' } })
+const mk = (kind) => ({ kind, worker: null, readyPromise: null, preparingPromise: null, generation: 0, pending: new Map(), plan: null, state: { phase: 'idle', value: 0, ready: false, error: '', backend: '', threads: 1, got: 0, total: 0, fromCache: false, note: '' } })
 const engines = { offline: mk('offline'), online: mk('online') }
 let nextId = 1
 
@@ -82,6 +101,8 @@ export const getState = () => view()
 export const getMode = () => active
 
 function killWorker(e) {
+  e.generation += 1
+  e.preparingPromise = null
   try { e.worker?.terminate() } catch {}
   e.worker = null; e.readyPromise = null
   e.pending.forEach((p) => p.reject(new Error('Engine stopped or restarted')))
@@ -124,27 +145,91 @@ function boot(e, plan) {
       }
     }
     if (e.kind === 'offline') e.worker.postMessage({ type: 'init', modelUrl: OFFLINE_URL(), modelSize: MODEL_BYTES })
-    else e.worker.postMessage({ type: 'init', modelUrl: plan.url, modelSize: plan.bytes, ep: plan.ep, cacheName: CACHE_NAME, sigmoid: plan.sigmoid, stretch: plan.stretch })
+    else e.worker.postMessage({ type: 'init', modelUrl: plan.url, modelSize: plan.bytes, ep: plan.ep, cacheName: CACHE_NAME, sigmoid: plan.sigmoid, stretch: plan.stretch, nativeCache: !!plan.nativeCache })
   })
   e.readyPromise.catch(() => { e.readyPromise = null })
   return e.readyPromise
 }
 
+async function prepareNativeModel(e, plan, generation = e.generation) {
+  if (!isTauri()) return plan
+  e.plan = plan
+  patch(e, { phase: 'model', value: 0, ready: false, error: '', got: 0, total: plan.bytes, fromCache: false })
+  try {
+    const path = await downloadToAppCache(plan.url, {
+      name: nativeModelName(plan),
+      directory: 'TheToolTable/models',
+      expectedBytes: plan.bytes,
+      onProgress: (progress) => {
+        if (e.generation !== generation) return
+        patch(e, {
+          phase: 'model',
+          value: progress.progress,
+          got: progress.receivedBytes,
+          total: progress.totalBytes || plan.bytes,
+          fromCache: !!progress.fromCache,
+        })
+      },
+    })
+    if (e.generation !== generation) throw new Error('Engine stopped or restarted')
+    patch(e, { phase: 'model', value: 1, got: plan.bytes, total: plan.bytes, fromCache: true })
+    return { ...plan, sourceUrl: plan.url, url: appFileUrl(path), nativeCache: true }
+  } catch (error) {
+    if (e.generation === generation) {
+      patch(e, { error: error?.message || 'The background model download failed.', phase: 'error', ready: false })
+    }
+    throw error
+  }
+}
+
 async function start(e, tier = active.tier) {
   if (e.readyPromise) return e.readyPromise
+  if (e.preparingPromise) return e.preparingPromise
   if (e.kind === 'offline') return boot(e, null)
-  const gpu = await detectGPU(); gpuInfo = gpu
-  const plan = planFor(tier, gpu)
-  if (!plan) { patch(e, { error: `${TIERS[tier].name} needs a WebGPU graphics card, which this browser doesn’t expose. Choose Pro, or switch to Offline.`, phase: 'error' }); return Promise.reject(new Error(e.state.error)) }
-  try { return await boot(e, plan) } catch (err) {
-    // WebGPU can fail on odd drivers — Pro quietly falls back to the CPU weights.
-    let devModel = false
-    try { devModel = !!localStorage.getItem('ttt.bg.devModel') } catch {}
-    if (plan.ep === 'webgpu' && tier === 'pro' && !devModel) {
-      const p2 = cpuPlan('pro')
-      const r = boot(e, p2); patch(e, { note: 'WebGPU failed here — using the CPU weights instead.' }); return r
+
+  const requestedGeneration = e.generation
+  const preparing = (async () => {
+    const gpu = await detectGPU(); gpuInfo = gpu
+    const plan = planFor(tier, gpu)
+    if (!plan) {
+      const message = `${TIERS[tier].name} needs a WebGPU graphics card, which this browser doesn’t expose. Choose Pro, or switch to Offline.`
+      patch(e, { error: message, phase: 'error' })
+      throw new Error(message)
     }
-    throw err
+
+    // Native transfers are owned by Rust/WorkManager, not this worker. They
+    // continue if React unmounts or Android suspends the WebView.
+    const runtimePlan = await prepareNativeModel(e, plan, requestedGeneration)
+    if (e.generation !== requestedGeneration) throw new Error('Engine stopped or restarted')
+    const workerGeneration = requestedGeneration + 1 // boot() replaces the worker and increments once
+    try {
+      return await boot(e, runtimePlan)
+    } catch (error) {
+      if (e.generation !== workerGeneration) throw error
+      // WebGPU can fail on odd drivers — Pro quietly falls back to the CPU weights.
+      let devModel = false
+      try { devModel = !!localStorage.getItem('ttt.bg.devModel') } catch {}
+      if (runtimePlan.ep === 'webgpu' && tier === 'pro' && !devModel) {
+        const cpu = cpuPlan('pro')
+        const fallbackGeneration = e.generation
+        const cpuRuntimePlan = await prepareNativeModel(e, cpu, fallbackGeneration)
+        if (e.generation !== fallbackGeneration) throw new Error('Engine stopped or restarted')
+        const fallbackWorkerGeneration = fallbackGeneration + 1
+        patch(e, { note: 'WebGPU failed here — using the CPU weights instead.' })
+        try { return await boot(e, cpuRuntimePlan) }
+        catch (fallbackError) {
+          if (e.generation !== fallbackWorkerGeneration) throw fallbackError
+          throw fallbackError
+        }
+      }
+      throw error
+    }
+  })()
+  e.preparingPromise = preparing
+  try {
+    return await preparing
+  } finally {
+    if (e.preparingPromise === preparing) e.preparingPromise = null
   }
 }
 

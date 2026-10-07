@@ -14,7 +14,13 @@ export default function Subtitles({ media, segs, setSegs, toast }) {
   const [now, setNow] = useState(0), el = useRef(null), [fmt, setFmt] = useState('srt'), [max, setMax] = usePref('voice', 'max', 42), [shift, setShift] = useState(0), [find, setFind] = useState(''), [rep, setRep] = useState(''), [mux, setMux] = useState(0), listRef = useRef(null)
   useEffect(() => { let id; const tick = () => { if (el.current) setNow(el.current.currentTime); id = requestAnimationFrame(tick) }; id = requestAnimationFrame(tick); return () => cancelAnimationFrame(id) }, [media?.url])
   const activeIdx = segs.findIndex((s) => now >= s.start && now < s.end)
-  useEffect(() => { if (activeIdx >= 0 && listRef.current && !el.current?.paused) listRef.current.children[activeIdx]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }) }, [activeIdx])
+  useEffect(() => {
+    if (activeIdx < 0 || !listRef.current || el.current?.paused) return
+    listRef.current.children[activeIdx]?.scrollIntoView({
+      block: 'nearest',
+      behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ? 'auto' : 'smooth',
+    })
+  }, [activeIdx])
   const maxTime = Math.max(0.1, Math.min(MAX_SUBTITLE_SECONDS, Number(media?.duration) || MAX_SUBTITLE_SECONDS))
   const upd = (id, patch) => setSegs((rows) => rows.map((x) => (x.id === id ? { ...x, ...patch } : x)))
   const commitTime = (segment, field, value) => {

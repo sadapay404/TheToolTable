@@ -27,3 +27,10 @@ export function safeMediaExtension(name, fallback = 'mp4') {
   const match = String(name || '').match(/\.([a-z0-9]{1,10})$/i)
   return match ? match[1].toLowerCase() : fallback
 }
+
+/** Parse the single scalar emitted by ffprobe's `format=duration` output mode. */
+export function parseProbeDuration(value) {
+  const duration = Number(String(value ?? '').trim())
+  if (!Number.isFinite(duration) || duration <= 0) throw new Error('FFmpeg could not read a valid media duration')
+  return duration
+}

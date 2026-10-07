@@ -66,6 +66,53 @@ export const DEFAULTS = {
 }
 export const NUMERIC_KEYS = Object.keys(DEFAULTS).filter((k) => typeof DEFAULTS[k] === 'number')
 
+const VIZ_RANGES = {
+  bars: [16, 400], thick: [0.15, 1], round: [0, 1], mirror: [0, 1], peaks: [0, 1], reflect: [0, 1], lineW: [1, 12], sides: [3, 12],
+  size: [0.4, 1.8], vx: [-50, 50], vy: [-50, 50], rotation: [-180, 180], spin: [-60, 60], cycle: [0, 2], glow: [0, 1.5], opacity: [0.1, 1], reverse: [0, 1],
+  bgDim: [0, 0.9], bgBlur: [0, 40], bgPulse: [0, 1], vignette: [0, 1], grain: [0, 1], titleSize: [0.4, 2.2], showTime: [0, 1],
+  coverSize: [0, 1], coverSpin: [0, 1], gain: [0.3, 3], smooth: [0, 0.95], fmin: [20, 400], fmax: [2000, 20000],
+  beatSens: [0.3, 2], shake: [0, 1], zoom: [0, 1], flash: [0, 1],
+}
+const VIZ_INTEGERS = new Set(['bars', 'lineW', 'sides', 'round', 'mirror', 'peaks', 'reflect', 'reverse', 'showTime', 'coverSpin'])
+const VIZ_ENUMS = {
+  style: STYLES.map(([id]) => id), palette: ['custom', ...PALETTES.map((p) => p.id)], cmode: ['solid', 'gradient', 'amp', 'rainbow'],
+  bgType: ['gradient', 'solid', 'aurora', 'stars', 'retro', 'image'], font: FONTS.map(([id]) => id),
+  tpos: ['top', 'center', 'bottom'], talign: ['left', 'center', 'right'], tanim: ['none', 'pulse', 'float', 'type'],
+  progress: ['line', 'pill', 'dots', 'none'], cover: ['off', 'circle', 'square'], coverPos: ['center', 'corner'],
+}
+const VIZ_COLORS = new Set(['c1', 'c2', 'c3', 'bg1', 'bg2'])
+const VIZ_TEXT_LIMITS = { title: 180, subtitle: 180, watermark: 80 }
+
+/** Sanitize only recognized, renderer-safe fields from imported or persisted data. */
+export function sanitizeVizPatch(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+  const clean = {}
+  for (const key of Object.keys(DEFAULTS)) {
+    if (!Object.prototype.hasOwnProperty.call(raw, key)) continue
+    const value = raw[key]
+    if (Object.prototype.hasOwnProperty.call(VIZ_RANGES, key)) {
+      if (typeof value !== 'number' || !Number.isFinite(value)) continue
+      const [min, max] = VIZ_RANGES[key]
+      const bounded = Math.min(max, Math.max(min, value))
+      clean[key] = VIZ_INTEGERS.has(key) ? Math.round(bounded) : bounded
+    } else if (Object.prototype.hasOwnProperty.call(VIZ_ENUMS, key)) {
+      if (typeof value === 'string' && VIZ_ENUMS[key].includes(value)) clean[key] = value
+    } else if (VIZ_COLORS.has(key)) {
+      if (typeof value === 'string' && /^#[\da-f]{6}$/i.test(value)) clean[key] = value.toUpperCase()
+    } else if (Object.prototype.hasOwnProperty.call(VIZ_TEXT_LIMITS, key)) {
+      if (typeof value === 'string') clean[key] = value.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '').slice(0, VIZ_TEXT_LIMITS[key])
+    }
+  }
+  return clean
+}
+
+export function sanitizeVizParams(raw) {
+  const safe = { ...DEFAULTS, ...sanitizeVizPatch(raw) }
+  // Uploaded artwork is not part of a saved look or browser storage.
+  if (safe.bgType === 'image') safe.bgType = 'gradient'
+  return safe
+}
+
 export function applyPalette(p, id) {
   const pl = palette(id)
   return { ...p, palette: id, c1: pl.c[0], c2: pl.c[1], c3: pl.c[2] }

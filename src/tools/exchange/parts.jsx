@@ -278,7 +278,7 @@ export function Stagger({ i = 0, children, className = '', style }) {
 
 /* ------------------------------------------------ clean building blocks ------------------------------------------------ */
 export function Panel({ children, className = '', style, pad = true, delay = 0 }) {
-  return <motion.section initial={{ opacity: 0, y: 22 }} animate={{ opacity: 1, y: 0 }} transition={{ ...SPRING, delay }} className={`rounded-[26px] border border-line ${pad ? 'p-5 sm:p-7' : ''} ${className}`} style={{ background: 'var(--surface)', boxShadow: 'var(--shadow)', ...style }}>{children}</motion.section>
+  return <motion.section initial={{ opacity: 0, y: 22 }} animate={{ opacity: 1, y: 0 }} transition={{ ...SPRING, delay }} className={`tool-panel rounded-[26px] border border-line ${pad ? 'p-5 sm:p-7' : ''} ${className}`} style={{ background: 'var(--surface)', boxShadow: 'var(--shadow)', ...style }}>{children}</motion.section>
 }
 export function Label({ children, right }) {
   return <div className="flex items-center justify-between mb-2.5"><span className="eyebrow">{children}</span>{right}</div>

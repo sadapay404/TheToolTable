@@ -4,6 +4,7 @@ import { AnimatedNumber, LiveProgress, Note } from '../components/ui.jsx'
 import RangeTrack, { TimeField, clock } from '../components/RangeTrack.jsx'
 import { fmtBytes, recentAction } from '../lib/utils.js'
 import { engine, getBase, isAndroidPlatform, setBase as persistEngineBase } from '../lib/engine.js'
+import { isPlaylistUrl } from '../lib/ytdlp-core.js'
 
 const SPRING = { type: 'spring', stiffness: 300, damping: 25 }
 
@@ -209,7 +210,7 @@ function JobCard({ job, onRemove }) {
           </div>
         </div>
       )}
-      {s.state === 'done' && <div className="mt-3 text-[12px] break-all" style={{ color: 'var(--muted)' }}>{savedMsg || s.file} · {fmtBytes(s.size)} · {s.elapsed.toFixed(1)}s</div>}
+      {s.state === 'done' && <div className="mt-3 text-[12px] break-all" style={{ color: 'var(--muted)' }}>{savedMsg || s.file} · {fmtBytes(s.size)} · {Number(s.elapsed || 0).toFixed(1)}s</div>}
     </motion.div>
   )
 }
@@ -247,12 +248,12 @@ function MediaCard({ info }) {
 /* ---------------------------------- main panel ---------------------------------- */
 
 const AUDIO_FORMATS = [['best', 'Original', 'no re-encode'], ['mp3', 'MP3'], ['m4a', 'M4A'], ['opus', 'Opus'], ['flac', 'FLAC'], ['wav', 'WAV']]
-const looksLikePlaylist = (u) => /\/playlist\?|\/sets\/|\/albums?\//i.test(u)
 
 export default function Downloader() {
   const [eng, setEng] = useState({ status: 'checking' })
   const [url, setUrl] = useState('')
   const [busy, setBusy] = useState(false)
+  const [starting, setStarting] = useState(false)
   const [error, setError] = useState('')
   const [info, setInfo] = useState(null)
   const [opts, setOpts] = useState({ mode: 'video', height: null, container: 'mp4', audioFormat: 'best', clip: false, start: 0, end: 0, accurate: false, subs: false })
@@ -272,7 +273,7 @@ export default function Downloader() {
     if (!u || busy) return
     setBusy(true); setError(''); setInfo(null)
     try {
-      const j = await engine.info(u, looksLikePlaylist(u))
+      const j = await engine.info(u, isPlaylistUrl(u))
       setInfo(j)
       if (j.kind === 'video') set({ mode: j.hasVideo ? 'video' : 'audio', height: null, clip: false, start: 0, end: j.duration || 0 })
     } catch (e) {
@@ -281,6 +282,7 @@ export default function Downloader() {
   }
 
   async function paste() {
+    if (busy || starting) return
     try { const t = await navigator.clipboard.readText(); if (t) { setUrl(t); analyze(t) } } catch { inputRef.current?.focus() }
   }
 
@@ -294,19 +296,29 @@ export default function Downloader() {
   }, [info, opts.mode, selected, clipLen])
 
   async function start() {
-    if (!info || info.kind !== 'video') return
+    if (!info || info.kind !== 'video' || starting) return
     setError('')
+    setStarting(true)
     try {
+      const selectedInfo = info
+      const selectedOptions = { ...opts }
+      const selectedFormat = selected
       const j = await engine.start({
-        url: info.sourceUrl, mode: opts.mode, height: opts.height, container: opts.container, audioFormat: opts.audioFormat,
-        clip: opts.clip && info.duration > 0, start: opts.start, end: opts.end, accurateCuts: opts.accurate, subs: opts.subs, metadata: true,
-        parts: opts.mode === 'video' && info.needsMerge ? 2 : 1,
+        url: selectedInfo.sourceUrl, mode: selectedOptions.mode, height: selectedOptions.height, container: selectedOptions.container, audioFormat: selectedOptions.audioFormat,
+        clip: selectedOptions.clip && selectedInfo.duration > 0, start: selectedOptions.start, end: selectedOptions.end, accurateCuts: selectedOptions.accurate, subs: selectedOptions.subs, metadata: true,
+        parts: selectedOptions.mode === 'video' && selectedInfo.needsMerge ? 2 : 1,
       })
-      const label = opts.mode === 'audio'
-        ? `Audio · ${opts.audioFormat === 'best' ? 'original codec' : opts.audioFormat.toUpperCase()}`
-        : `${opts.height ? opts.height + 'p' : selected ? selected.height + 'p best' : 'Best'} · ${opts.container.toUpperCase()}`
-      setJobs((js) => [{ id: j.id, title: info.title, label: label + (opts.clip ? ` · ${clock(opts.start)}–${clock(opts.end)}` : '') }, ...js])
+      const label = selectedOptions.mode === 'audio'
+        ? `Audio · ${selectedOptions.audioFormat === 'best' ? 'original codec' : selectedOptions.audioFormat.toUpperCase()}`
+        : `${selectedOptions.height ? selectedOptions.height + 'p' : selectedFormat ? selectedFormat.height + 'p best' : 'Best'} · ${selectedOptions.container.toUpperCase()}`
+      setJobs((js) => [{ id: j.id, title: selectedInfo.title, label: label + (selectedOptions.clip ? ` · ${clock(selectedOptions.start)}–${clock(selectedOptions.end)}` : '') }, ...js])
     } catch (e) { if (e.offline) setEng({ status: 'offline' }); else setError(e.message) }
+    finally { setStarting(false) }
+  }
+
+  const clearJobs = () => {
+    jobs.forEach((job) => { void engine.cancel(job.id) })
+    setJobs([])
   }
 
   return (
@@ -326,10 +338,10 @@ export default function Downloader() {
             <div className="relative flex-1">
               <input
                 ref={inputRef} className="input text-[14.5px] py-3.5 pr-24" placeholder="https://…  video, audio, shorts, reels, playlists"
-                value={url} onChange={(e) => setUrl(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && analyze()}
-                disabled={eng.status !== 'online'} spellCheck={false}
+                value={url} onChange={(e) => { setUrl(e.target.value); setInfo(null); setError('') }} onKeyDown={(e) => e.key === 'Enter' && analyze()}
+                disabled={busy || starting || eng.status !== 'online'} spellCheck={false}
               />
-              <button className="absolute right-2 top-1/2 -translate-y-1/2 btn btn-ghost !py-1.5 !px-3 text-[12px]" onClick={paste} disabled={eng.status !== 'online'}>Paste</button>
+              <button className="absolute right-2 top-1/2 -translate-y-1/2 btn btn-ghost !py-1.5 !px-3 text-[12px]" onClick={paste} disabled={busy || starting || eng.status !== 'online'}>Paste</button>
             </div>
             <motion.button
               className="btn btn-primary btn-sheen px-7 py-3.5 text-[14.5px] min-w-[130px]" whileHover={{ y: -1, scale: 1.02 }} whileTap={{ scale: 0.95, y: 1 }}
@@ -479,8 +491,8 @@ export default function Downloader() {
                 <div className="label">Estimated size</div>
                 <div className="display font-semibold text-[28px] mt-1 tabular-nums">{estBytes ? <>~<AnimatedNumber value={estBytes} format={(n) => fmtBytes(n)} /></> : '—'}</div>
               </div>
-              <motion.button className="btn btn-primary btn-sheen w-full py-3.5 text-[15px]" whileHover={{ y: -1, scale: 1.02 }} whileTap={{ scale: 0.96, y: 1 }} onClick={start} disabled={info.isLive || (opts.clip && clipLen <= 0)}>
-                Download
+              <motion.button className="btn btn-primary btn-sheen w-full py-3.5 text-[15px]" whileHover={{ y: -1, scale: 1.02 }} whileTap={{ scale: 0.96, y: 1 }} onClick={start} disabled={starting || info.isLive || (opts.clip && clipLen <= 0)}>
+                {starting ? 'Starting…' : 'Download'}
               </motion.button>
               {info.isLive && <Note tone="warn">Live streams can't be downloaded until they end.</Note>}
               {!eng.info?.ffmpeg && <Note tone="warn">ffmpeg is missing on the engine — merging, sections and audio conversion need it.</Note>}
@@ -494,7 +506,7 @@ export default function Downloader() {
         <div className="space-y-3">
           <div className="flex items-baseline justify-between">
             <h3 className="display font-semibold text-[18px]">Downloads</h3>
-            <button className="text-[12px] font-semibold" style={{ color: 'var(--muted)' }} onClick={() => setJobs([])}>Clear all</button>
+            <button className="text-[12px] font-semibold" style={{ color: 'var(--muted)' }} onClick={clearJobs}>Cancel & clear all</button>
           </div>
           <AnimatePresence initial={false}>
             {jobs.map((j) => <JobCard key={j.id} job={j} onRemove={() => setJobs((js) => js.filter((x) => x.id !== j.id))} />)}

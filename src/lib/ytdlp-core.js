@@ -31,6 +31,16 @@ export function cleanErr(s) {
 
 export const infoArgs = (url, playlist) => ['-J', '--no-warnings', '--no-colors', playlist ? '--flat-playlist' : '--no-playlist', '--', url]
 
+/** Identify common playlist/album links without treating a single video-in-playlist URL as a whole list. */
+export function isPlaylistUrl(raw) {
+  try {
+    const url = new URL(String(raw || '').trim())
+    return /\/(?:playlist)\/?$/i.test(url.pathname)
+      || /\/(?:sets?|albums?)\//i.test(url.pathname)
+      || (url.searchParams.has('list') && !url.searchParams.has('v'))
+  } catch { return false }
+}
+
 /* ------------------------------ info → UI model ------------------------------ */
 
 export function summarise(j) {

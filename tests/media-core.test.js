@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { buildStreamCopyClipArgs, safeMediaExtension } from '../src/lib/media-core.js'
+import { buildStreamCopyClipArgs, parseProbeDuration, safeMediaExtension } from '../src/lib/media-core.js'
 
 test('stream-copy clips seek to the input start and use end minus start as output duration', () => {
   assert.deepEqual(buildStreamCopyClipArgs('source.webm', 'clip.webm', 10.5, 20.75), [
@@ -20,4 +20,11 @@ test('media extensions are normalized and safe for FFmpeg temporary paths', () =
   assert.equal(safeMediaExtension('Camera Clip.MOV'), 'mov')
   assert.equal(safeMediaExtension('voice-note'), 'mp4')
   assert.equal(safeMediaExtension('movie.exe;touch'), 'mp4')
+})
+
+test('ffprobe duration parsing accepts finite positive seconds and rejects invalid media output', () => {
+  assert.equal(parseProbeDuration(' 120.375\n'), 120.375)
+  assert.throws(() => parseProbeDuration('N/A'), /valid media duration/)
+  assert.throws(() => parseProbeDuration('0'), /valid media duration/)
+  assert.throws(() => parseProbeDuration('Infinity'), /valid media duration/)
 })

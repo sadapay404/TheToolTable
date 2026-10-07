@@ -73,7 +73,7 @@ export function useToast() {
   const toast = useCallback((text, tone = 'ok') => { setM({ text, tone, k: Date.now() }); clearTimeout(t.current); t.current = setTimeout(() => setM(null), 2800) }, [])
   const node = (
     <AnimatePresence>{m && (
-      <motion.div key={m.k} initial={{ y: 40, opacity: 0, scale: 0.9 }} animate={{ y: 0, opacity: 1, scale: 1 }} exit={{ y: 20, opacity: 0 }} transition={SPRING} className="fixed left-1/2 bottom-6 z-[80] -translate-x-1/2 rounded-full px-5 py-3 text-[13.5px] font-semibold flex items-center gap-2" style={{ background: 'var(--ink)', color: 'var(--bg)', boxShadow: '0 18px 40px -12px rgba(0,0,0,.55)' }}>
+      <motion.div key={m.k} initial={{ y: 40, opacity: 0, scale: 0.9 }} animate={{ y: 0, opacity: 1, scale: 1 }} exit={{ y: 20, opacity: 0 }} transition={SPRING} className="app-toast fixed left-1/2 bottom-6 z-[80] -translate-x-1/2 rounded-full px-5 py-3 text-[13.5px] font-semibold flex items-center gap-2" style={{ background: 'var(--ink)', color: 'var(--bg)', boxShadow: '0 18px 40px -12px rgba(0,0,0,.55)' }}>
         <KIco n={m.tone === 'err' ? 'alert' : 'check'} s={16} />{m.text}
       </motion.div>)}</AnimatePresence>
   )
@@ -84,7 +84,7 @@ export function useToast() {
 export function Btn({ children, icon, onClick, primary, small, disabled, busy, className = '', title, danger, type = 'button' }) {
   return (
     <motion.button type={type} title={title} disabled={disabled || busy} onClick={onClick} whileHover={disabled ? {} : { y: -2 }} whileTap={disabled ? {} : { scale: 0.93 }} transition={SPRING}
-      className={`relative inline-flex items-center justify-center gap-2 rounded-full font-bold whitespace-nowrap ${small ? 'px-3.5 py-1.5 text-[12px]' : 'px-5 py-2.5 text-[13.5px]'} ${className}`}
+      className={`tool-btn relative inline-flex items-center justify-center gap-2 rounded-full font-bold whitespace-nowrap ${small ? 'px-3.5 py-1.5 text-[12px]' : 'px-5 py-2.5 text-[13.5px]'} ${className}`}
       style={primary ? { background: 'var(--ink)', color: 'var(--bg)', boxShadow: '0 12px 22px -12px rgba(0,0,0,.6)', opacity: disabled ? 0.5 : 1 } : { background: 'var(--surface)', color: danger ? '#C3423F' : 'var(--ink)', border: '1px solid var(--border)', boxShadow: 'var(--shadow)', opacity: disabled ? 0.5 : 1 }}>
       {icon && <motion.span animate={busy ? { rotate: 360 } : { rotate: 0 }} transition={busy ? { repeat: Infinity, duration: 0.9, ease: 'linear' } : SPRING} className="inline-flex"><KIco n={busy ? 'refresh' : icon} s={small ? 14 : 16} /></motion.span>}{children}
     </motion.button>
@@ -101,7 +101,7 @@ export function Drop({ onFiles, accept, multiple = true, title = 'Drop files her
     <motion.div role="button" tabIndex={0} aria-label={title} whileHover={{ y: -3 }} transition={SPRING}
       onClick={(e) => { if (e.target === ref.current || e.target.closest?.('button,a,input,select,textarea')) return; openPicker() }}
       onKeyDown={onKeyDown} onDragOver={(e) => { e.preventDefault(); setHot(true) }} onDragLeave={() => setHot(false)} onDrop={(e) => { e.preventDefault(); setHot(false); const fs = [...e.dataTransfer.files]; if (fs.length) onFiles(multiple ? fs : fs.slice(0, 1)) }}
-      className={`cursor-pointer rounded-[24px] text-center focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${compact ? 'p-5' : 'p-10'}`} style={{ border: `2px dashed ${hot ? 'var(--copper)' : 'var(--border)'}`, background: hot ? 'color-mix(in srgb, var(--copper) 9%, var(--surface))' : 'var(--surface)', transition: 'background .2s, border-color .2s' }}>
+      className={`tool-drop cursor-pointer rounded-[24px] text-center focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${compact ? 'p-5' : 'p-10'}`} style={{ border: `2px dashed ${hot ? 'var(--copper)' : 'var(--border)'}`, background: hot ? 'color-mix(in srgb, var(--copper) 9%, var(--surface))' : 'var(--surface)', transition: 'background .2s, border-color .2s' }}>
       <input ref={ref} data-drop type="file" hidden multiple={multiple} accept={accept} onChange={(e) => { const fs = [...e.target.files]; if (fs.length) onFiles(fs); e.target.value = '' }} />
       {children || <>
         <motion.div animate={hot ? { y: -6, scale: 1.15 } : { y: [0, -4, 0] }} transition={hot ? SPRING : { repeat: Infinity, duration: 2.6 }} className="mx-auto mb-3 w-12 h-12 rounded-2xl grid place-items-center" style={{ background: 'color-mix(in srgb, var(--copper) 14%, var(--surface2))', color: 'var(--copper)' }}><KIco n={icon} s={22} /></motion.div>
@@ -115,8 +115,8 @@ export function Drop({ onFiles, accept, multiple = true, title = 'Drop files her
 export function Dock({ value, onChange, items, cols }) {
   const count = cols || items.length, scroll = count >= 5
   return (
-    <div className={scroll ? 'overflow-x-auto overscroll-x-contain pb-1 -mx-1 px-1' : ''}>
-      <div className={`grid gap-2 ${scroll ? 'min-w-[560px] sm:min-w-0' : ''}`} style={{ gridTemplateColumns: `repeat(${count}, minmax(0,1fr))` }}>
+    <div className={`tool-dock-scroll ${scroll ? 'overflow-x-auto overscroll-x-contain pb-1 -mx-1 px-1' : ''}`}>
+      <div className={`tool-dock-grid grid gap-2 ${scroll ? 'min-w-[560px] sm:min-w-0' : ''}`} style={{ gridTemplateColumns: `repeat(${count}, minmax(0,1fr))` }}>
         {items.map(([k, l, ic], i) => { const on = k === value; return (
           <motion.button key={k} type="button" onClick={() => onChange(k)} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ ...SPRING, delay: i * 0.035 }} whileHover={{ y: -4 }} whileTap={{ scale: 0.94 }} aria-pressed={on}
             className="relative flex flex-col items-center gap-1.5 rounded-2xl px-1.5 py-3 border" style={{ borderColor: on ? 'var(--ink)' : 'var(--border)', background: 'var(--surface)', color: on ? 'var(--bg)' : 'var(--ink)', boxShadow: on ? '0 14px 24px -14px rgba(0,0,0,.6)' : 'var(--shadow)' }}>
@@ -133,18 +133,18 @@ export function Swap({ k, children }) {
 }
 export function Bar({ value, label, sub }) {
   return (
-    <div>
+    <div className="tool-progress">
       <div className="flex justify-between text-[12px] font-semibold mb-1.5" style={{ color: 'var(--muted)' }}><span>{label}</span><span className="tabular-nums">{sub ?? Math.round(value) + '%'}</span></div>
       <div className="h-2.5 rounded-full overflow-hidden" style={{ background: 'var(--border)' }}><motion.div className="h-full rounded-full stripes" style={{ background: 'var(--copper)' }} initial={{ width: 0 }} animate={{ width: Math.min(100, Math.max(0, value)) + '%' }} transition={{ type: 'spring', stiffness: 120, damping: 20 }} /></div>
     </div>
   )
 }
 export function Field({ label, children, hint }) {
-  return <label className="block"><span className="block text-[12px] font-semibold mb-1.5" style={{ color: 'var(--muted)' }}>{label}</span>{children}{hint && <span className="block text-[11px] mt-1" style={{ color: 'var(--muted)' }}>{hint}</span>}</label>
+  return <label className="tool-field block"><span className="block text-[12px] font-semibold mb-1.5" style={{ color: 'var(--muted)' }}>{label}</span>{children}{hint && <span className="block text-[11px] mt-1" style={{ color: 'var(--muted)' }}>{hint}</span>}</label>
 }
 export function Empty({ icon = 'file', title, sub }) {
-  return <div className="text-center py-12"><motion.div animate={{ y: [0, -5, 0] }} transition={{ repeat: Infinity, duration: 3 }} className="mx-auto mb-3 w-14 h-14 rounded-2xl grid place-items-center" style={{ background: 'var(--surface2)', color: 'var(--copper)' }}><KIco n={icon} s={24} /></motion.div><div className="display font-semibold text-[17px]">{title}</div>{sub && <div className="text-[13px] mt-1" style={{ color: 'var(--muted)' }}>{sub}</div>}</div>
+  return <div className="tool-empty text-center py-12"><motion.div animate={{ y: [0, -5, 0] }} transition={{ repeat: Infinity, duration: 3 }} className="mx-auto mb-3 w-14 h-14 rounded-2xl grid place-items-center" style={{ background: 'var(--surface2)', color: 'var(--copper)' }}><KIco n={icon} s={24} /></motion.div><div className="display font-semibold text-[17px]">{title}</div>{sub && <div className="text-[13px] mt-1" style={{ color: 'var(--muted)' }}>{sub}</div>}</div>
 }
 export function Stat2({ k, v, i = 0 }) {
-  return <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ ...SPRING, delay: i * 0.05 }} className="rounded-2xl p-3.5 border border-line" style={{ background: 'var(--surface2)' }}><div className="eyebrow">{k}</div><div className="display font-semibold text-[22px] mt-0.5 tabular-nums">{v}</div></motion.div>
+  return <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ ...SPRING, delay: i * 0.05 }} className="tool-stat rounded-2xl p-3.5 border border-line" style={{ background: 'var(--surface2)' }}><div className="eyebrow">{k}</div><div className="display font-semibold text-[22px] mt-0.5 tabular-nums">{v}</div></motion.div>
 }

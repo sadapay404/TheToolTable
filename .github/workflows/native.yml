@@ -221,8 +221,13 @@ jobs:
               sleep "$delay"
               continue
             fi
-            tail_text=$(tail -n 60 "$log" | tr '\n' ' ' | sed 's/%/%25/g; s/\r/%0D/g')
-            echo "::error title=Android build log details::$tail_text"
+            error_lines=$(grep -Ei 'FAILURE:|What went wrong:|Execution failed for task|Caused by:|error:|fatal error:|failed to|could not resolve|No space left' "$log" | tail -n 16 | tail -c 1600 || true)
+            if [ -n "$error_lines" ]; then
+              error_text=$(printf '%s' "$error_lines" | tr '\n' ' ' | sed 's/%/%25/g; s/\r/%0D/g')
+              echo "::error title=Android error lines::$error_text"
+            fi
+            tail_text=$(tail -n 80 "$log" | tail -c 1600 | tr '\n' ' ' | sed 's/%/%25/g; s/\r/%0D/g')
+            echo "::error title=Android final output::$tail_text"
             {
               echo "## Android build failed (attempt ${attempt})"
               echo '```text'

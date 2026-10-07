@@ -26,17 +26,20 @@ jobs:
           GH_REPO: ${{ github.repository }}
         shell: bash
         run: |
-          tag="v1.2.0-build-${GITHUB_SHA:0:7}"
+          # Reuse the candidate containing the verified Windows installers. Since
+          # 9acfe2f, only this workflow's diagnostics changed; the app source is identical.
+          tag="v1.2.0-build-9acfe2f"
           if ! gh release view "$tag" --repo "$GH_REPO" >/dev/null 2>&1; then
             gh release create "$tag" --repo "$GH_REPO" --draft --prerelease \
               --target "$GITHUB_SHA" \
-              --title "TheToolTable v1.2.0 build candidate (${GITHUB_SHA:0:7})" \
-              --notes "Automated native build candidate for commit ${GITHUB_SHA}. This is a private draft, not a stable release. Test Android and Windows behavior and verify Android signing-certificate continuity with v1.1.1 before publishing."
+              --title "TheToolTable v1.2.0 build candidate (app source 9acfe2f)" \
+              --notes "Automated native build candidate for app source commit 9acfe2f. This is a private draft, not a stable release. Test Android and Windows behavior and verify Android signing-certificate continuity with v1.1.1 before publishing."
           fi
           echo "release_tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "Draft release: https://github.com/$GH_REPO/releases/tag/$tag" >> "$GITHUB_STEP_SUMMARY"
+          echo "Reusing private draft candidate: https://github.com/$GH_REPO/releases/tag/$tag" >> "$GITHUB_STEP_SUMMARY"
 
   windows:
+    if: ${{ !contains(github.event.head_commit.message, '[android-only]') }}
     needs: prepare
     runs-on: windows-latest
     timeout-minutes: 45
@@ -67,8 +70,28 @@ jobs:
           )
           if ($files.Count -lt 2) { throw "Expected both NSIS and MSI installers, found $($files.Count)." }
           $ghArgs = @('release', 'upload', $env:RELEASE_TAG, '--repo', $env:GITHUB_REPOSITORY, '--clobber') + @($files | ForEach-Object { $_.FullName })
-          & gh @ghArgs
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $uploadSucceeded = $false
+          $uploadOutput = @()
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            $uploadOutput = @(& gh @ghArgs 2>&1)
+            $uploadStatus = $LASTEXITCODE
+            $uploadOutput | ForEach-Object { Write-Host $_ }
+            if ($uploadStatus -eq 0) {
+              $uploadSucceeded = $true
+              break
+            }
+            if ($attempt -lt 3) {
+              Write-Warning "Release upload attempt $attempt failed with exit code $uploadStatus; retrying."
+              Start-Sleep -Seconds (30 * $attempt)
+            }
+          }
+          if (-not $uploadSucceeded) {
+            $detail = (($uploadOutput | Select-Object -Last 30) -join ' ')
+            $detail = $detail -replace '%', '%25' -replace "`r", '%0D' -replace "`n", '%0A'
+            Write-Output "::error title=Windows release upload failed::$detail"
+            Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "## Windows installer upload failed`n`n$detail"
+            throw 'Could not upload the Windows installers after three attempts.'
+          }
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "## Windows installers uploaded`n`nDraft release: https://github.com/$env:GITHUB_REPOSITORY/releases/tag/$env:RELEASE_TAG"
           $files | ForEach-Object { Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- $($_.Name) — $([math]::Round($_.Length / 1MB, 1)) MB" }
 
@@ -93,11 +116,80 @@ jobs:
       - uses: swatinem/rust-cache@v2
         with: { workspaces: src-tauri }
       - name: Android SDK + NDK (runner's preinstalled SDK)
+        shell: bash
         run: |
-          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-          yes | "$SDKM" --licenses > /dev/null || true
-          "$SDKM" --install "ndk;27.2.12479018" "platforms;android-35" "build-tools;35.0.0"
-          echo "NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          set -euo pipefail
+          sdk_root="${ANDROID_HOME:-}"
+          if [ -z "$sdk_root" ] || [ ! -d "$sdk_root" ]; then sdk_root="${ANDROID_SDK_ROOT:-}"; fi
+          if [ -z "$sdk_root" ] || [ ! -d "$sdk_root" ]; then
+            for candidate in /usr/local/lib/android/sdk /opt/android-sdk /opt/android-sdk-linux; do
+              if [ -d "$candidate" ]; then sdk_root="$candidate"; break; fi
+            done
+          fi
+          if [ -z "$sdk_root" ] || [ ! -d "$sdk_root" ]; then
+            echo "::error title=Android SDK root missing::ANDROID_HOME and ANDROID_SDK_ROOT are unset or invalid; checked standard runner locations."
+            echo '## Android SDK setup failed: SDK root not found.' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "Using Android SDK root: $sdk_root"
+          sdkmanager="$sdk_root/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$sdkmanager" ]; then
+            sdkmanager="$(find "$sdk_root" -type f -name sdkmanager -print -quit 2>/dev/null || true)"
+          fi
+          if [ -z "$sdkmanager" ] || [ ! -x "$sdkmanager" ]; then
+            discovered="$(find "$sdk_root" -maxdepth 3 -print 2>/dev/null | head -n 40 || true)"
+            discovered_escaped="$(printf '%s' "$discovered" | tr '\n' ' ' | sed 's/%/%25/g; s/\r/%0D/g')"
+            echo "::error title=Android SDK manager missing::No executable sdkmanager found under $sdk_root. SDK entries: $discovered_escaped"
+            {
+              echo '## Android SDK setup failed: sdkmanager not found.'
+              echo '```text'
+              printf '%s\n' "$discovered"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "Using sdkmanager: $sdkmanager"
+          set +e
+          yes | "$sdkmanager" --licenses > android-sdk-licenses.log 2>&1
+          license_status=${PIPESTATUS[1]}
+          set -e
+          if [ "$license_status" -ne 0 ]; then
+            echo "::warning::sdkmanager --licenses returned $license_status; continuing to package installation."
+          fi
+          packages=("ndk;27.2.12479018" "platforms;android-35" "build-tools;35.0.0")
+          install_status=1
+          for attempt in 1 2 3; do
+            log="android-sdk-install-${attempt}.log"
+            echo "Android SDK/NDK install attempt ${attempt}/3"
+            set +e
+            "$sdkmanager" --install "${packages[@]}" 2>&1 | tee "$log"
+            install_status=${PIPESTATUS[0]}
+            set -e
+            if [ "$install_status" -eq 0 ]; then
+              {
+                printf 'ANDROID_HOME=%s\n' "$sdk_root"
+                printf 'ANDROID_SDK_ROOT=%s\n' "$sdk_root"
+                printf 'NDK_HOME=%s/ndk/27.2.12479018\n' "$sdk_root"
+              } >> "$GITHUB_ENV"
+              echo "Android SDK packages are ready at $sdk_root."
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              delay=$((attempt * 30))
+              echo "sdkmanager failed with exit code $install_status; retrying in ${delay}s." >&2
+              sleep "$delay"
+            fi
+          done
+          tail_text="$(tail -n 60 "$log" | tr '\n' ' ' | sed 's/%/%25/g; s/\r/%0D/g')"
+          echo "::error title=Android SDK + NDK setup failed::$tail_text"
+          {
+            echo "## Android SDK + NDK setup failed (exit code $install_status)"
+            echo "sdkmanager: $sdkmanager"
+            echo '```text'
+            tail -n 180 "$log"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$install_status"
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npx tauri android init
       - name: Declare Android foreground-service and notification permissions
@@ -147,19 +239,33 @@ jobs:
           set -e
           BT="$ANDROID_HOME/build-tools/35.0.0"
           IN=$(ls src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk | head -n1)
-          if [ -n "$KS_B64" ]; then echo "$KS_B64" | base64 -d > ks.jks; PASS="$KS_PASS"
-          else PASS="thetooltable"; keytool -genkeypair -keystore ks.jks -alias ttt -keyalg RSA -keysize 2048 -validity 10000 -storepass "$PASS" -keypass "$PASS" -dname "CN=TheToolTable, O=Mubashir"; fi
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > ks.jks
+            PASS="$KS_PASS"
+            APK_NAME=TheToolTable.apk
+            SIGNING_MODE="Configured GitHub keystore secret; compare its certificate with v1.1.1 before publishing."
+          else
+            PASS="thetooltable"
+            keytool -genkeypair -keystore ks.jks -alias ttt -keyalg RSA -keysize 2048 -validity 10000 -storepass "$PASS" -keypass "$PASS" -dname "CN=TheToolTable, O=Mubashir"
+            APK_NAME=TheToolTable-fallback-signed.apk
+            SIGNING_MODE="FALLBACK KEY generated for this run. Fresh install only; not update-compatible with v1.1.1."
+            echo "::warning title=Fallback Android signing key::$SIGNING_MODE"
+          fi
           "$BT/zipalign" -p -f 4 "$IN" aligned.apk
-          "$BT/apksigner" sign --ks ks.jks --ks-key-alias ttt --ks-pass "pass:$PASS" --key-pass "pass:$PASS" --out TheToolTable.apk aligned.apk
-          "$BT/apksigner" verify TheToolTable.apk
+          "$BT/apksigner" sign --ks ks.jks --ks-key-alias ttt --ks-pass "pass:$PASS" --key-pass "pass:$PASS" --out "$APK_NAME" aligned.apk
+          "$BT/apksigner" verify "$APK_NAME"
           {
-            echo '## Android APK signature fingerprint'
+            echo '## Android APK signing and certificate fingerprint'
+            echo "Signing mode: $SIGNING_MODE"
+            echo 'Compare the certificate fingerprint with the published v1.1.1 APK before publishing this candidate.'
             echo '```text'
-            "$BT/apksigner" verify --print-certs TheToolTable.apk
+            "$BT/apksigner" verify --print-certs "$APK_NAME"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload APK to the draft release
         run: |
-          gh release upload "$RELEASE_TAG" TheToolTable.apk --repo "$GITHUB_REPOSITORY" --clobber
-          sha256sum TheToolTable.apk | tee -a "$GITHUB_STEP_SUMMARY"
+          APK_NAME=TheToolTable.apk
+          if [ -f TheToolTable-fallback-signed.apk ]; then APK_NAME=TheToolTable-fallback-signed.apk; fi
+          gh release upload "$RELEASE_TAG" "$APK_NAME" --repo "$GITHUB_REPOSITORY" --clobber
+          sha256sum "$APK_NAME" | tee -a "$GITHUB_STEP_SUMMARY"
           echo "Draft release: https://github.com/$GITHUB_REPOSITORY/releases/tag/$RELEASE_TAG" >> "$GITHUB_STEP_SUMMARY"

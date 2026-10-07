@@ -156,7 +156,7 @@ jobs:
           if [ "$license_status" -ne 0 ]; then
             echo "::warning::sdkmanager --licenses returned $license_status; continuing to package installation."
           fi
-          packages=("ndk;27.2.12479018" "platforms;android-35" "platforms;android-37" "build-tools;35.0.0")
+          packages=("ndk;27.2.12479018" "platforms;android-35" "build-tools;35.0.0")
           install_status=1
           for attempt in 1 2 3; do
             log="android-sdk-install-${attempt}.log"

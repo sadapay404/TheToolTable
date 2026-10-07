@@ -1,26 +1,50 @@
-# Builds the installable apps in the cloud (no local Rust / Android SDK needed):
-#   • Windows installer  (.exe via NSIS + .msi)   — Tauri 2
-#   • Android APK        (arm64 + armv7, signed)  — Tauri 2 mobile
-# Run it from GitHub → Actions → "Build apps" → Run workflow, or push a version tag (v*).
-# Artifacts appear at the bottom of the run page (and as a Release when triggered by a tag).
+# Build native v1.2.0 candidates in GitHub Actions and store installers on a private draft release.
+# Draft candidates are not public releases; verify device behavior and Android signing continuity before publishing.
 name: Build apps
 on:
   workflow_dispatch:
   push:
     branches: ['arena/01a10743-thetooltable']
-    tags: ['v*']
     paths:
       - '**'
       - '!docs/**'
       - '!README.md'
-      - '!.github/workflows/native.yml'
 
 permissions:
   contents: write
 
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.candidate.outputs.release_tag }}
+    steps:
+      - name: Create or reuse a private draft release
+        id: candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          tag="v1.2.0-build-${GITHUB_SHA:0:7}"
+          if ! gh release view "$tag" --repo "$GH_REPO" >/dev/null 2>&1; then
+            gh release create "$tag" --repo "$GH_REPO" --draft --prerelease \
+              --target "$GITHUB_SHA" \
+              --title "TheToolTable v1.2.0 build candidate (${GITHUB_SHA:0:7})" \
+              --notes "Automated native build candidate for commit ${GITHUB_SHA}. This is a private draft, not a stable release. Test Android and Windows behavior and verify Android signing-certificate continuity with v1.1.1 before publishing."
+          fi
+          echo "release_tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Draft release: https://github.com/$GH_REPO/releases/tag/$tag" >> "$GITHUB_STEP_SUMMARY"
+
   windows:
+    needs: prepare
     runs-on: windows-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -33,15 +57,30 @@ jobs:
         run: node scripts/fetch-sidecars.mjs
       - name: Build installer with the bundled downloader
         run: npx tauri build --config src-tauri/tauri.sidecars.conf.json
-      - uses: actions/upload-artifact@v4
-        with:
-          name: TheToolTable-Windows
-          path: |
-            src-tauri/target/release/bundle/nsis/*.exe
-            src-tauri/target/release/bundle/msi/*.msi
+      - name: Upload installers to the draft release
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $files = @(
+            Get-ChildItem 'src-tauri/target/release/bundle/nsis/*.exe' -File
+            Get-ChildItem 'src-tauri/target/release/bundle/msi/*.msi' -File
+          )
+          if ($files.Count -lt 2) { throw "Expected both NSIS and MSI installers, found $($files.Count)." }
+          $ghArgs = @('release', 'upload', $env:RELEASE_TAG, '--repo', $env:GITHUB_REPOSITORY, '--clobber') + @($files | ForEach-Object { $_.FullName })
+          & gh @ghArgs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "## Windows installers uploaded`n`nDraft release: https://github.com/$env:GITHUB_REPOSITORY/releases/tag/$env:RELEASE_TAG"
+          $files | ForEach-Object { Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- $($_.Name) — $([math]::Round($_.Length / 1MB, 1)) MB" }
 
   android:
+    needs: prepare
     runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -79,21 +118,24 @@ jobs:
           for attempt in 1 2 3; do
             log="android-build-${attempt}.log"
             echo "Android build attempt ${attempt}/3"
-            if npx tauri android build --apk --target aarch64 --target armv7 2>&1 | tee "$log"; then
-              exit 0
-            fi
+            set +e
+            npx tauri android build --apk --target aarch64 --target armv7 2>&1 | tee "$log"
             build_status=${PIPESTATUS[0]}
-            if ! grep -Eiq 'status code[[:space:]]+429|HTTP[^[:digit:]]*429|too many requests|rate.?limit' "$log"; then
-              echo "Build failed for a non-rate-limit reason; not retrying." >&2
-              exit "$build_status"
+            set -e
+            if [ "$build_status" -eq 0 ]; then exit 0; fi
+            if grep -Eiq 'status code[[:space:]]+429|HTTP[^[:digit:]]*429|too many requests|rate.?limit' "$log" && [ "$attempt" -lt 3 ]; then
+              delay=$((attempt * 45))
+              echo "Maven Central returned 429; retrying in ${delay}s." >&2
+              sleep "$delay"
+              continue
             fi
-            if [ "$attempt" -eq 3 ]; then
-              echo "Maven rate limit persisted after three build attempts." >&2
-              exit "$build_status"
-            fi
-            delay=$((attempt * 45))
-            echo "Maven Central returned 429; retrying in ${delay}s." >&2
-            sleep "$delay"
+            {
+              echo "## Android build failed (attempt ${attempt})"
+              echo '```text'
+              tail -n 180 "$log"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit "$build_status"
           done
       - name: Sign APK
         env:
@@ -108,29 +150,14 @@ jobs:
           "$BT/zipalign" -p -f 4 "$IN" aligned.apk
           "$BT/apksigner" sign --ks ks.jks --ks-key-alias ttt --ks-pass "pass:$PASS" --key-pass "pass:$PASS" --out TheToolTable.apk aligned.apk
           "$BT/apksigner" verify TheToolTable.apk
-      - uses: actions/upload-artifact@v4
-        with: { name: TheToolTable-Android, path: TheToolTable.apk }
-
-  release:
-    if: >-
-      startsWith(github.ref, 'refs/tags/v') ||
-      (github.ref == 'refs/heads/arena/01a10743-thetooltable' && contains(github.event.head_commit.message, '[publish v1.1.1]'))
-    needs: [windows, android]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-      - uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'v1.1.1' }}
-          target_commitish: ${{ github.sha }}
-          name: TheToolTable v1.1.1
-          body_path: docs/RELEASE-NOTES-v1.1.1.md
-          prerelease: ${{ startsWith(github.ref, 'refs/tags/v') && contains(github.ref_name, '-') }}
-          make_latest: true
-          fail_on_unmatched_files: true
-          files: |
-            TheToolTable-Windows/**
-            TheToolTable-Android/*.apk
+          {
+            echo '## Android APK signature fingerprint'
+            echo '```text'
+            "$BT/apksigner" verify --print-certs TheToolTable.apk
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload APK to the draft release
+        run: |
+          gh release upload "$RELEASE_TAG" TheToolTable.apk --repo "$GITHUB_REPOSITORY" --clobber
+          sha256sum TheToolTable.apk | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "Draft release: https://github.com/$GITHUB_REPOSITORY/releases/tag/$RELEASE_TAG" >> "$GITHUB_STEP_SUMMARY"

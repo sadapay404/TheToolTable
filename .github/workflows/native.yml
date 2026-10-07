@@ -192,6 +192,30 @@ jobs:
           exit "$install_status"
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npx tauri android init
+      - name: Patch pinned download plugin for AGP 9 source sets
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fetch --manifest-path src-tauri/Cargo.toml
+          cargo_home="${CARGO_HOME:-$HOME/.cargo}"
+          plugin_gradle="$(find "$cargo_home/git/checkouts" -type f -path '*/tauri-plugin-download-*/13fd4e7/android/build.gradle.kts' -print -quit)"
+          if [ -z "$plugin_gradle" ]; then
+            echo "::error title=Download plugin checkout missing::Could not find the locked tauri-plugin-download Gradle script under $cargo_home/git/checkouts."
+            exit 1
+          fi
+          python3 - "$plugin_gradle" <<'PY'
+          from pathlib import Path
+          import sys
+
+          path = Path(sys.argv[1])
+          source = path.read_text()
+          old = 'android.sourceSets["main"].java.srcDir("lib/src/main/java")'
+          new = 'extensions.getByType<com.android.build.api.dsl.LibraryExtension>().sourceSets.getByName("main").java.srcDir("lib/src/main/java")'
+          if source.count(old) != 1:
+              raise SystemExit(f"Expected one legacy Android source-set accessor in {path}, found {source.count(old)}")
+          path.write_text(source.replace(old, new))
+          print(f"Patched AGP 9 source-set accessor in {path}")
+          PY
       - name: Declare Android foreground-service and notification permissions
         run: node scripts/ensure-android-transfer-permissions.mjs
       - name: Configure Gradle retries for transient Maven rate limits

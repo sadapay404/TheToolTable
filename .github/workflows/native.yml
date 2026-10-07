@@ -156,7 +156,7 @@ jobs:
           if [ "$license_status" -ne 0 ]; then
             echo "::warning::sdkmanager --licenses returned $license_status; continuing to package installation."
           fi
-          packages=("ndk;27.2.12479018" "platforms;android-35" "build-tools;35.0.0")
+          packages=("ndk;27.2.12479018" "platforms;android-35" "platforms;android-37" "build-tools;35.0.0")
           install_status=1
           for attempt in 1 2 3; do
             log="android-sdk-install-${attempt}.log"
@@ -192,7 +192,7 @@ jobs:
           exit "$install_status"
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npx tauri android init
-      - name: Patch pinned download plugin for AGP 9 source sets
+      - name: Patch pinned download plugin for Tauri 2.12 / AGP 9
         shell: bash
         run: |
           set -euo pipefail
@@ -209,12 +209,18 @@ jobs:
 
           path = Path(sys.argv[1])
           source = path.read_text()
-          old = 'android.sourceSets["main"].java.srcDir("lib/src/main/java")'
-          new = 'extensions.getByType<com.android.build.api.dsl.LibraryExtension>().sourceSets.getByName("main").java.srcDir("lib/src/main/java")'
-          if source.count(old) != 1:
-              raise SystemExit(f"Expected one legacy Android source-set accessor in {path}, found {source.count(old)}")
-          path.write_text(source.replace(old, new))
-          print(f"Patched AGP 9 source-set accessor in {path}")
+          replacements = {
+              'android.sourceSets["main"].java.srcDir("lib/src/main/java")':
+                  'extensions.getByType<com.android.build.api.dsl.LibraryExtension>().sourceSets.getByName("main").java.srcDir("lib/src/main/java")',
+              'compileSdk = 35': 'compileSdk = 37',
+          }
+          for old, new in replacements.items():
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(f"Expected one {old!r} in {path}, found {count}")
+              source = source.replace(old, new)
+          path.write_text(source)
+          print(f"Patched AGP 9 source sets and compileSdk 37 in {path}")
           PY
       - name: Declare Android foreground-service and notification permissions
         run: node scripts/ensure-android-transfer-permissions.mjs

@@ -350,6 +350,16 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           echo "ANDROID_APK_NAME=TheToolTable-smoke.apk" >> "$GITHUB_ENV"
+      - name: Reclaim build outputs for the emulator userdata partition
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The smoke harness uses only Node built-ins and the signed APKs; these
+          # native/web build intermediates are no longer needed once APKs are signed.
+          rm -rf node_modules dist src-tauri/gen/android/app/build
+          rm -f aligned-arm.apk aligned-x86_64.apk ks.jks "$RUNNER_TEMP/TheToolTable-arm-release-unsigned.apk"
+          echo '## Android disk space before emulator setup' >> "$GITHUB_STEP_SUMMARY"
+          df -h / | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Enable KVM for Android emulator
         shell: bash
         run: |
@@ -363,6 +373,8 @@ jobs:
           api-level: 35
           arch: x86_64
           profile: pixel_6
+          cores: 4
+          disk-size: 2048M
           emulator-boot-timeout: 1200
           disable-animations: true
           script: node scripts/android-runtime-smoke.mjs "$ANDROID_APK_NAME"

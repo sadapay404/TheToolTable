@@ -115,6 +115,20 @@ jobs:
           targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
       - uses: swatinem/rust-cache@v2
         with: { workspaces: src-tauri }
+      - name: Reclaim runner disk space for Android builds
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Keep the Android build toolchain, but remove unrelated runner images and
+          # preinstalled SDK payloads that compete with multi-ABI Rust release builds.
+          for path in /usr/share/dotnet /usr/local/share/boost /usr/local/share/powershell /usr/local/.ghcup; do
+            if [ -e "$path" ]; then sudo rm -rf -- "$path"; fi
+          done
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          if [ -d "$sdk_root/system-images" ]; then sudo rm -rf -- "$sdk_root/system-images"; fi
+          sudo apt-get clean
+          echo '## Android disk space after removing unrelated runner payloads' >> "$GITHUB_STEP_SUMMARY"
+          df -h / | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Android SDK + NDK (runner's preinstalled SDK)
         shell: bash
         run: |

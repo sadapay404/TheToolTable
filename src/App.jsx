@@ -5,7 +5,7 @@ import { exit, onBackButtonPress } from '@tauri-apps/api/app'
 import { AnimatePresence, MotionConfig, motion, useMotionValue, useReducedMotion, useScroll, useSpring, useTransform } from 'framer-motion'
 import { usePerf, setPerfMode, runBenchmark } from './lib/perf.js'
 import { TOOLS } from './toolsRegistry.jsx'
-import { THEMES, THEME_ORDER, applyTheme, savedTheme } from './themes.js'
+import { THEME_CHOICES, SYSTEM_THEME, applyTheme, savedTheme, themeLabel, themeIsDark, themeVars as themeVarsOf, watchSystemTheme } from './themes.js'
 import { popToolHistory, pushToolHistory, resetToolHistory } from './lib/navigation.js'
 import CommandPalette from './components/CommandPalette.jsx'
 import { Logo } from './components/Logo.jsx'
@@ -210,9 +210,9 @@ function ThemePicker({ theme, setTheme }) {
 
   return (
     <>
-      <button ref={ref} className="btn !px-2 sm:!px-3" onClick={toggle} aria-haspopup="menu" aria-expanded={open} aria-label={`Theme: ${THEMES[theme].name}`} title={`Theme: ${THEMES[theme].name}`}>
-        <span className="w-3.5 h-3.5 rounded-full border border-[var(--border)]" style={{ background: THEMES[theme].vars['--accent'] }} />
-        <span className="hidden sm:inline">{THEMES[theme].name}</span>
+      <button ref={ref} className="btn !px-2 sm:!px-3" onClick={toggle} aria-haspopup="menu" aria-expanded={open} aria-label={`Theme: ${themeLabel(theme)}`} title={`Theme: ${themeLabel(theme)}`}>
+        <span className="w-3.5 h-3.5 rounded-full border border-[var(--border)]" style={{ background: themeVarsOf(theme)['--accent'] }} />
+        <span className="hidden sm:inline">{themeLabel(theme)}</span>
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }}><path d="m6 9 6 6 6-6" /></svg>
       </button>
       {open && ReactDOM.createPortal(
@@ -221,16 +221,16 @@ function ThemePicker({ theme, setTheme }) {
           className="card fixed w-56 p-2 z-[60]"
           style={{ top: pos.top, right: pos.right, boxShadow: 'var(--shadow-lg)' }}
         >
-          {THEME_ORDER.map((id) => (
+          {THEME_CHOICES.map((id) => (
             <button
               key={id}
               className="w-full flex items-center gap-3 px-3 py-2.5 rounded-[10px] text-sm font-medium hover:bg-[var(--surface2)] transition-colors"
               style={id === theme ? { background: 'var(--surface2)' } : undefined}
               onClick={() => { setTheme(id); setOpen(false) }}
             >
-              <span className="w-4 h-4 rounded-[5px] border border-[var(--border)]" style={{ background: THEMES[id].vars['--bg'] }} />
-              <span className="w-3 h-3 rounded-full" style={{ background: THEMES[id].vars['--accent'] }} />
-              {THEMES[id].name}
+              <span className="w-4 h-4 rounded-[5px] border border-[var(--border)]" style={{ background: id === SYSTEM_THEME ? 'linear-gradient(135deg, #FCF8FF 50%, #131318 50%)' : themeVarsOf(id)['--bg'] }} />
+              <span className="w-3 h-3 rounded-full" style={{ background: id === SYSTEM_THEME ? 'linear-gradient(135deg, #5B4BD6 50%, #C6BFFF 50%)' : themeVarsOf(id)['--accent'] }} />
+              {themeLabel(id)}
               {id === theme && <span className="ml-auto" style={{ color: 'var(--accent)' }}>—</span>}
             </button>
           ))}
@@ -332,14 +332,14 @@ function MobileControlsSheet({ open, onClose, theme, setTheme }) {
             </div>
 
             <section aria-label="Color theme" className="mb-5">
-              <div className="flex items-center justify-between mb-2.5"><span className="mobile-section-label">Color theme</span><span className="text-[11px]" style={{ color: 'var(--muted)' }}>{THEMES[theme]?.name}</span></div>
+              <div className="flex items-center justify-between mb-2.5"><span className="mobile-section-label">Color theme</span><span className="text-[11px]" style={{ color: 'var(--muted)' }}>{themeLabel(theme)}</span></div>
               <div className="grid grid-cols-2 gap-2">
-                {THEME_ORDER.map((id, index) => {
+                {THEME_CHOICES.map((id, index) => {
                   const selected = theme === id
                   return (
                     <motion.button key={id} type="button" whileTap={{ scale: 0.97 }} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ ...SPRING, delay: index * 0.025 }} aria-pressed={selected} onClick={() => setTheme(id)} className="mobile-theme-option" data-selected={selected}>
-                      <span className="mobile-theme-swatch" style={{ background: THEMES[id].vars['--bg'], borderColor: THEMES[id].vars['--border'] }}><i style={{ background: THEMES[id].vars['--primary'] || THEMES[id].vars['--accent'] }} /></span>
-                      <span className="min-w-0 text-left"><span className="block font-semibold text-[12.5px] truncate">{THEMES[id].name}</span><span className="block text-[10.5px]" style={{ color: 'var(--muted)' }}>{THEMES[id].dark ? 'Dark' : 'Light'} theme</span></span>
+                      <span className="mobile-theme-swatch" style={{ background: themeVarsOf(id)['--bg'], borderColor: themeVarsOf(id)['--border'] }}><i style={{ background: themeVarsOf(id)['--primary'] || themeVarsOf(id)['--accent'] }} /></span>
+                      <span className="min-w-0 text-left"><span className="block font-semibold text-[12.5px] truncate">{themeLabel(id)}</span><span className="block text-[10.5px]" style={{ color: 'var(--muted)' }}>{id === SYSTEM_THEME ? 'System light / dark' : themeIsDark(id) ? 'Dark' : 'Light'}</span></span>
                       {selected && <span className="mobile-theme-check" aria-hidden="true">✓</span>}
                     </motion.button>
                   )
@@ -406,6 +406,8 @@ export default function App() {
   const [homeQuery, setHomeQuery] = useState('')
   const [homeFilter, setHomeFilter] = useState('all')
   const navRef = useRef(null)
+  const themeRef = useRef(theme)
+  themeRef.current = theme
   const routeHistoryRef = useRef(resetToolHistory())
   navRef.current = { active, paletteOpen, controlsOpen }
 
@@ -475,6 +477,9 @@ export default function App() {
   }, [])
 
   useEffect(() => { window.scrollTo(0, 0) }, [active])
+
+  // `auto` should repaint the moment the OS flips light/dark while the app is open.
+  useEffect(() => watchSystemTheme(() => { if (themeRef.current === SYSTEM_THEME) applyTheme(SYSTEM_THEME) }), [])
 
   const visibleTools = useMemo(() => {
     const group = HOME_FILTERS.find((filter) => filter.id === homeFilter) || HOME_FILTERS[0]

@@ -452,7 +452,10 @@ button, input, select, textarea { font-family: inherit; }
   .app-toast { bottom: calc(92px + env(safe-area-inset-bottom, 0px)); width: max-content; max-width: calc(100vw - 28px); white-space: normal; }
 }
 
-.mobile-settings-trigger { display: none; }
+/* NOTE: do not add a base `display:none` for .mobile-settings-trigger here. This
+   rule sits *after* the max-width:639.98px block that makes it a grid button, so
+   it used to win on source order and the appearance control never rendered on a
+   phone. The desktop hide comes from Tailwind's `sm:hidden` on the element. */
 .mobile-controls-overlay { position: fixed; inset: 0; z-index: 90; display: flex; align-items: flex-end; justify-content: center; padding-top: env(safe-area-inset-top, 0px); background: rgba(13, 12, 16, .48); backdrop-filter: blur(7px); -webkit-backdrop-filter: blur(7px); }
 .mobile-controls-sheet { width: 100%; max-width: 620px; max-height: min(88dvh, 820px); overflow-y: auto; overscroll-behavior: contain; padding: 8px 18px calc(18px + env(safe-area-inset-bottom, 0px)); border: 1px solid var(--border); border-bottom: 0; border-radius: 28px 28px 0 0; color: var(--ink); background: var(--surface); box-shadow: 0 -16px 50px rgba(0,0,0,.2); }
 .mobile-sheet-handle { width: 34px; height: 4px; margin: 2px auto 19px; border-radius: 99px; background: var(--outline); opacity: .45; }
@@ -580,4 +583,310 @@ html.android-native button, html.android-native [role="button"] { -webkit-tap-hi
   .home-filter-chip[aria-pressed="true"]::after, .card3d:hover .card-arrow,
   .card3d:focus-visible .card-arrow, .home-empty-state > span { animation: none !important; }
   .home-collection-head h2::after { transform: scaleX(1); animation: none !important; }
+}
+
+/* =============================================================================
+   PART 1 — Material 3 Expressive foundation
+   Design tokens, state layers, shape scale, motion tokens, primitives and the
+   safe-area shell that keeps interactive controls clear of the status bar and
+   camera cutout. Everything above this line is the existing app; everything
+   below is the new Material layer the mobile rewrite builds on.
+   ========================================================================== */
+
+:root {
+  /* --- M3 shape scale (Expressive runs larger than the 2021 spec) --- */
+  --md-shape-none: 0px;
+  --md-shape-xs: 6px;
+  --md-shape-sm: 10px;
+  --md-shape-md: 16px;
+  --md-shape-lg: 20px;
+  --md-shape-xl: 28px;
+  --md-shape-xxl: 36px;
+  --md-shape-full: 999px;
+
+  /* --- M3 motion tokens --- */
+  --md-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --md-ease-standard-decel: cubic-bezier(0, 0, 0, 1);
+  --md-ease-standard-accel: cubic-bezier(0.3, 0, 1, 1);
+  --md-ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
+  --md-ease-emphasized-decel: cubic-bezier(0.05, 0.7, 0.1, 1);
+  --md-ease-emphasized-accel: cubic-bezier(0.3, 0, 0.8, 0.15);
+  --md-dur-1: 50ms;  --md-dur-2: 100ms; --md-dur-3: 150ms; --md-dur-4: 200ms;
+  --md-dur-5: 300ms; --md-dur-6: 400ms; --md-dur-7: 450ms; --md-dur-8: 500ms;
+  --md-dur-9: 600ms; --md-dur-10: 700ms; --md-dur-11: 800ms; --md-dur-12: 900ms;
+
+  /* --- M3 state-layer opacities --- */
+  --md-state-hover: 0.08;
+  --md-state-focus: 0.12;
+  --md-state-pressed: 0.10;
+  --md-state-dragged: 0.16;
+
+  /* --- Resolved safe-area insets (see src/lib/safe-area.js) --- */
+  --safe-top: max(env(safe-area-inset-top, 0px), var(--ttt-safe-top, 0px));
+  --safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--ttt-safe-bottom, 0px));
+  --safe-left: max(env(safe-area-inset-left, 0px), var(--ttt-safe-left, 0px));
+  --safe-right: max(env(safe-area-inset-right, 0px), var(--ttt-safe-right, 0px));
+  --app-vh: var(--ttt-vh, 100dvh);
+
+  /* --- M3 elevation (Expressive: tinted, layered, softer) --- */
+  --md-elev-0: 0 0 0 0 transparent;
+  --md-elev-1: 0 1px 2px rgba(0,0,0,.16), 0 1px 3px 1px rgba(0,0,0,.08);
+  --md-elev-2: 0 1px 2px rgba(0,0,0,.16), 0 2px 6px 2px rgba(0,0,0,.10);
+  --md-elev-3: 0 1px 3px rgba(0,0,0,.16), 0 4px 10px 3px rgba(0,0,0,.10);
+  --md-elev-4: 0 2px 4px rgba(0,0,0,.16), 0 8px 18px 5px rgba(0,0,0,.10);
+}
+
+/* ---------------------------------------------------------------- safe area --
+   The header is a two-layer element: the surface stays full-bleed, the content
+   row is pushed *below* the status bar and *inside* any landscape cutout. That
+   is what stops the punch hole from swallowing the theme and search controls. */
+.app-header {
+  padding-top: 0 !important;
+  padding-inline: 0 !important;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  box-shadow: none;
+  transition: box-shadow var(--md-dur-4) var(--md-ease-standard), background var(--md-dur-4) var(--md-ease-standard);
+}
+.app-header[data-scrolled="true"] { box-shadow: 0 1px 0 var(--outline-variant); }
+.app-header-inner {
+  padding-top: var(--safe-top) !important;
+  padding-left: max(var(--safe-left), 12px) !important;
+  padding-right: max(var(--safe-right), 12px) !important;
+  min-height: calc(56px + var(--safe-top));
+  align-items: center;
+}
+.app-header-actions { margin-left: auto; }
+/* Controls must never be able to land inside the cutout band. */
+.app-header-actions > * { pointer-events: auto; }
+.scroll-progress { top: 0; z-index: 46; }
+
+/* Body/main reserve the bottom inset once, globally, so no tool has to. */
+.app-main { padding-bottom: calc(24px + var(--safe-bottom)); }
+
+/* ------------------------------------------------------------- state layers -- */
+.md3-state,
+.btn, .chip, .input, .select, .tool-btn, .mobile-bottom-nav button,
+.home-filter-chip, .card3d, .tool-panel, .home-search-field {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+.btn::after, .chip::after, .tool-btn::after, .home-filter-chip::after, .mobile-bottom-nav button::after {
+  content: "";
+  position: absolute; inset: 0;
+  background: currentColor;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--md-dur-2) var(--md-ease-standard);
+  z-index: 0;
+}
+.btn:hover::after, .chip:hover::after, .tool-btn:hover::after, .home-filter-chip:hover::after { opacity: var(--md-state-hover); }
+.btn:focus-visible::after, .chip:focus-visible::after, .tool-btn:focus-visible::after { opacity: var(--md-state-focus); }
+.btn:active::after, .chip:active::after, .tool-btn:active::after,
+.home-filter-chip:active::after, .mobile-bottom-nav button:active::after { opacity: var(--md-state-pressed); }
+.btn > *, .chip > *, .tool-btn > * { position: relative; z-index: 1; }
+
+/* ------------------------------------------------------------------ ripple -- */
+.md3-ripple { position: absolute; border-radius: 50%; transform: scale(0); pointer-events: none; background: currentColor; opacity: var(--md-state-pressed); }
+.md3-ripple[data-state="grow"] { animation: md3-ripple-grow var(--md-dur-8) var(--md-ease-standard-decel) forwards; }
+.md3-ripple[data-state="fade"] { animation: md3-ripple-fade var(--md-dur-5) var(--md-ease-standard-accel) forwards; }
+@keyframes md3-ripple-grow { to { transform: scale(2.6); opacity: var(--md-state-hover); } }
+@keyframes md3-ripple-fade { to { transform: scale(2.6); opacity: 0; } }
+
+/* ------------------------------------------------------- M3 primitive surfaces */
+.md3-surface { background: var(--surface-container); color: var(--on-surface); }
+.md3-surface-low { background: var(--surface-container-low); color: var(--on-surface); }
+.md3-surface-high { background: var(--surface-container-high); color: var(--on-surface); }
+.md3-surface-highest { background: var(--surface-container-highest); color: var(--on-surface); }
+.md3-card {
+  position: relative;
+  border-radius: var(--md-shape-lg);
+  background: var(--surface-container-low);
+  color: var(--on-surface);
+  border: 1px solid transparent;
+  transition: box-shadow var(--md-dur-4) var(--md-ease-standard),
+              background var(--md-dur-4) var(--md-ease-standard),
+              transform var(--md-dur-4) var(--md-ease-emphasized);
+}
+.md3-card--elevated { box-shadow: var(--md-elev-1); }
+.md3-card--raised { box-shadow: var(--md-elev-2); }
+.md3-card:hover { box-shadow: var(--md-elev-2); background: var(--surface-container); }
+.md3-card--interactive:active { transform: scale(.985); }
+
+.md3-list-item {
+  display: flex; align-items: center; gap: 14px;
+  min-height: 56px; padding: 10px 16px;
+  border-radius: var(--md-shape-md);
+  color: var(--on-surface);
+  transition: background var(--md-dur-2) var(--md-ease-standard);
+}
+.md3-list-item:hover { background: color-mix(in srgb, var(--on-surface) var(--md-state-hover), transparent); }
+.md3-list-item:active { background: color-mix(in srgb, var(--on-surface) var(--md-state-pressed), transparent); }
+.md3-list-item[aria-selected="true"], .md3-list-item[aria-pressed="true"], .md3-list-item[data-selected="true"] {
+  background: var(--secondary-container);
+  color: var(--on-secondary-container);
+}
+
+.md3-chip {
+  display: inline-flex; align-items: center; gap: 7px;
+  min-height: 34px; padding: 0 15px;
+  border-radius: var(--md-shape-sm);
+  border: 1px solid var(--outline-variant);
+  background: transparent;
+  color: var(--on-surface-variant);
+  font-size: 13px; font-weight: 550; white-space: nowrap;
+  transition: background var(--md-dur-2) var(--md-ease-standard),
+              color var(--md-dur-2) var(--md-ease-standard),
+              border-color var(--md-dur-2) var(--md-ease-standard);
+}
+.md3-chip[aria-pressed="true"], .md3-chip[data-selected="true"] {
+  background: var(--secondary-container);
+  color: var(--on-secondary-container);
+  border-color: transparent;
+}
+
+.md3-filled-button, .md3-tonal-button, .md3-outlined-button, .md3-text-button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 40px; padding: 0 22px;
+  border-radius: var(--md-shape-full);
+  border: 1px solid transparent;
+  font-size: 14px; font-weight: 600; letter-spacing: .01em;
+  cursor: pointer;
+  transition: box-shadow var(--md-dur-2) var(--md-ease-standard),
+              transform var(--md-dur-2) var(--md-ease-emphasized),
+              background var(--md-dur-2) var(--md-ease-standard);
+}
+.md3-filled-button { background: var(--primary); color: var(--on-primary); box-shadow: var(--md-elev-1); }
+.md3-tonal-button { background: var(--secondary-container); color: var(--on-secondary-container); }
+.md3-outlined-button { border-color: var(--outline-variant); color: var(--primary); background: transparent; }
+.md3-text-button { color: var(--primary); background: transparent; }
+.md3-filled-button:hover, .md3-tonal-button:hover { box-shadow: var(--md-elev-2); }
+.md3-filled-button:active, .md3-tonal-button:active, .md3-outlined-button:active, .md3-text-button:active { transform: scale(.97); }
+
+.md3-icon-button {
+  display: grid; place-items: center;
+  width: 48px; height: 48px; flex: 0 0 auto;
+  border-radius: var(--md-shape-full);
+  border: 0; background: transparent; color: var(--on-surface-variant);
+  cursor: pointer;
+  transition: background var(--md-dur-2) var(--md-ease-standard), color var(--md-dur-2) var(--md-ease-standard);
+}
+.md3-icon-button:hover { background: color-mix(in srgb, var(--on-surface) var(--md-state-hover), transparent); color: var(--on-surface); }
+.md3-icon-button:active { background: color-mix(in srgb, var(--on-surface) var(--md-state-pressed), transparent); }
+
+.md3-fab {
+  position: relative;
+  display: grid; place-items: center;
+  width: 56px; height: 56px; border-radius: var(--md-shape-lg);
+  background: var(--primary-container); color: var(--on-primary-container);
+  border: 0; box-shadow: var(--md-elev-2);
+  transition: box-shadow var(--md-dur-3) var(--md-ease-standard), transform var(--md-dur-3) var(--md-ease-emphasized);
+}
+.md3-fab:hover { box-shadow: var(--md-elev-3); }
+.md3-fab:active { transform: scale(.94); }
+
+.md3-segmented {
+  display: flex; gap: 2px; padding: 3px;
+  border-radius: var(--md-shape-full);
+  background: var(--surface-container-high);
+}
+.md3-segmented > button {
+  position: relative;
+  flex: 1 1 0; min-width: 0;
+  min-height: 36px; padding: 0 14px;
+  border: 0; border-radius: var(--md-shape-full);
+  background: transparent; color: var(--on-surface-variant);
+  font-size: 13px; font-weight: 600; white-space: nowrap;
+  transition: color var(--md-dur-2) var(--md-ease-standard);
+}
+.md3-segmented > button[aria-selected="true"] { color: var(--on-secondary-container); }
+.md3-segmented-glider {
+  position: absolute; z-index: 0;
+  border-radius: var(--md-shape-full);
+  background: var(--secondary-container);
+  box-shadow: var(--md-elev-1);
+}
+
+/* --------------------------------------------- Material theme remapping -----
+   Re-point the pre-existing app classes at real M3 roles when the Material
+   themes are active. Creamy White and the studio themes are untouched. */
+html[data-theme="material"] .card,
+html[data-theme="material-dark"] .card {
+  border-radius: var(--md-shape-lg);
+  border-color: var(--outline-variant);
+  background: var(--surface-container-low);
+  color: var(--on-surface);
+}
+html[data-theme="material"] .card-raised,
+html[data-theme="material-dark"] .card-raised {
+  border-radius: var(--md-shape-xl);
+  border-color: var(--outline-variant);
+  background: var(--surface-container);
+}
+html[data-theme="material"] .btn,
+html[data-theme="material-dark"] .btn {
+  border-radius: var(--md-shape-full);
+  min-height: 40px;
+  transition: background var(--md-dur-2) var(--md-ease-standard), transform var(--md-dur-2) var(--md-ease-emphasized);
+}
+html[data-theme="material"] .btn:active,
+html[data-theme="material-dark"] .btn:active { transform: scale(.97); }
+html[data-theme="material"] .btn-primary,
+html[data-theme="material-dark"] .btn-primary {
+  background: var(--primary); border-color: var(--primary); color: var(--on-primary);
+}
+html[data-theme="material"] .input,
+html[data-theme="material-dark"] .input,
+html[data-theme="material"] .select,
+html[data-theme="material-dark"] .select {
+  border-radius: var(--md-shape-sm);
+  background: var(--surface-container-high);
+  border-color: transparent;
+  color: var(--on-surface);
+}
+html[data-theme="material"] .input:focus,
+html[data-theme="material-dark"] .input:focus {
+  background: var(--surface-container-highest);
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+html[data-theme="material"] .label,
+html[data-theme="material-dark"] .label,
+html[data-theme="material"] .eyebrow,
+html[data-theme="material-dark"] .eyebrow {
+  color: var(--on-surface-variant);
+  font-weight: 600;
+  letter-spacing: .06em;
+}
+html[data-theme="material"] .chip,
+html[data-theme="material-dark"] .chip {
+  border-radius: var(--md-shape-sm);
+  border-color: var(--outline-variant);
+  color: var(--on-surface-variant);
+}
+
+/* M3 type scale — Roboto, tightened tracking, real weight steps. */
+html[data-theme="material"] .display,
+html[data-theme="material-dark"] .display,
+html[data-theme="material"] .mono,
+html[data-theme="material-dark"] .mono {
+  font-family: Roboto, "Noto Sans", system-ui, sans-serif;
+  letter-spacing: -.018em;
+  font-weight: 500;
+}
+html[data-theme="material"] .tool-screen-title,
+html[data-theme="material-dark"] .tool-screen-title { font-weight: 600; letter-spacing: -.025em; }
+html[data-theme="material"] .home-collection-head h2,
+html[data-theme="material-dark"] .home-collection-head h2 { font-weight: 600; letter-spacing: -.03em; }
+
+/* Hide the decorative paper grain + hero tint: Material is flat by design. */
+html[data-theme="material"] body::after,
+html[data-theme="material-dark"] body::after { display: none; }
+html[data-theme="material"] .hero-tint,
+html[data-theme="material-dark"] .hero-tint {
+  background:
+    radial-gradient(120% 82% at 12% -8%, color-mix(in srgb, var(--primary) 20%, transparent), transparent 62%),
+    radial-gradient(90% 70% at 92% 4%, color-mix(in srgb, var(--tertiary) 16%, transparent), transparent 58%);
 }

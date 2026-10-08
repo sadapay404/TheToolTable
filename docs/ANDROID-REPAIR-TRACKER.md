@@ -27,6 +27,12 @@ This is a ten-part Android-only repair cadence: two tool screens checked per par
 - Model downloads already use the native download manager/WorkManager path. Android Media Clipper/Downloader still selects its HTTP companion engine (`/api/ytdlp`) when no native runner is installed. This remains a known functional limitation; do not describe it as a bundled or verified Android yt-dlp downloader.
 - A build-time compatibility patch allows the foreground-service lifecycle to start without the optional headless JNI library. The patch and Android UI smoke test still need to pass on GitHub Actions before this part is marked complete.
 
+## Latest Android emulator run
+
+- Run `37725028745` built and signed both ARM release and x86_64 smoke APKs after reclaiming runner disk space. The 2 GB userdata AVD was created and booted successfully; this resolves the earlier userdata-partition setup failure.
+- The runtime smoke test then timed out before the collection appeared. UIAutomator found Android's system dialog `Quickstep isn't responding`; this run does not establish whether the app itself crashed, and it did not reach Tool 04/06 or back-navigation checks. The fallback signing key was fresh-install-only, and the APK upload step was skipped.
+- The emulator had been configured for four cores although KVM reported two supported. The next run uses the default two-core profile, gives first-boot services 15 seconds to settle, allows up to 120 seconds for UI checks, and records one recovery attempt for a system ANR dialog without weakening the app-screen assertions.
+
 ## Acceptance checklist
 
 - [ ] App stays open on Android after a fresh install and renders the collection (not a header-only/black screen).

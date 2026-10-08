@@ -5,8 +5,9 @@ import path from 'node:path'
 const packageId = 'app.thetooltable.mubashir'
 const apkPath = path.resolve(process.argv[2] || '')
 const POLL_MS = 900
-const UI_TIMEOUT_MS = 60_000
+const UI_TIMEOUT_MS = 120_000
 let lastTree = ''
+let systemAnrRecoveries = 0
 
 function adb(...args) {
   return execFileSync('adb', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 25_000 }).trim()
@@ -66,6 +67,19 @@ async function waitUntil(description, predicate, timeout = UI_TIMEOUT_MS) {
   const deadline = Date.now() + timeout
   while (Date.now() < deadline) {
     const tree = dumpUi()
+    const anrTitle = nodesOf(tree).find((node) => /isn't responding/i.test(node.text))
+    const waitButton = nodeWithLabel(tree, 'Wait')
+    if (anrTitle && waitButton?.bounds) {
+      if (systemAnrRecoveries >= 1) {
+        throw new Error(`Android showed another system ANR dialog while waiting for ${description}: ${anrTitle.text}`)
+      }
+      systemAnrRecoveries += 1
+      const [left, top, right, bottom] = waitButton.bounds
+      adb('shell', 'input', 'tap', String(Math.round((left + right) / 2)), String(Math.round((top + bottom) / 2)))
+      console.warn(`Android showed "${anrTitle.text}" during cold startup; chose Wait once and kept checking for the app UI.`)
+      await delay(5_000)
+      continue
+    }
     const found = predicate(tree)
     if (found) return { tree, found }
     await delay(POLL_MS)
@@ -124,6 +138,8 @@ function assertNoAppCrash() {
 
 async function main() {
   if (!process.argv[2]) throw new Error('Pass the signed APK path as the first argument.')
+  console.log('Allowing Android first-boot services to settle before installing the app.')
+  await delay(15_000)
   adb('install', '-r', apkPath)
   safeAdb('logcat', '-c')
   adb('shell', 'am', 'force-stop', packageId)

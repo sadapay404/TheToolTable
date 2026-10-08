@@ -143,7 +143,9 @@ async function main() {
   adb('install', '-r', apkPath)
   safeAdb('logcat', '-c')
   adb('shell', 'am', 'force-stop', packageId)
-  adb('shell', 'monkey', '-p', packageId, '1')
+  const launchResult = adb('shell', 'am', 'start', '-W', '-a', 'android.intent.action.MAIN', '-c', 'android.intent.category.LAUNCHER', '-p', packageId)
+  if (!/Status:\s*ok/.test(launchResult)) throw new Error(`Android did not resolve the app's launcher activity:\n${launchResult}`)
+  console.log(launchResult)
   await waitUntil('the Android home collection on launch', (tree) => {
     const nodes = nodesOf(tree)
     return nodes.some((node) => node.text === 'Browse the collection')

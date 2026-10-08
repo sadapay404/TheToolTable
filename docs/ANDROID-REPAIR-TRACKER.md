@@ -31,7 +31,7 @@ This is a ten-part Android-only repair cadence: two tool screens checked per par
 
 - Run `37725028745` built and signed both ARM release and x86_64 smoke APKs after reclaiming runner disk space. The 2 GB userdata AVD was created and booted successfully; this resolves the earlier userdata-partition setup failure.
 - Run `37763406519` again built and signed both APKs and booted the emulator on its default two-core profile. The smoke test still stopped before the collection appeared: UIAutomator found repeated Android system dialogs saying `Quickstep isn't responding`, including one within seconds of choosing Wait. Neither run establishes whether the app itself crashed, and neither reached Tool 04/06 or back-navigation checks. Both used a fresh-install-only fallback signing key, and neither uploaded an APK.
-- Returning from four requested cores to the default two did not resolve the launcher ANR. The next attempt starts the app through Android's resolved `MAIN`/`LAUNCHER` activity instead of `monkey`, raises AVD RAM to 4 GB, and retains strict visible-screen assertions plus one recorded recovery for an initial system ANR.
+- Returning from four requested cores to the default two did not resolve the launcher ANR. Run `37767140644` built and signed both APKs and booted with a 4 GB AVD, but the new package-only `am start` test command returned Android result `-91` before UI inspection; this is a harness launch-resolution failure, not evidence of an app crash and not a result for the Quickstep hypothesis. The next attempt starts Tauri's explicit `.MainActivity` component, keeps strict visible-screen assertions plus one recorded recovery for an initial system ANR, and now preserves ADB stdout/stderr when a command fails.
 
 ## Acceptance checklist
 

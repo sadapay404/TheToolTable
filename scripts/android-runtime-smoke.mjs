@@ -10,7 +10,15 @@ let lastTree = ''
 let systemAnrRecoveries = 0
 
 function adb(...args) {
-  return execFileSync('adb', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 25_000 }).trim()
+  try {
+    return execFileSync('adb', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 25_000 }).trim()
+  } catch (error) {
+    const output = [error.stdout, error.stderr]
+      .map((value) => value?.toString().trim())
+      .filter(Boolean)
+      .join('\n')
+    throw new Error(`${error.message}${output ? `\n${output}` : ''}`)
+  }
 }
 
 function safeAdb(...args) {
@@ -143,8 +151,8 @@ async function main() {
   adb('install', '-r', apkPath)
   safeAdb('logcat', '-c')
   adb('shell', 'am', 'force-stop', packageId)
-  const launchResult = adb('shell', 'am', 'start', '-W', '-a', 'android.intent.action.MAIN', '-c', 'android.intent.category.LAUNCHER', '-p', packageId)
-  if (!/Status:\s*ok/.test(launchResult)) throw new Error(`Android did not resolve the app's launcher activity:\n${launchResult}`)
+  const launchResult = adb('shell', 'am', 'start', '-W', '-n', `${packageId}/.MainActivity`)
+  if (!/Status:\s*ok/.test(launchResult)) throw new Error(`Android did not start the app's MainActivity:\n${launchResult}`)
   console.log(launchResult)
   await waitUntil('the Android home collection on launch', (tree) => {
     const nodes = nodesOf(tree)

@@ -21,7 +21,7 @@ A ground-up mobile pass driven by seven Android defects reported against v1.2.0.
 | 2 | Mobile shell rewrite (header, nav bar, search, back navigation) | **Complete** |
 | 3 | Home grid redesign | **Complete** |
 | 4 | Motion system (Android **and** Windows) | **Complete** |
-| 5 | Tool chrome for all 20 tools | Pending |
+| 5 | Tool chrome for all 20 tools | **Complete** |
 | 6 | New animated mobile footer | Pending |
 | 7 | Background transfers + notification progress | Pending |
 | 8 | Android icon, signing, CI de-risking | Pending |
@@ -287,3 +287,89 @@ travelling highlight on "Back to top".
     magnetises with its shine at opacity 1 and its icon at scale >1.05, cards sit at
     different parallax depths after scroll, footer lockup parallax offset is non-zero,
     command palette opens with rows, pill and scanning scan line, zero console errors.
+
+
+---
+
+## Part 5 — Tool chrome for all 20 tools ✅
+
+Twenty tools, twenty different UIs. Each one had its own idea of a header, its own
+drop target, its own buttons and its own empty state, so opening a different tool
+felt like opening a different app.
+
+The fix was not twenty rewrites. It was **one kit, driven by the registry** — so every
+tool gets the same introduction without a single tool-specific line of copy.
+
+### What was wrong
+
+| Symptom | Cause |
+|---|---|
+| Every tool felt like a different app | Each tool rendered its own header, drop zone and action row |
+| The tool name was said twice | The screen header showed icon + eyebrow + title, and the tool then repeated itself |
+| Drop targets were inconsistent | Nine tools used one component; the rest hand-rolled their own |
+| Dashed frames stretched | The outline was an SVG `rect` with `preserveAspectRatio="none"`, so the dashes stretched with the box |
+| Shell glyphs rendered blank | New glyphs were authored as open polylines in a file that paints everything with `fill` |
+| Springs were copy-pasted | `SPRING = { stiffness: 300, damping: 25 }` was re-declared in three shared modules |
+
+### Changes
+
+**`src/components/ToolChrome.jsx` — the kit**
+
+- `ToolShell` — the frame a tool renders into. Owns the vertical rhythm and the
+  clearance the phone nav bar needs, so no tool has to remember either.
+- `ToolIntro` — the band every tool opens with, built **entirely from the registry
+  entry**: tonal icon container, masked title reveal, a rule that draws itself, the
+  tool's description, and its tag chips. All twenty tools get an identical
+  introduction from one component.
+- `ToolSection`, `ActionBar`, `ToolButton`, `EmptyState`, `TabsRail`, `ProgressRail`,
+  `FactChip`, `SplitView` — the remaining shared furniture.
+- `ToolButton` is the Material filled/tonal/outlined/text button with an ink ripple,
+  a press spring and a real busy spinner instead of a rotated icon.
+
+**`src/App.jsx`**
+
+- The tool screen header is now a breadcrumb (`The table / Tool 07`) plus the back
+  button and the number badge. Everything else moved into the intro band, so the name
+  is stated exactly once.
+- `<ToolShell><ToolIntro tool={active} /><ActiveComp /></ToolShell>` wraps the active
+  tool — one edit, all twenty tools.
+
+**`src/components/ui.jsx` — the drop target**
+
+- Rewritten as a Material drop zone: animated dashed frame, a floating icon mark that
+  lifts when a drag arrives, a `Browse files` call to action, a "release to add" state
+  and a confirmation that counts what landed.
+- Everything the old one could do it still does: file input, click-to-browse, drag and
+  drop, multi-file, plus new keyboard operation and a polite live region.
+- The stretched SVG outline is gone; the frame is a real `2px dashed` border, so the
+  dashes stay uniform at any width.
+
+**`src/components/ToolIcon.jsx`**
+
+- Four shell glyphs added — `upload`, `file`, `image`, `check` — authored as filled
+  silhouettes, because every glyph in this file is painted with `fill="currentColor"`.
+
+**Shared tool parts**
+
+- `exchange/parts.jsx`, `decision/parts.jsx` and `studio/controls.jsx` now import their
+  spring from the one motion module. The original `{ stiffness: 300, damping: 25 }` is
+  preserved exactly as `SPRING.legacy`, so nothing moves differently than it did.
+- `Panel` gains Material shape tokens and a hover lift.
+- `Seg` is now a Material segmented control with a shared-layout sliding indicator.
+- `PrimaryBtn` is a Material filled button with an ink ripple and a real spinner.
+- `Switch` is now 52×32dp with a thumb that grows from 16 to 24 and carries a check.
+
+### Verification
+
+- `npm test` — **172/172 passing** (+16 chrome tests: the kit's surface, the registry
+  driving the intro, the header never repeating the intro, the drop target keeping every
+  capability it had, a uniform dashed frame, the shell glyphs being closed filled paths,
+  every rendered class having a rule, the shell clearing the nav bar, reduced motion
+  being honoured, and a **never-redact** guard over Parts 1–4).
+- `npm run build` — passing.
+- Headless Chromium (`browsertest/verify5.mjs`, **18/18 checks**): **all 20 tools opened
+  on a 390×844 Android phone and again at 1280×900**. Every tool renders the intro band
+  with a title, rule and description, inside the shell, with no horizontal overflow, no
+  duplicated title, and **zero application console errors**. The only network failures
+  are the currency and crypto rate APIs the sandbox cannot reach — the tool degrades
+  gracefully, exactly as its "local-first, network features are opt-in" promise says.

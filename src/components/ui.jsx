@@ -1,5 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { motion, useMotionValue, useSpring, useMotionValueEvent } from 'framer-motion'
+import { motion, AnimatePresence, useMotionValue, useReducedMotion, useSpring, useMotionValueEvent } from 'framer-motion'
+import { ToolIcon } from './ToolIcon.jsx'
+import { useRipple } from '../lib/ripple.js'
+import { EASE, DURATION, SPRING, t } from '../lib/motion.js'
 
 /** Spring-animated numeric readout */
 export function AnimatedNumber({ value, format = (n) => Math.round(n).toLocaleString(), className = '', stiffness = 120 }) {
@@ -15,7 +18,14 @@ export function AnimatedNumber({ value, format = (n) => Math.round(n).toLocaleSt
 export function LiveProgress({ value, label }) {
   return (
     <div>
-      {label && <div className="flex justify-between text-xs font-semibold mb-1.5" style={{ color: 'var(--muted)' }}><span>{label}</span><AnimatedNumber value={value} className="tabular-nums" />%</div>}
+      {label && (
+        <div className="flex justify-between text-xs font-semibold mb-1.5" style={{ color: 'var(--muted)' }}>
+          <AnimatePresence mode="popLayout" initial={false}>
+            <motion.span key={label} initial={{ y: 8, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -8, opacity: 0 }} transition={t(DURATION.short3, EASE.emphasizedAccelerate)}>{label}</motion.span>
+          </AnimatePresence>
+          <AnimatedNumber value={value} className="tabular-nums" />%
+        </div>
+      )}
       <div className="progress-shell relative overflow-hidden">
         <motion.div className="progress-fill stripes" initial={{ width: 0 }} animate={{ width: `${Math.min(100, Math.max(0, value))}%` }} transition={{ type: 'spring', stiffness: 120, damping: 20 }} />
       </div>
@@ -23,29 +33,98 @@ export function LiveProgress({ value, label }) {
   )
 }
 
-export function Dropzone({ onFiles, multiple = false, accept, label = 'Drop files here', sub = 'or click to browse', children }) {
+/**
+ * The Material 3 drop target every tool uses to accept files.
+ *
+ * It answers the three questions a drop target has to answer at a glance:
+ * where do I drop it, what goes in it, and is it live right now. The dashed
+ * border is drawn with a real stroke animation rather than a CSS dash trick, so
+ * it stays smooth at any size.
+ */
+export function Dropzone({ onFiles, multiple = false, accept, label = 'Drop files here', sub = 'or click to browse', icon = 'upload', children, compact = false }) {
   const [hot, setHot] = useState(false)
+  const [landed, setLanded] = useState(0)
   const ref = useRef(null)
+  const ripple = useRipple()
+  const reduceMotion = useReducedMotion()
+  const perimeter = 1180
+
+  const accept_ = (files) => {
+    const list = [...files]
+    if (!list.length) return
+    setLanded((n) => n + list.length)
+    onFiles(multiple ? list : list.slice(0, 1))
+  }
+
   return (
-    <div
-      className="app-dropzone dropzone p-10 text-center cursor-pointer"
+    <motion.div
+      ref={ripple.ref}
+      onPointerDown={ripple.onPointerDown}
+      data-ripple=""
+      role="button"
+      tabIndex={0}
+      aria-label={label}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ref.current?.click() } }}
+      className={`app-dropzone dropzone tool-dropzone ${compact ? 'tool-dropzone--compact' : ''}`}
       data-hot={hot}
       onClick={() => ref.current?.click()}
       onDragOver={(e) => { e.preventDefault(); setHot(true) }}
       onDragLeave={() => setHot(false)}
-      onDrop={(e) => { e.preventDefault(); setHot(false); const fs = [...e.dataTransfer.files]; if (fs.length) onFiles(multiple ? fs : fs.slice(0, 1)) }}
+      onDrop={(e) => { e.preventDefault(); setHot(false); accept_(e.dataTransfer.files) }}
+      animate={reduceMotion ? undefined : {
+        scale: hot ? 1.012 : 1,
+        boxShadow: hot
+          ? `0 0 0 4px color-mix(in srgb, var(--primary) 22%, transparent), 0 22px 44px -20px color-mix(in srgb, var(--primary) 60%, transparent)`
+          : '0 0 0 0px color-mix(in srgb, var(--primary) 0%, transparent), 0 0 0 0px rgba(0,0,0,0)',
+      }}
+      transition={SPRING.expressive}
     >
-      <input ref={ref} type="file" hidden multiple={multiple} accept={accept} onChange={(e) => { const fs = [...e.target.files]; if (fs.length) onFiles(fs); e.target.value = '' }} />
+      <input ref={ref} type="file" hidden multiple={multiple} accept={accept} onChange={(e) => { accept_(e.target.files); e.target.value = '' }} />
+
+      {/* Dashed frame. A real border keeps the dashes uniform at any width —
+          a stretched SVG stroke would stretch the dashes too. */}
+      <span className="tool-dropzone-outline" data-hot={hot} aria-hidden="true" />
+
       {children || (
-        <>
-          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--copper)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="mx-auto mb-4">
-            <path d="M12 16V4m0 0 4 4m-4-4-4 4" /><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
-          </svg>
-          <div className="display font-semibold text-[17px]">{label}</div>
-          <div className="text-[13px] mt-1.5" style={{ color: 'var(--muted)' }}>{sub}</div>
-        </>
+        <div className="relative z-[1] flex flex-col items-center text-center">
+          <motion.span
+            className="tool-dropzone-mark"
+            aria-hidden="true"
+            animate={reduceMotion ? undefined : hot ? { y: -4, scale: 1.06 } : { y: [0, -6, 0] }}
+            transition={hot ? SPRING.bouncy : { duration: 2.8, repeat: Infinity, ease: 'easeInOut' }}
+          >
+            <ToolIcon name={icon} size={compact ? 24 : 30} />
+          </motion.span>
+          <div className="display font-semibold text-[16px] sm:text-[17px] mt-3">{label}</div>
+          {sub && <div className="text-[13px] mt-1.5 max-w-[46ch]" style={{ color: 'var(--on-surface-variant)' }}>{sub}</div>}
+
+          <motion.span
+            className="tool-dropzone-cta"
+            initial={reduceMotion ? false : { opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ ...SPRING.snappy, delay: 0.14 }}
+          >
+            {hot ? 'Release to add' : 'Browse files'}
+          </motion.span>
+
+          <AnimatePresence>
+            {landed > 0 && (
+              <motion.span
+                key={landed}
+                className="tool-dropzone-landed"
+                initial={{ opacity: 0, scale: 0.8, y: 6 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                transition={SPRING.bouncy}
+              >
+                {landed} file{landed === 1 ? '' : 's'} added
+              </motion.span>
+            )}
+          </AnimatePresence>
+        </div>
       )}
-    </div>
+      <span className="sr-only" aria-live="polite">{landed > 0 ? `${landed} file${landed === 1 ? '' : 's'} added` : ''}</span>
+    </motion.div>
   )
 }
 

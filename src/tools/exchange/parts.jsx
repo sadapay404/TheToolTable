@@ -2,8 +2,10 @@ import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from '
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence, animate } from 'framer-motion'
 import { numberWords } from '../../lib/units/words'
+import { CARD_SPRING, SPRING as MSPRING, EASE, DURATION, t } from '../../lib/motion.js'
+import { ToolIcon } from '../../components/ToolIcon.jsx'
 
-export const SPRING = { type: 'spring', stiffness: 300, damping: 25 }
+export const SPRING = CARD_SPRING
 
 /* ------------------------------------------------ icons ------------------------------------------------ */
 const P = {
@@ -285,14 +287,29 @@ export function Label({ children, right }) {
 }
 
 /** equal-width segmented control with a springy thumb */
-export function Seg({ value, onChange, options, small, className = '' }) {
-  const i = Math.max(0, options.findIndex(([k]) => k === value)), n = options.length
+export function Seg({ value, onChange, options, small, className = '', layoutId }) {
+  const n = options.length
+  const id = layoutId || `seg-${options.map(([k]) => k).join('-')}`
   return (
-    <div className={`relative grid rounded-full p-1 ${className}`} style={{ gridTemplateColumns: `repeat(${n}, minmax(0,1fr))`, background: 'var(--surface2)', border: '1px solid var(--border)' }}>
-      <motion.span className="absolute top-1 bottom-1 rounded-full" style={{ width: `calc((100% - 8px) / ${n})`, background: 'var(--ink)', boxShadow: '0 6px 14px -6px rgba(0,0,0,.5)' }} initial={false} animate={{ left: `calc(4px + ${i} * (100% - 8px) / ${n})` }} transition={SPRING} />
-      {options.map(([k, l]) => (
-        <button key={k} type="button" onClick={() => onChange(k)} className={`relative z-[1] rounded-full font-semibold whitespace-nowrap transition-colors ${small ? 'px-3 py-1 text-[11.5px]' : 'px-4 py-2 text-[13px]'}`} style={{ color: k === value ? 'var(--bg)' : 'var(--muted)' }}>{l}</button>
-      ))}
+    <div className={`tool-tabs ${className}`} style={{ gridTemplateColumns: `repeat(${n}, minmax(0,1fr))`, display: 'grid' }}>
+      {options.map(([k, l]) => {
+        const active = k === value
+        return (
+          <motion.button
+            key={k}
+            type="button"
+            aria-pressed={active}
+            onClick={() => onChange(k)}
+            whileTap={{ scale: 0.96 }}
+            transition={MSPRING.snappy}
+            className={`tool-tab ${small ? '!px-3 !text-[11.5px]' : '!px-4 !text-[13px]'}`}
+            style={{ color: active ? 'var(--on-secondary-container)' : 'var(--on-surface-variant)' }}
+          >
+            {active && <motion.span className="tool-tab-indicator" layoutId={id} transition={MSPRING.snappy} aria-hidden="true" />}
+            <span className="relative z-[1] whitespace-nowrap">{l}</span>
+          </motion.button>
+        )
+      })}
     </div>
   )
 }

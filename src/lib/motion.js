@@ -50,10 +50,18 @@ export const SPRING = {
   bouncy: { type: 'spring', stiffness: 520, damping: 18, mass: 0.6 },
   /** Slow, heavy settle for large surfaces. */
   heavy: { type: 'spring', stiffness: 180, damping: 30, mass: 1.2 },
+  /**
+   * The app's original card spring (300/25, no mass). Twenty tools were tuned
+   * against it, so it stays a first-class preset rather than a loose literal.
+   */
+  legacy: { type: 'spring', stiffness: 300, damping: 25 },
 }
 
-/** Legacy alias still referenced across the existing components. */
-export const CARD_SPRING = { type: 'spring', stiffness: 300, damping: 25 }
+/**
+ * The app's original card spring, kept as a first-class preset so the existing
+ * tools that already use it keep their exact feel while sharing one source.
+ */
+export const CARD_SPRING = SPRING.legacy
 
 export const stagger = (index, step = 0.035, base = 0) => base + index * step
 export const staggerChildren = (step = 0.035, delayChildren = 0) => ({ ...SPRING.expressive, staggerChildren: step, delayChildren })

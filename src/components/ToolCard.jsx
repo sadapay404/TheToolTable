@@ -112,6 +112,7 @@ function TiltSurface({ tool, onOpen, i, level }) {
       <motion.button
         type="button"
         className="card3d group block w-full text-left"
+        data-tool-id={tool.id}
         aria-label={`Open ${tool.name}`}
         variants={cardVariants}
         initial="rest"
@@ -198,6 +199,7 @@ function PhoneSurface({ tool, onOpen, onLongPress, index }) {
         whileTap={{ scale: 0.985 }}
         transition={t(DURATION.short3, EASE.emphasizedAccelerate)}
         className="tool-tile"
+        data-tool-id={tool.id}
         aria-label={`Open ${tool.name}. Long press for more actions.`}
       >
         <span className="tool-tile-icon" aria-hidden="true">

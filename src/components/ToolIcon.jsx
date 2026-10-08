@@ -114,6 +114,23 @@ const GLYPHS = {
   ],
 }
 
+/* ---- shell glyphs used by the shared chrome, not by any one tool ---- */
+/* These are authored as filled silhouettes: every glyph in this file is drawn
+   with `fill="currentColor"`, so an open polyline would render as nothing. */
+GLYPHS.upload = [
+  'M11.05 3.1h1.9v7.05h2.7L12 15.35 8.35 10.15h2.7z',
+  'M4.2 14.1h2.1v4.2h11.4v-4.2h2.1v5.4a1.8 1.8 0 0 1-1.8 1.8H6a1.8 1.8 0 0 1-1.8-1.8z',
+]
+GLYPHS.file = [
+  'M6.4 2.9h7.1l4.1 4.1v12.2a1.9 1.9 0 0 1-1.9 1.9H6.4a1.9 1.9 0 0 1-1.9-1.9V4.8a1.9 1.9 0 0 1 1.9-1.9zm6.6 1.9v3.3h3.3z',
+]
+GLYPHS.image = [
+  'M6.3 3.4h11.4A1.9 1.9 0 0 1 19.6 5.3v13.4a1.9 1.9 0 0 1-1.9 1.9H6.3a1.9 1.9 0 0 1-1.9-1.9V5.3a1.9 1.9 0 0 1 1.9-1.9z',
+  'M9.4 8.4a1.6 1.6 0 1 1 0 3.2 1.6 1.6 0 0 1 0-3.2z',
+  'M6.1 18.2 11 12.9l2.6 2.4 1.9-1.7 3.4 3.1v1.9a.6.6 0 0 1-.6.6z',
+]
+GLYPHS.check = ['M9.9 20.1 2.6 12.8l2.6-2.6 4.7 4.7 9.5-9.5 2.6 2.6z']
+
 const NAMES = Object.keys(GLYPHS)
 
 /** Ids the registry may use, plus a safe fallback. */

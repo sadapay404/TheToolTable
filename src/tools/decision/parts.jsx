@@ -4,6 +4,8 @@ import { normalizeDecisionState, randomFraction, randomIndex, shuffleSecure, wei
 export { SPRING } from '../exchange/parts.jsx'
 export { Panel, Label, Seg, CountText } from '../exchange/parts.jsx'
 import { SPRING } from '../exchange/parts.jsx'
+import { SPRING as MSPRING } from '../../lib/motion.js'
+import { useRipple } from '../../lib/ripple.js'
 
 /* ------------------------------------------------ randomness (crypto-grade, unbiased) ------------------------------------------------ */
 export const rnd = randomIndex
@@ -107,8 +109,16 @@ export function Switch({ on, onChange, label, hint, disabled = false }) {
   return (
     <button type="button" role="switch" aria-checked={on} disabled={disabled} onClick={() => { if (!disabled) { sfx('click'); onChange(!on) } }} className={`w-full flex items-center justify-between gap-3 text-left py-1 ${disabled ? 'cursor-not-allowed opacity-50' : ''}`}>
       <span><span className="block text-[13.5px] font-semibold">{label}</span>{hint && <span className="block text-[11.5px]" style={{ color: 'var(--muted)' }}>{hint}</span>}</span>
-      <span className="relative shrink-0 w-11 h-6 rounded-full transition-colors" style={{ background: on ? 'var(--copper)' : 'var(--border)' }}>
-        <motion.span className="absolute top-0.5 w-5 h-5 rounded-full bg-white" style={{ boxShadow: '0 2px 5px rgba(0,0,0,.3)' }} initial={false} animate={{ left: on ? 22 : 2 }} transition={SPRING} />
+      <span className="relative shrink-0 w-[52px] h-[32px] rounded-full transition-colors" style={{ background: on ? 'var(--primary)' : 'color-mix(in srgb, var(--on-surface) 22%, transparent)', border: on ? '2px solid var(--primary)' : '2px solid color-mix(in srgb, var(--on-surface) 32%, transparent)' }}>
+        <motion.span
+          className="absolute grid place-items-center rounded-full"
+          style={{ width: on ? 24 : 16, height: on ? 24 : 16, background: on ? 'var(--on-primary)' : 'var(--on-surface-variant)', boxShadow: '0 2px 6px rgba(0,0,0,.32)' }}
+          initial={false}
+          animate={{ left: on ? 26 : 6 }}
+          transition={{ ...MSPRING.snappy }}
+        >
+          {on && <motion.span initial={{ scale: 0, rotate: -90 }} animate={{ scale: 1, rotate: 0 }} transition={MSPRING.bouncy}><DIco n="check" s={14} w={2.6} style={{ color: 'var(--primary)' }} /></motion.span>}
+        </motion.span>
       </span>
     </button>
   )
@@ -142,11 +152,28 @@ export function Stepper({ value, onChange, min = 1, max = 10, label }) {
   )
 }
 
-export function PrimaryBtn({ children, onClick, disabled, busy, icon, className = '' }) {
+export function PrimaryBtn({ children, onClick, disabled, busy, icon, className = '', ripple = true }) {
+  const r = useRipple()
   return (
-    <motion.button type="button" onClick={onClick} disabled={disabled} whileHover={disabled ? {} : { y: -3, scale: 1.02 }} whileTap={disabled ? {} : { scale: 0.93 }}
-      className={`relative inline-flex items-center justify-center gap-2.5 rounded-full px-9 py-3.5 text-[15px] font-bold ${className}`} style={{ background: 'var(--ink)', color: 'var(--bg)', opacity: disabled ? 0.55 : 1, boxShadow: '0 14px 26px -12px rgba(0,0,0,.6)' }}>
-      {icon && <motion.span animate={busy ? { rotate: 360 } : { rotate: 0 }} transition={busy ? { repeat: Infinity, duration: 0.9, ease: 'linear' } : SPRING}><DIco n={icon} s={18} /></motion.span>}{children}
+    <motion.button
+      type="button"
+      ref={r.ref}
+      onPointerDown={ripple ? r.onPointerDown : undefined}
+      data-ripple={ripple ? '' : undefined}
+      onClick={onClick}
+      disabled={disabled}
+      whileHover={disabled ? undefined : { y: -2 }}
+      whileTap={disabled ? undefined : { scale: 0.96 }}
+      transition={MSPRING.snappy}
+      className={`tool-btn tool-btn--filled relative ${className}`}
+      style={{ opacity: disabled ? 0.5 : 1 }}
+    >
+      {icon && (
+        busy
+          ? <motion.span className="tool-btn-spinner" aria-hidden="true" animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1.1, ease: 'linear' }} />
+          : <motion.span className="tool-btn-icon" aria-hidden="true" animate={{ rotate: 0 }} transition={SPRING}><DIco n={icon} s={18} /></motion.span>
+      )}
+      <span>{children}</span>
     </motion.button>
   )
 }

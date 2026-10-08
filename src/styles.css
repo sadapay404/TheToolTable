@@ -1476,3 +1476,273 @@ html[data-perf="lite"] .ambient-wash { filter: none; }
 }
 @keyframes footer-top-sheen { from { background-position: 0% 0; } to { background-position: 200% 0; } }
 @media (prefers-reduced-motion: reduce) { .footer-top-link::after { animation: none; } }
+
+/* =============================================================================
+   PART 5 — Tool chrome
+   The shared frame every one of the twenty tools renders inside. Nothing here
+   replaces what a tool already draws; it is the furniture around it.
+   ========================================================================== */
+
+.tool-shell {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(14px, 2.6vw, 22px);
+  /* Clearance so the phone nav bar never sits on top of the last control. */
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 78px);
+}
+@media (min-width: 641px) {
+  .tool-shell { padding-bottom: clamp(8px, 2vw, 20px); }
+}
+.tool-shell--wide { max-width: none; }
+
+/* ------------------------------------------------------------------ intro -- */
+.tool-intro {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--md-shape-xl);
+  padding: clamp(18px, 4vw, 30px);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+}
+.tool-intro-glow {
+  position: absolute; inset: -40% -10% auto -10%; height: 150%;
+  background: radial-gradient(60% 60% at 22% 0%, color-mix(in srgb, var(--primary) 22%, transparent), transparent 68%);
+  filter: blur(22px);
+  animation: tool-intro-glow 7.5s var(--md-ease-standard) infinite alternate;
+  pointer-events: none;
+}
+@keyframes tool-intro-glow { from { transform: translate3d(-4%, 0, 0) scale(1); } to { transform: translate3d(5%, 4%, 0) scale(1.12); } }
+@media (prefers-reduced-motion: reduce) { .tool-intro-glow { animation: none; } }
+
+.tool-intro-head { position: relative; display: flex; align-items: flex-start; gap: clamp(12px, 2.4vw, 18px); }
+.tool-intro-mark {
+  position: relative;
+  display: grid; place-items: center;
+  width: 52px; height: 52px;
+  flex: 0 0 auto;
+  border-radius: var(--md-shape-lg);
+  color: var(--on-primary-container);
+  background: var(--primary-container);
+  box-shadow: 0 10px 22px -12px color-mix(in srgb, var(--primary) 80%, transparent);
+}
+@media (min-width: 641px) { .tool-intro-mark { width: 60px; height: 60px; border-radius: var(--md-shape-xl); } }
+.tool-intro-title { font-size: clamp(20px, 4.6vw, 30px); line-height: 1.1; letter-spacing: -0.02em; }
+.tool-intro-rule {
+  display: block; height: 3px; border-radius: 999px;
+  background: linear-gradient(90deg, var(--primary), var(--tertiary, var(--primary)));
+}
+.tool-intro-desc {
+  position: relative;
+  margin-top: 14px;
+  font-size: clamp(13px, 3.4vw, 15px);
+  line-height: 1.65;
+  color: var(--on-surface-variant);
+  max-width: 62ch;
+}
+.tool-intro-tags { position: relative; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.tool-intro-chip {
+  font-size: 11.5px; font-weight: 600; letter-spacing: 0.03em;
+  padding: 6px 12px; border-radius: var(--md-shape-full);
+  color: var(--on-secondary-container);
+  background: var(--secondary-container);
+}
+
+/* --------------------------------------------------------------- sections -- */
+.tool-section { display: flex; flex-direction: column; gap: clamp(12px, 2.2vw, 18px); }
+.tool-section-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; }
+.tool-section-title { font-size: clamp(17px, 3.6vw, 21px); line-height: 1.2; }
+.tool-section-sub { margin-top: 6px; font-size: 13px; line-height: 1.6; color: var(--on-surface-variant); max-width: 60ch; }
+.tool-section-right { flex: 0 0 auto; }
+
+/* ------------------------------------------------------------- action bar -- */
+.tool-actionbar {
+  position: sticky;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 66px);
+  z-index: 20;
+  margin-inline: -4px;
+}
+@media (min-width: 641px) { .tool-actionbar { position: static; bottom: auto; } }
+.tool-actionbar-inner {
+  display: flex; gap: 10px; flex-wrap: wrap;
+  padding: 10px;
+  border-radius: var(--md-shape-lg);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+}
+@media (min-width: 641px) { .tool-actionbar-inner { background: none; border: 0; box-shadow: none; padding: 0; backdrop-filter: none; -webkit-backdrop-filter: none; } }
+
+.tool-btn {
+  position: relative;
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  min-height: 48px; padding: 0 24px;
+  border: 0; border-radius: var(--md-shape-full);
+  font: inherit; font-size: 14.5px; font-weight: 600;
+  cursor: pointer; overflow: hidden;
+  transition: box-shadow var(--md-dur-3) var(--md-ease-standard), opacity var(--md-dur-3) var(--md-ease-standard);
+}
+.tool-btn:disabled { opacity: .45; cursor: not-allowed; }
+.tool-btn--filled { background: var(--primary); color: var(--on-primary); box-shadow: 0 10px 22px -12px color-mix(in srgb, var(--primary) 90%, transparent); }
+.tool-btn--tonal { background: var(--secondary-container); color: var(--on-secondary-container); }
+.tool-btn--outlined { background: transparent; color: var(--primary); box-shadow: inset 0 0 0 1px var(--outline, var(--border)); }
+.tool-btn--text { background: transparent; color: var(--primary); padding-inline: 14px; }
+.tool-btn-icon { display: grid; place-items: center; }
+.tool-btn-spinner {
+  width: 16px; height: 16px; flex: 0 0 auto;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, currentColor 30%, transparent);
+  border-top-color: currentColor;
+}
+@media (prefers-reduced-motion: reduce) { .tool-btn-spinner { animation: tool-spin 1s linear infinite; } }
+@keyframes tool-spin { to { transform: rotate(360deg); } }
+
+/* ------------------------------------------------------------ empty state -- */
+.tool-empty {
+  display: grid; place-items: center; gap: 10px;
+  text-align: center;
+  padding: clamp(28px, 7vw, 56px) 20px;
+  border-radius: var(--md-shape-xl);
+  border: 1px dashed var(--border);
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+}
+.tool-empty--compact { padding: 22px 16px; }
+.tool-empty-mark {
+  display: grid; place-items: center;
+  width: 62px; height: 62px; border-radius: 50%;
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+.tool-empty--compact .tool-empty-mark { width: 48px; height: 48px; }
+.tool-empty-title { font-size: 17px; }
+.tool-empty-sub { font-size: 13px; color: var(--on-surface-variant); max-width: 44ch; line-height: 1.6; }
+
+/* ------------------------------------------------------------------- tabs -- */
+.tool-tabs {
+  display: flex; gap: 4px; padding: 4px;
+  border-radius: var(--md-shape-full);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.tool-tabs::-webkit-scrollbar { display: none; }
+.tool-tab {
+  position: relative;
+  flex: 1 1 auto; min-width: max-content;
+  min-height: 40px; padding: 0 18px;
+  border: 0; background: transparent; cursor: pointer;
+  font: inherit; font-size: 13px; font-weight: 600;
+  border-radius: var(--md-shape-full);
+  transition: color var(--md-dur-3) var(--md-ease-standard);
+}
+.tool-tab-indicator {
+  position: absolute; inset: 0;
+  border-radius: var(--md-shape-full);
+  background: var(--secondary-container);
+}
+.tool-tab-dot {
+  display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--secondary);
+}
+
+/* ------------------------------------------------------------------- rail -- */
+.tool-rail-wrap { display: flex; flex-direction: column; gap: 8px; }
+.tool-rail-label {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  font-size: 12px; font-weight: 600; color: var(--on-surface-variant);
+}
+.tool-rail {
+  height: 8px; border-radius: 999px; overflow: hidden;
+  background: color-mix(in srgb, var(--on-surface) 10%, transparent);
+}
+.tool-rail-fill {
+  display: block; height: 100%; width: 100%;
+  transform-origin: left center;
+  border-radius: 999px;
+  background: var(--primary);
+}
+.tool-rail-fill--secondary { background: var(--secondary); }
+.tool-rail-fill--tertiary { background: var(--tertiary, var(--primary)); }
+
+/* ------------------------------------------------------------------ facts -- */
+.tool-fact {
+  display: inline-flex; align-items: baseline; gap: 6px;
+  padding: 7px 13px; border-radius: var(--md-shape-full);
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  border: 1px solid var(--border);
+}
+.tool-fact-k { font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--on-surface-variant); }
+.tool-fact-v { font-size: 13px; font-weight: 700; }
+
+/* ------------------------------------------------------------------ split -- */
+.tool-split { display: grid; gap: clamp(12px, 2.2vw, 20px); grid-template-columns: 1fr; }
+@media (min-width: 1024px) { .tool-split { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; } }
+
+/* ============================================================ drop targets ==
+   One Material drop target for every tool that accepts files. */
+.tool-dropzone {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  cursor: pointer;
+  padding: clamp(28px, 7vw, 52px) 20px;
+  border-radius: var(--md-shape-xl);
+  text-align: center;
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+}
+.tool-dropzone--compact { padding: 24px 16px; }
+.tool-dropzone-outline {
+  position: absolute; inset: 0; z-index: 0;
+  border-radius: inherit;
+  border: 2px dashed var(--border);
+  pointer-events: none;
+  transition: border-color var(--md-dur-4) var(--md-ease-standard);
+}
+.tool-dropzone-outline[data-hot="true"] { border-color: var(--primary); }
+.tool-dropzone:focus-visible .tool-dropzone-outline { border-style: solid; border-color: var(--primary); }
+.tool-dropzone-mark {
+  display: grid; place-items: center;
+  width: 60px; height: 60px;
+  margin-inline: auto;
+  border-radius: 50%;
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 24%, transparent);
+}
+.tool-dropzone--compact .tool-dropzone-mark { width: 48px; height: 48px; }
+.tool-dropzone-cta {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin-top: 16px;
+  padding: 8px 18px;
+  border-radius: var(--md-shape-full);
+  font-size: 12.5px; font-weight: 600;
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+}
+.tool-dropzone-landed {
+  display: inline-block; margin-top: 12px;
+  padding: 5px 12px; border-radius: var(--md-shape-full);
+  font-size: 11.5px; font-weight: 700; letter-spacing: .02em;
+  color: var(--on-secondary-container);
+  background: var(--secondary-container);
+}
+.app-dropzone.dropzone { border: 0; }
+.app-dropzone.dropzone::after { display: none; }
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* --------------------------------------------- Material tool panels --------- */
+.tool-panel--m3 {
+  border-radius: var(--md-shape-xl);
+  border: 1px solid color-mix(in srgb, var(--on-surface) 10%, transparent);
+  transition: box-shadow var(--md-dur-4) var(--md-ease-standard), transform var(--md-dur-4) var(--md-ease-standard);
+}
+.tool-panel--m3:hover { box-shadow: 0 18px 40px -26px color-mix(in srgb, var(--primary) 60%, transparent); }
+@media (prefers-reduced-motion: reduce) { .tool-panel--m3:hover { transform: none; } }
+.tool-tab-icon { display: grid; place-items: center; }
+.tool-tab-label { white-space: nowrap; }

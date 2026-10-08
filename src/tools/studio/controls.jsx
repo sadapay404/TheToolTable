@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { CARD_SPRING } from '../../lib/motion.js'
 import { clamp } from '../../lib/utils.js'
 
-export const SPRING = { type: 'spring', stiffness: 300, damping: 25 }
+export const SPRING = CARD_SPRING
 
 /* ----------------------------------------- icons ----------------------------------------- */
 const P = {

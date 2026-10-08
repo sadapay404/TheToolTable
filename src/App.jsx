@@ -14,6 +14,7 @@ import { EASE, DURATION, t, sharedAxis, useCountUp, usePointerDrift, useMotionVa
 import AmbientField from './components/AmbientField.jsx'
 import { AmbientSpinner } from './components/AmbientField.jsx'
 import { RevealLine, RevealBlock, RevealRule } from './components/Reveal.jsx'
+import { ToolShell, ToolIntro } from './components/ToolChrome.jsx'
 import { Logo } from './components/Logo.jsx'
 import ToolCard from './components/ToolCard.jsx'
 import ToolActions from './components/ToolActions.jsx'
@@ -654,13 +655,26 @@ export default function App() {
                   <span className="hidden sm:inline">The table</span><span className="sm:hidden">Back</span>
                 </motion.button>
                 <div className="tool-header-divider h-8 w-px shrink-0" style={{ background: 'var(--border)' }} />
-                <span className="tool-screen-icon shrink-0" aria-hidden="true"><ToolIcon name={active.icon} size={isPhone ? 20 : 24} /></span>
-                <div className="min-w-0 flex-1"><div className="eyebrow mb-1 truncate">Tool {String(active.n).padStart(2, '0')} · {active.tag}</div><h2 tabIndex="-1" className="tool-screen-title display font-semibold text-[20px] sm:text-[26px] leading-tight">{active.name}</h2></div>
+                {/* Just a breadcrumb here — the tool's name and tag live in the
+                    Material intro band right below, so nothing is said twice. */}
+                <div className="min-w-0 flex-1">
+                  <h2 tabIndex="-1" className="tool-screen-title display font-semibold text-[13px] sm:text-[14px] leading-tight truncate" style={{ color: 'var(--on-surface-variant)' }}>
+                    The table <span aria-hidden="true">/</span> Tool {String(active.n).padStart(2, '0')}
+                  </h2>
+                </div>
                 <span className="tool-screen-badge hidden sm:grid" aria-hidden="true">{String(active.n).padStart(2, '0')}</span>
               </div>
               <ErrorBoundary key={active.id} onExit={goHome}>
                 <div className="tool-view">
-                  <MotionConfig reducedMotion={perfNow.level === 'lite' ? 'always' : 'user'}><Suspense fallback={<ToolLoading />}><ActiveComp /></Suspense></MotionConfig>
+                  <MotionConfig reducedMotion={perfNow.level === 'lite' ? 'always' : 'user'}>
+                    <Suspense fallback={<ToolLoading />}>
+                      {/* Every tool gets the same frame and the same introduction. */}
+                      <ToolShell>
+                        <ToolIntro tool={active} />
+                        <ActiveComp />
+                      </ToolShell>
+                    </Suspense>
+                  </MotionConfig>
                 </div>
               </ErrorBoundary>
             </motion.div>

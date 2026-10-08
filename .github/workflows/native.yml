@@ -230,46 +230,93 @@ jobs:
           EOF
       - name: Cache Gradle dependencies
         uses: gradle/actions/setup-gradle@v4
-      - name: Build APK (ARM phones + x86_64 Android smoke-test emulator)
+      - name: Build ARM APK, then reclaim Rust space for x86_64 smoke APK
         shell: bash
         run: |
-          for attempt in 1 2 3; do
-            log="android-build-${attempt}.log"
-            echo "Android build attempt ${attempt}/3"
-            set +e
-            npx tauri android build --apk --target aarch64 --target armv7 --target x86_64 2>&1 | tee "$log"
-            build_status=${PIPESTATUS[0]}
-            set -e
-            if [ "$build_status" -eq 0 ]; then exit 0; fi
-            if grep -Eiq 'status code[[:space:]]+429|HTTP[^[:digit:]]*429|too many requests|rate.?limit' "$log" && [ "$attempt" -lt 3 ]; then
-              delay=$((attempt * 45))
-              echo "Maven Central returned 429; retrying in ${delay}s." >&2
-              sleep "$delay"
-              continue
-            fi
-            error_lines=$(grep -Ei 'FAILURE:|What went wrong:|Execution failed for task|> Task .*FAILED|BUILD FAILED|Caused by:|^e: |^error:' "$log" | tail -n 10 | cut -c1-300 || true)
-            if [ -n "$error_lines" ]; then
-              error_text=$(printf '%s' "$error_lines" | tr '\n' ' ' | sed 's/%/%25/g; s/\r/%0D/g')
-              echo "::error title=Android compiler errors::$error_text"
-            fi
-            tail_text=$(tail -n 24 "$log" | cut -c1-280 | tr '\n' ' ' | tail -c 2200 | sed 's/%/%25/g; s/\r/%0D/g')
-            echo "::error title=Android final output::$tail_text"
-            {
-              echo "## Android build failed (attempt ${attempt})"
-              echo '```text'
-              tail -n 180 "$log"
-              echo '```'
-            } >> "$GITHUB_STEP_SUMMARY"
-            exit "$build_status"
-          done
-      - name: Sign APK
+          set -euo pipefail
+          apk_dir=src-tauri/gen/android/app/build/outputs/apk/universal/release
+          run_android_build() {
+            local label="$1"
+            shift
+            for attempt in 1 2 3; do
+              local log="android-build-${label}-${attempt}.log"
+              local build_status
+              echo "Android ${label} build attempt ${attempt}/3"
+              set +e
+              npx tauri android build --apk "$@" 2>&1 | tee "$log"
+              build_status=${PIPESTATUS[0]}
+              set -e
+              if [ "$build_status" -eq 0 ]; then return 0; fi
+              if grep -Eiq 'status code[[:space:]]+429|HTTP[^[:digit:]]*429|too many requests|rate.?limit' "$log" && [ "$attempt" -lt 3 ]; then
+                delay=$((attempt * 45))
+                echo "Maven Central returned 429; retrying ${label} build in ${delay}s." >&2
+                sleep "$delay"
+                continue
+              fi
+              error_lines=$(grep -Ei 'FAILURE:|What went wrong:|Execution failed for task|> Task .*FAILED|BUILD FAILED|Caused by:|^e: |^error:' "$log" | tail -n 10 | cut -c1-300 || true)
+              if [ -n "$error_lines" ]; then
+                error_text=$(printf '%s' "$error_lines" | tr '\n' ' ' | sed 's/%/%25/g; s/\r/%0D/g')
+                echo "::error title=Android compiler errors::$error_text"
+              fi
+              tail_text=$(tail -n 24 "$log" | cut -c1-280 | tr '\n' ' ' | tail -c 2200 | sed 's/%/%25/g; s/\r/%0D/g')
+              echo "::error title=Android ${label} build output::$tail_text"
+              {
+                echo "## Android ${label} build failed (attempt ${attempt})"
+                echo '```text'
+                tail -n 180 "$log"
+                echo '```'
+              } >> "$GITHUB_STEP_SUMMARY"
+              exit "$build_status"
+            done
+          }
+
+          echo '## Android disk space before builds' >> "$GITHUB_STEP_SUMMARY"
+          df -h / | tee -a "$GITHUB_STEP_SUMMARY"
+          run_android_build arm --target aarch64 --target armv7
+          arm_apk="$(find "$apk_dir" -maxdepth 1 -type f -name '*.apk' -print -quit 2>/dev/null || true)"
+          if [ -z "$arm_apk" ]; then
+            echo "::error title=ARM APK missing::No ARM APK was produced in $apk_dir."
+            exit 1
+          fi
+          cp "$arm_apk" "$RUNNER_TEMP/TheToolTable-arm-release-unsigned.apk"
+          echo "Saved ARM phone APK outside the Gradle build tree: $RUNNER_TEMP/TheToolTable-arm-release-unsigned.apk"
+
+          # The Rust release objects for two ARM ABIs can exhaust the hosted runner's
+          # disk while compiling x86_64. Keep the ARM APK, remove those intermediates,
+          # then build the emulator ABI on its own before the smoke test.
+          cargo_target_dir="${CARGO_TARGET_DIR:-src-tauri/target}"
+          rm -rf "$cargo_target_dir/aarch64-linux-android" "$cargo_target_dir/armv7-linux-androideabi" \
+            src-tauri/gen/android/app/build
+          echo '## Android disk space after removing ARM Rust/Gradle intermediates' >> "$GITHUB_STEP_SUMMARY"
+          df -h / | tee -a "$GITHUB_STEP_SUMMARY"
+
+          run_android_build x86_64 --target x86_64
+          x86_apk="$(find "$apk_dir" -maxdepth 1 -type f -name '*.apk' -print -quit 2>/dev/null || true)"
+          if [ -z "$x86_apk" ]; then
+            echo "::error title=x86_64 APK missing::No x86_64 smoke-test APK was produced in $apk_dir."
+            exit 1
+          fi
+          echo "x86_64 smoke-test APK: $x86_apk"
+          cargo clean --manifest-path src-tauri/Cargo.toml --target x86_64-linux-android
+          echo '## Android disk space before emulator smoke test' >> "$GITHUB_STEP_SUMMARY"
+          df -h / | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Sign ARM release APK and x86_64 smoke APK
         env:
           KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        shell: bash
         run: |
-          set -e
+          set -euo pipefail
           BT="$ANDROID_HOME/build-tools/35.0.0"
-          IN=$(ls src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk | head -n1)
+          ARM_IN="$RUNNER_TEMP/TheToolTable-arm-release-unsigned.apk"
+          X86_IN="$(find src-tauri/gen/android/app/build/outputs/apk/universal/release -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          if [ ! -f "$ARM_IN" ] || [ -z "$X86_IN" ]; then
+            echo "::error title=Android APK missing::The ARM release APK or x86_64 smoke APK is missing."
+            arm_exists=no
+            if [ -f "$ARM_IN" ]; then arm_exists=yes; fi
+            printf 'ARM input exists: %s; x86_64 input: %s\n' "$arm_exists" "${X86_IN:-<missing>}"
+            exit 1
+          fi
           if [ -n "$KS_B64" ]; then
             echo "$KS_B64" | base64 -d > ks.jks
             PASS="$KS_PASS"
@@ -282,18 +329,27 @@ jobs:
             SIGNING_MODE="FALLBACK KEY generated for this run. Fresh install only; not update-compatible with v1.1.1."
             echo "::warning title=Fallback Android signing key::$SIGNING_MODE"
           fi
-          "$BT/zipalign" -p -f 4 "$IN" aligned.apk
-          "$BT/apksigner" sign --ks ks.jks --ks-key-alias ttt --ks-pass "pass:$PASS" --key-pass "pass:$PASS" --out "$APK_NAME" aligned.apk
-          "$BT/apksigner" verify "$APK_NAME"
+          sign_apk() {
+            local input="$1"
+            local output="$2"
+            local label="$3"
+            "$BT/zipalign" -p -f 4 "$input" "aligned-${label}.apk"
+            "$BT/apksigner" sign --ks ks.jks --ks-key-alias ttt --ks-pass "pass:$PASS" --key-pass "pass:$PASS" --out "$output" "aligned-${label}.apk"
+            "$BT/apksigner" verify "$output"
+          }
+          sign_apk "$ARM_IN" "$APK_NAME" arm
+          sign_apk "$X86_IN" TheToolTable-smoke.apk x86_64
           {
             echo '## Android APK signing and certificate fingerprint'
             echo "Signing mode: $SIGNING_MODE"
-            echo 'Compare the certificate fingerprint with the published v1.1.1 APK before publishing this candidate.'
+            echo 'Compare the release APK certificate fingerprint with the published v1.1.1 APK before publishing.'
             echo '```text'
             "$BT/apksigner" verify --print-certs "$APK_NAME"
+            echo 'x86_64 smoke APK (same signing key):'
+            "$BT/apksigner" verify --print-certs TheToolTable-smoke.apk
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "ANDROID_APK_NAME=$APK_NAME" >> "$GITHUB_ENV"
+          echo "ANDROID_APK_NAME=TheToolTable-smoke.apk" >> "$GITHUB_ENV"
       - name: Smoke-test Android launch, Tool 04/06, and back navigation
         uses: reactivecircus/android-emulator-runner@v2
         with:

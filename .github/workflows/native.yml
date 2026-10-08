@@ -196,32 +196,22 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cargo fetch --manifest-path src-tauri/Cargo.toml
-          cargo_home="${CARGO_HOME:-$HOME/.cargo}"
-          plugin_gradle="$(find "$cargo_home/git/checkouts" -type f -path '*/tauri-plugin-download-*/13fd4e7/android/build.gradle.kts' -print -quit)"
-          if [ -z "$plugin_gradle" ]; then
-            echo "::error title=Download plugin checkout missing::Could not find the locked tauri-plugin-download Gradle script under $cargo_home/git/checkouts."
-            exit 1
+          fetch_status=1
+          for attempt in 1 2 3; do
+            log="cargo-fetch-${attempt}.log"
+            set +e
+            cargo fetch --manifest-path src-tauri/Cargo.toml 2>&1 | tee "$log"
+            fetch_status=${PIPESTATUS[0]}
+            set -e
+            if [ "$fetch_status" -eq 0 ]; then break; fi
+            if [ "$attempt" -lt 3 ]; then sleep $((attempt * 15)); fi
+          done
+          if [ "$fetch_status" -ne 0 ]; then
+            echo "::error title=Cargo dependency fetch failed::cargo fetch failed after three attempts (exit $fetch_status)."
+            tail -n 80 "$log"
+            exit "$fetch_status"
           fi
-          python3 - "$plugin_gradle" <<'PY'
-          from pathlib import Path
-          import sys
-
-          path = Path(sys.argv[1])
-          source = path.read_text()
-          replacements = {
-              'android.sourceSets["main"].java.srcDir("lib/src/main/java")':
-                  'extensions.getByType<com.android.build.api.dsl.LibraryExtension>().sourceSets.getByName("main").java.srcDir("lib/src/main/java")',
-              'compileSdk = 35': 'compileSdk = 37',
-          }
-          for old, new in replacements.items():
-              count = source.count(old)
-              if count != 1:
-                  raise SystemExit(f"Expected one {old!r} in {path}, found {count}")
-              source = source.replace(old, new)
-          path.write_text(source)
-          print(f"Patched AGP 9 source sets and compileSdk 37 in {path}")
-          PY
+          node scripts/patch-android-download-plugin.mjs
       - name: Patch Android background-service lifecycle-only startup
         run: node scripts/patch-android-background-service.mjs
       - name: Declare Android foreground-service and notification permissions

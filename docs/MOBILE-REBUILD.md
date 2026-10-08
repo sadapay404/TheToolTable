@@ -8,6 +8,7 @@ A ground-up mobile pass driven by seven Android defects reported against v1.2.0.
 |---|---|
 | Material direction | **Material 3 Expressive** (Google's 2025 update) |
 | Desktop / web | Mobile-only rewrite; desktop keeps the 3-D studio, inherits theme + bug fixes |
+| Part 4 scope | Motion work covers **both** Android and Windows. Motion is only ever added — nothing existing is removed, hidden, gated or weakened |
 | Release | **Draft** release for private testing before anything is published |
 
 ---
@@ -19,7 +20,7 @@ A ground-up mobile pass driven by seven Android defects reported against v1.2.0.
 | 1 | Material 3 Expressive foundation, safe-area shell, theme engine | **Complete** |
 | 2 | Mobile shell rewrite (header, nav bar, search, back navigation) | **Complete** |
 | 3 | Home grid redesign | **Complete** |
-| 4 | Motion system | Pending |
+| 4 | Motion system (Android **and** Windows) | **Complete** |
 | 5 | Tool chrome for all 20 tools | Pending |
 | 6 | New animated mobile footer | Pending |
 | 7 | Background transfers + notification progress | Pending |
@@ -181,3 +182,108 @@ Every tool mark in the app was a **system emoji**. That is not an icon system:
   tap; long-press opens the sheet with the right tool and does **not** open it; "Documents"
   filter returns exactly the 5 expected tools; desktop shows 20 SVG marks inside the 3-D
   cards and 0 phone tiles; dark theme clean; no console errors.
+
+
+---
+
+## Part 4 — Motion system for Android and Windows ✅
+
+The brief for this part was *"as many animations as possible"* — then widened to cover
+Windows as well as Android, with one hard rule: **never redact an existing animation**.
+Every change below is additive; nothing from Parts 1–3 was removed, shortened or hidden.
+
+### Root causes of the sparse motion
+
+| Symptom | Cause |
+|---|---|
+| Only two curves in the whole app | Motion tokens were duplicated as inline literals in each component, so nothing was shareable or consistent |
+| Animation stopped on mid-range machines | The `lite` profile switched ambient motion **off** rather than thinning it — a still background reads as a broken one |
+| Card depth was the only desktop motion | The 3-D tilt was pointer-tracked but nothing else responded, so the grid felt inert |
+| Spinners snapped | Loaders used a bare `0.8s rotate`, fast enough to read as a glitch rather than a spinner |
+| Counters appeared pre-computed | Numbers were rendered as strings, so there was nothing to animate |
+
+### Changes
+
+**`src/lib/motion.js` — one motion system**
+
+- Material 3 easing set (`standard`, `emphasized`, `overshoot`, …) and the full 16-step
+  duration scale, plus a `CSS_MS` map so CSS and JS cannot drift apart.
+- `SPRING` presets (`gentle`, `snappy`, `expressive`, `layout`, `bouncy`, `heavy`) for
+  anything a finger or cursor is driving.
+- Variants: `fadeIn`, `riseIn`, `riseInX`, `maskLine`, `scaleIn`, `pressable`,
+  `containerTransform`, `sharedAxis`, `drawRule`, `shineSweep`.
+- Endless loops: `floatingLoop`, `spinLoop`, `breatheLoop` — all `repeat: Infinity`, all
+  slow enough not to read as jitter.
+- Hooks: `useMotionSafe`, `useTransition`, `useAmbient`, `useReveal`, `useParallax`,
+  `useMagnetic`, `useCountUp`, `useFlashKey`, `usePointerDrift`, `useStaggeredDelay`.
+- Backwards compatibility: the legacy `shouldAnimate()` export and the `CARD_SPRING`
+  alias are preserved so no call site had to be edited.
+- **Lite thins, never stops:** `useAmbient` now mounts 3 blobs on `lite`, 4 on `balanced`,
+  5 on `full` (it was 2/3/5 and the lowest tier lost motion entirely).
+
+**`src/components/AmbientField.jsx` — new**
+
+- A fixed, `pointer-events: none`, transform-only background: three drifting radial
+  blobs, a slowly scrolling grid, and two counter-rotating dashed rings.
+- Pointer drift on desktop: the whole wash eases toward the cursor.
+- `AmbientHalo` and `AmbientSpinner` replace the raw 0.8s rotate with a two-layer
+  counter-rotating spinner.
+
+**`src/components/Reveal.jsx` — new**
+
+- `RevealLine` (masked typographic reveal), `RevealBlock`, `RevealRule` (a rule that
+  draws itself in) and `MaskedGlyph`.
+
+**`src/App.jsx`**
+
+- Hero on **both** platforms: masked line reveals, an animated gradient headline, a
+  pulsing halo behind the mark, a hero rule that draws itself in, and a counter that
+  rolls to `20` instead of printing it.
+- Depth parallax: orbit, brand row and halo travel at different rates as the hero
+  leaves, on phones as well as desktop.
+- The scroll progress bar is spring-smoothed, so a fast flick no longer steps.
+- The tool loader uses the new spinner.
+
+**`src/components/ToolCard.jsx` — Windows gains the most**
+
+- Magnetic hover: the card eases toward the cursor on a spring (touch pointers are
+  ignored, so a phone tap never drags a card).
+- Scroll-linked parallax per card, measured from the card's own document position, so
+  the grid reads as a stack instead of a flat wall.
+- Two shine sweeps: a slow ambient pass that never stops and a bright one that fires on
+  hover/focus.
+- The icon springs up and rotates, the number scales, the arrow slides, all on hover.
+- The staggered grid reveal was widened from `i % 4` to `i % 8` at a larger step.
+- **The existing tilt, sheen, hover lift and tap states are untouched.**
+
+**`src/components/CommandPalette.jsx`** — the panel is nudged toward the cursor, a scan
+line sweeps the header, the selected row gets a shared-layout pill, and the selected
+icon rotates.
+
+**`src/components/Footer.jsx`** — the desktop footer gains a three-blob drifting aura, a
+scanline texture, hover lift on every wordmark glyph, a parallaxed lockup and a
+travelling highlight on "Back to top".
+
+### Verification
+
+- `npm test` — **156/156 passing** (+19 motion tests: token completeness, duration
+  monotonicity, spring distinctness, a guard that reveal variants only ever animate
+  compositor-friendly channels, a guard that every Part 4 keyframe is
+  transform/opacity/background-position only, and an explicit **never-redact** test that
+  asserts the Parts 1–3 animation — orbit rings, scroll progress, shared-axis
+  transitions, card tilt, sheen, ripple, nav pill, footer ticker — is still in the source).
+- `npm run build` — passing.
+- Headless Chromium (`browsertest/verify4.mjs`, **46/46 checks**):
+  - *Phone (390×844, Android UA)* — ambient layer mounted with ≥3 blobs all CSS-drifting
+    on 26–37s cycles, grid layer present, orbit ring measurably turning, 3+ masked reveal
+    lines that settle at rest, hero counter reads `20`, gradient headline animating and
+    clipped to its glyphs, no horizontal overflow, all 20 tiles revealed after scroll,
+    zero console errors.
+  - *Phone with `prefers-reduced-motion: reduce`* — ambient layer not mounted at all,
+    no blob animation, counter shows its final value immediately, hero copy and all 20
+    tiles still render, zero console errors.
+  - *Desktop (1280×900)* — 20 cards / 0 phone tiles, 40 shine layers, footer aura and 9
+    hoverable glyphs, ambient wash drifts toward the pointer, a hovered card measurably
+    magnetises with its shine at opacity 1 and its icon at scale >1.05, cards sit at
+    different parallax depths after scroll, footer lockup parallax offset is non-zero,
+    command palette opens with rows, pill and scanning scan line, zero console errors.

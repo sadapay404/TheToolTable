@@ -1,13 +1,19 @@
 /**
- * Material 3 motion tokens, shared by every animated surface in the app.
+ * Material 3 motion system.
  *
- * Material's expressive motion uses *emphasized* easing — a long, confident
- * curve that overshoots slightly at the end — instead of the older physical
- * springs. Framer Motion cannot take a cubic-bezier array for a spring, so the
- * expressive curves live here as tween transitions and the springs below are for
- * gestures that genuinely need to follow a finger.
+ * One place for every curve, duration and spring in the app, plus the small hooks
+ * that make scroll, hover and press feel continuous rather than animated.
+ *
+ * Rules this module enforces:
+ *   • Only `transform` and `opacity` are animated on scroll paths — animating
+ *     layout properties is what makes a page feel heavy.
+ *   • Nothing loops when the OS asks for reduced motion.
+ *   • Ambient loops thin out on the `lite` performance profile but never vanish,
+ *     because a silent app feels broken.
  */
-import { useReducedMotion } from 'framer-motion'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useInView, useMotionValue, useMotionValueEvent, useReducedMotion, useSpring, useTransform } from 'framer-motion'
+import { getPerf } from './perf.js'
 
 /* M3 easing curves */
 export const EASE = {
@@ -17,10 +23,11 @@ export const EASE = {
   emphasized: [0.2, 0, 0, 1],
   emphasizedDecelerate: [0.05, 0.7, 0.1, 1],
   emphasizedAccelerate: [0.3, 0, 0.8, 0.15],
-  legacy: [0.4, 0, 0.2, 1],
+  overshoot: [0.34, 1.56, 0.64, 1],
+  drift: 'cubic-bezier(0.45, 0, 0.55, 1)',
 }
 
-/* M3 duration tokens (seconds for Framer Motion) */
+/* M3 duration tokens (seconds, for Framer Motion) */
 export const DURATION = {
   short1: 0.05, short2: 0.1, short3: 0.15, short4: 0.2,
   medium1: 0.25, medium2: 0.3, medium3: 0.35, medium4: 0.4,
@@ -28,30 +35,28 @@ export const DURATION = {
   extraLong1: 0.7, extraLong2: 0.8, extraLong3: 0.9, extraLong4: 1,
 }
 
-/** Ready-made transitions. `t()` is the reduced-motion aware tween helper. */
+/* Seconds, for CSS */
+export const CSS_MS = Object.fromEntries(Object.entries(DURATION).map(([k, v]) => [k, Math.round(v * 1000)]))
+
 export const t = (duration = DURATION.medium2, ease = EASE.emphasized, delay = 0) => ({ duration, ease, delay })
 export const instant = { duration: 0 }
 
-/* Springs for anything the pointer is driving. */
+/** Springs for anything a finger is driving. */
 export const SPRING = {
   gentle: { type: 'spring', stiffness: 260, damping: 26, mass: 0.9 },
   snappy: { type: 'spring', stiffness: 420, damping: 32, mass: 0.7 },
   expressive: { type: 'spring', stiffness: 340, damping: 22, mass: 0.8 },
   layout: { type: 'spring', stiffness: 380, damping: 34, mass: 0.8 },
+  bouncy: { type: 'spring', stiffness: 520, damping: 18, mass: 0.6 },
+  /** Slow, heavy settle for large surfaces. */
+  heavy: { type: 'spring', stiffness: 180, damping: 30, mass: 1.2 },
 }
 
-/** Legacy alias used across the existing components. */
+/** Legacy alias still referenced across the existing components. */
 export const CARD_SPRING = { type: 'spring', stiffness: 300, damping: 25 }
 
-/** Per-item delay for staggered reveals. */
 export const stagger = (index, step = 0.035, base = 0) => base + index * step
-
-/** Build a stagger container's transition. */
-export const staggerChildren = (step = 0.035, delayChildren = 0) => ({
-  ...SPRING.expressive,
-  staggerChildren: step,
-  delayChildren,
-})
+export const staggerChildren = (step = 0.035, delayChildren = 0) => ({ ...SPRING.expressive, staggerChildren: step, delayChildren })
 
 /* --------------------------------------------------------------- variants -- */
 
@@ -61,6 +66,17 @@ export const riseIn = (distance = 16) => ({
   hidden: { opacity: 0, y: distance },
   show: { opacity: 1, y: 0, transition: t(DURATION.long1, EASE.emphasizedDecelerate) },
 })
+
+export const riseInX = (distance = -18) => ({
+  hidden: { opacity: 0, x: distance },
+  show: { opacity: 1, x: 0, transition: t(DURATION.long1, EASE.emphasizedDecelerate) },
+})
+
+/** Masked line reveal — text slides up out of an overflow-hidden box. */
+export const maskLine = {
+  hidden: { y: '108%' },
+  show: { y: 0, transition: t(DURATION.long2, EASE.emphasizedDecelerate) },
+}
 
 export const scaleIn = {
   hidden: { opacity: 0, scale: 0.9 },
@@ -80,16 +96,47 @@ export const containerTransform = (direction = 1) => ({
   exit: { opacity: 0, x: direction * -18, scale: 0.99, transition: t(DURATION.short4, EASE.emphasizedAccelerate) },
 })
 
-/** Shared-axis style fade used for the tool ↔ collection transition. */
 export const sharedAxis = (direction = 1) => ({
   initial: { opacity: 0, y: direction * 12 },
   animate: { opacity: 1, y: 0, transition: t(DURATION.long2, EASE.emphasizedDecelerate) },
   exit: { opacity: 0, y: direction * -8, transition: t(DURATION.medium1, EASE.emphasizedAccelerate) },
 })
 
-/* ------------------------------------------------------------- utilities --- */
+/** A line that draws itself from the left as it enters view. */
+export const drawRule = (origin = 'left') => ({
+  hidden: { scaleX: 0 },
+  show: { scaleX: 1, transition: t(DURATION.extraLong1, EASE.emphasized, 0.15) },
+  origin,
+})
 
-/** Returns a motion-value-safe fallback when the user asked for less motion. */
+/** A light sweep across a surface on hover. */
+export const shineSweep = {
+  rest: { x: '-120%', opacity: 0 },
+  hover: { x: '120%', opacity: 1, transition: { duration: DURATION.extraLong2, ease: EASE.emphasized } },
+}
+
+/** Endless ambient float. Distance shrinks on weaker devices rather than stopping. */
+export function floatingLoop(duration = 6, distance = 6) {
+  return {
+    animate: { y: [0, -distance, 0] },
+    transition: { duration, repeat: Infinity, ease: 'easeInOut' },
+  }
+}
+
+/** Endless slow rotation for rings and dials. */
+export const spinLoop = (duration = 24, reverse = false) => ({
+  animate: { rotate: reverse ? -360 : 360 },
+  transition: { duration, repeat: Infinity, ease: 'linear' },
+})
+
+/** Breathing glow. */
+export const breatheLoop = (duration = 4, min = 0.35, max = 1) => ({
+  animate: { opacity: [min, max, min] },
+  transition: { duration, repeat: Infinity, ease: 'easeInOut' },
+})
+
+/* ------------------------------------------------------------------ hooks -- */
+
 export function useMotionSafe() {
   return !!useReducedMotion()
 }
@@ -103,5 +150,159 @@ export function useTransition(transition) {
   return reduced ? instant : transition
 }
 
-/** True when ambient looping animation should run. */
-export const shouldAnimate = (reduceMotion, perfLevel) => !reduceMotion && perfLevel !== 'lite'
+/**
+ * Should ambient (never-ending) motion run right now?
+ * Reduced motion always wins. The `lite` profile keeps motion but at a lower
+ * count, because a still screen reads as a broken screen.
+ */
+export function useAmbient() {
+  const reduced = !!useReducedMotion()
+  const [level, setLevel] = useState(() => getPerf().level)
+  useEffect(() => {
+    const id = setInterval(() => setLevel(getPerf().level), 1500)
+    return () => clearInterval(id)
+  }, [])
+  return {
+    enabled: !reduced,
+    level,
+    /** How many ambient elements to mount. Even `lite` keeps a full set —
+        a thinner background, never a still one. */
+    count: reduced ? 0 : level === 'lite' ? 3 : level === 'balanced' ? 4 : 5,
+    /** Distance multiplier for loops. */
+    scale: level === 'lite' ? 0.55 : level === 'balanced' ? 0.8 : 1,
+  }
+}
+
+/**
+ * Props for a scroll-triggered reveal. Returns `false` when motion is reduced,
+ * which Framer Motion accepts as "no animation".
+ */
+export function useReveal({ distance = 18, delay = 0, once = true, amount = 0.2 } = {}) {
+  const reduced = useReducedMotion()
+  if (reduced) return { initial: false }
+  return {
+    initial: { opacity: 0, y: distance },
+    whileInView: { opacity: 1, y: 0 },
+    viewport: { once, amount },
+    transition: t(DURATION.long2, EASE.emphasizedDecelerate, delay),
+  }
+}
+
+/** Map a scroll MotionValue through a range into a transform value. */
+export function useParallax(scrollY, input, output) {
+  return useTransform(scrollY, input, output)
+}
+
+/**
+ * Magnetic pull toward the cursor — desktop only.
+ *
+ * Returns `style` plus pointer handlers to spread onto the surface. Disabled for
+ * touch pointers so a phone tap never drags a card around.
+ */
+export function useMagnetic({ strength = 0.28, max = 14, disabled = false } = {}) {
+  const ref = useRef(null)
+  const x = useMotionValue(0)
+  const y = useMotionValue(0)
+  const sx = useSpring(x, { stiffness: 220, damping: 22, mass: 0.55 })
+  const sy = useSpring(y, { stiffness: 220, damping: 22, mass: 0.55 })
+
+  const onPointerMove = useCallback((event) => {
+    if (disabled || event.pointerType === 'touch') return
+    const bounds = event.currentTarget.getBoundingClientRect()
+    if (!bounds.width || !bounds.height) return
+    x.set(((event.clientX - bounds.left) / bounds.width - 0.5) * 2 * max * strength * 2)
+    y.set(((event.clientY - bounds.top) / bounds.height - 0.5) * 2 * max * strength * 2)
+  }, [disabled, strength, max, x, y])
+
+  const onPointerLeave = useCallback(() => { x.set(0); y.set(0) }, [x, y])
+
+  return { ref, x: sx, y: sy, onPointerMove, onPointerLeave, style: { x: disabled ? 0 : sx, y: disabled ? 0 : sy } }
+}
+
+/** Re-exported so callers only ever need one motion import. */
+export { useMotionValueEvent }
+
+/**
+ * Legacy helper kept so existing call sites and tests keep working.
+ * Returns `true` when this device is allowed to animate at all.
+ */
+export function shouldAnimate() {
+  if (typeof window === 'undefined') return false
+  if (typeof window.matchMedia !== 'function') return true
+  return !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+}
+
+/**
+ * Animate a number from 0 to `to` the first time it scrolls into view.
+ * Returns the live value as a MotionValue so callers can format it without a
+ * React re-render per frame.
+ */
+export function useCountUp(to, { enabled = true, duration = 1.4, inView = false, rootMargin = '0px 0px -12% 0px' } = {}) {
+  const value = useMotionValue(enabled ? 0 : to)
+  const started = useRef(false)
+  const reduced = useReducedMotion()
+  const ref = useRef(null)
+  const inViewRef = useInView(ref, { once: true, amount: 0.4, margin: rootMargin })
+
+  useEffect(() => {
+    if (reduced || !enabled) { value.set(to); return undefined }
+    if (inView && !inViewRef) return undefined
+    started.current = true
+    let raf = 0
+    let start = 0
+    const step = (now) => {
+      if (!start) start = now
+      const progress = Math.min(1, (now - start) / (duration * 1000))
+      // easeOutExpo — fast commit, long settle.
+      const eased = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress)
+      value.set(to * eased)
+      if (progress < 1) raf = requestAnimationFrame(step)
+    }
+    raf = requestAnimationFrame(step)
+    return () => cancelAnimationFrame(raf)
+  }, [to, enabled, duration, reduced, value, inView, inViewRef])
+
+  return inView ? { value, ref } : value
+}
+
+/** Re-trigger a key whenever `value` changes, for flash/pop feedback. */
+export function useFlashKey(value) {
+  const previous = useRef(value)
+  const [key, setKey] = useState(0)
+  useEffect(() => {
+    if (previous.current !== value) {
+      previous.current = value
+      setKey((k) => k + 1)
+    }
+  }, [value])
+  return key
+}
+
+/**
+ * Drifting background offset driven by the pointer (desktop).
+ * Returns -1..1 on both axes, eased.
+ */
+export function usePointerDrift(max = 14) {
+  const x = useMotionValue(0)
+  const y = useMotionValue(0)
+  const sx = useSpring(x, { stiffness: 60, damping: 20, mass: 1 })
+  const sy = useSpring(y, { stiffness: 60, damping: 20, mass: 1 })
+
+  const onPointerMove = useCallback((event) => {
+    if (event.pointerType === 'touch') return
+    const nx = (event.clientX / window.innerWidth) - 0.5
+    const ny = (event.clientY / window.innerHeight) - 0.5
+    x.set(nx * 2 * max)
+    y.set(ny * 2 * max)
+  }, [max, x, y])
+
+  return { x: sx, y: sy, onPointerMove }
+}
+
+/** Stable, evenly spaced delays for a list of any length. */
+export function useStaggeredDelay(count, step = 0.04, cap = 10) {
+  return useMemo(
+    () => Array.from({ length: count }, (_, i) => stagger(Math.min(i, cap), step)),
+    [count, step, cap],
+  )
+}

@@ -2,6 +2,7 @@ import React from 'react'
 import { motion } from 'framer-motion'
 import { TOOLS } from '../toolsRegistry.jsx'
 import { Logo } from './Logo.jsx'
+import { useScroll, useTransform } from 'framer-motion'
 
 const SPRING = { type: 'spring', stiffness: 300, damping: 25 }
 const EASE = [0.22, 1, 0.36, 1]
@@ -10,12 +11,17 @@ const TICKER = 'IDEA BY MUBASHIR · DESIGNED WITH CARE · CREATED FOR EVERYDAY W
 const RISE = { hidden: { y: '105%' }, show: (i) => ({ y: 0, transition: { duration: 0.7, ease: EASE, delay: 0.05 + i * 0.045 } }) }
 const scrollToTop = () => window.scrollTo({ top: 0, behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ? 'auto' : 'smooth' })
 
-/** One glyph of the wordmark: slides up out of a mask. */
+/** One glyph of the wordmark: slides up out of a mask, then lifts on hover. */
 function Glyph({ c, i }) {
   return (
-    <span className="block overflow-hidden" style={{ lineHeight: 0.8, paddingBottom: '0.02em', paddingInline: '0.05em', marginInline: '-0.05em' }}>
+    <motion.span
+      className="block overflow-hidden footer-glyph"
+      style={{ lineHeight: 0.8, paddingBottom: '0.02em', paddingInline: '0.05em', marginInline: '-0.05em' }}
+      whileHover={{ y: -6 }}
+      transition={{ type: 'spring', stiffness: 380, damping: 16, mass: 0.4 }}
+    >
       <motion.span className="block" custom={i} variants={RISE}>{c}</motion.span>
-    </span>
+    </motion.span>
   )
 }
 
@@ -61,14 +67,24 @@ function MobileFooter() {
  */
 export default function Footer() {
   const word = [...'TOOL'], word2 = [...'TABLE']
+  /* The lockup drifts a little as the footer arrives — depth, not decoration. */
+  const { scrollY } = useScroll()
+  const lockupY = useTransform(scrollY, [0, 6000], [0, -46])
+  const lockupScale = useTransform(scrollY, [0, 6000], [1, 1.015])
   return (
     <footer className="relative mt-4 border-t border-line overflow-hidden" style={{ background: 'var(--surface2)' }} aria-label="TheToolTable credits">
+      <div className="desktop-footer-aura" aria-hidden="true">
+        <span className="footer-aura-blob footer-aura-blob--a" />
+        <span className="footer-aura-blob footer-aura-blob--b" />
+        <span className="footer-aura-blob footer-aura-blob--c" />
+        <span className="footer-aura-scan" />
+      </div>
       <MobileFooter />
       <div className="desktop-footer hidden sm:block">
         <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(60% 80% at 85% 110%, var(--glow), transparent 70%)' }} />
         <div className="relative max-w-6xl mx-auto px-6 pt-14 pb-8">
           <div role="img" aria-label="the TOOLTABLE by Mubashir" style={{ containerType: 'inline-size' }}>
-            <motion.div className="flex items-end justify-between select-none" initial="hidden" whileInView="show" viewport={{ once: true, amount: 0.3 }} style={{ fontFamily: 'Roboto, "Noto Sans", Arial, sans-serif', fontWeight: 800, fontSize: '15.3cqw', letterSpacing: '-0.045em', color: 'var(--ink)', lineHeight: 0.8, fontFeatureSettings: '"kern"' }}>
+            <motion.div className="flex items-end justify-between select-none" initial="hidden" whileInView="show" viewport={{ once: true, amount: 0.3 }} style={{ y: lockupY, scale: lockupScale, fontFamily: 'Roboto, "Noto Sans", Arial, sans-serif', fontWeight: 800, fontSize: '15.3cqw', letterSpacing: '-0.045em', color: 'var(--ink)', lineHeight: 0.8, fontFeatureSettings: '"kern"' }}>
               <motion.span className="block shrink-0" initial={{ opacity: 0, x: -14 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ ...SPRING, delay: 0.05 }} style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', fontSize: '0.3em', letterSpacing: '-0.01em', lineHeight: 1, paddingBlock: '0.04em', marginRight: '0.06em' }}>the</motion.span>
               <span className="flex">{word.map((c, i) => <Glyph key={'a' + i} c={c} i={i} />)}</span>
               <span className="shrink-0" style={{ width: '0.2em' }} />
@@ -90,7 +106,7 @@ export default function Footer() {
             </div>
             <motion.div className="mono text-[11px] leading-relaxed sm:text-right" style={{ color: 'var(--muted)' }} initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} transition={{ delay: 0.9 }}>
               <div>{TOOLS.length} tools · local-first · zero compression</div>
-              <div className="flex items-center gap-3 sm:justify-end mt-1.5"><span>© {new Date().getFullYear()} TheToolTable</span><button type="button" onClick={scrollToTop} className="font-semibold hover:underline" style={{ color: 'var(--ink)' }}>Back to top ↑</button></div>
+              <div className="flex items-center gap-3 sm:justify-end mt-1.5"><span>© {new Date().getFullYear()} TheToolTable</span><button type="button" onClick={scrollToTop} className="font-semibold hover:underline footer-top-link" style={{ color: 'var(--ink)' }}>Back to top ↑</button></div>
             </motion.div>
           </div>
         </div>

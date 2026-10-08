@@ -10,7 +10,10 @@ import { pushToolHistory, resetToolHistory, resolveBack, installHistorySentinel 
 import CommandPalette from './components/CommandPalette.jsx'
 import MobileNavBar from './components/MobileNavBar.jsx'
 import MobileSearch from './components/MobileSearch.jsx'
-import { EASE, DURATION, t, sharedAxis } from './lib/motion.js'
+import { EASE, DURATION, t, sharedAxis, useCountUp, usePointerDrift, useMotionValueEvent } from './lib/motion.js'
+import AmbientField from './components/AmbientField.jsx'
+import { AmbientSpinner } from './components/AmbientField.jsx'
+import { RevealLine, RevealBlock, RevealRule } from './components/Reveal.jsx'
 import { Logo } from './components/Logo.jsx'
 import ToolCard from './components/ToolCard.jsx'
 import ToolActions from './components/ToolActions.jsx'
@@ -296,10 +299,24 @@ function SettingsIcon() {
 
 function ToolLoading() {
   return (
-    <div className="py-24 grid place-items-center">
-      <motion.div className="w-10 h-10 rounded-full border-[3px]" style={{ borderColor: 'var(--border)', borderTopColor: 'var(--copper)' }} animate={{ rotate: 360 }} transition={{ repeat: Infinity, ease: 'linear', duration: 0.8 }} />
+    <div className="py-24 grid place-items-center gap-3">
+      <AmbientSpinner size={42} />
+      <span className="eyebrow">Opening tool</span>
     </div>
   )
+}
+
+/**
+ * A counter that rolls to its value instead of snapping to it. Used on the phone
+ * hero and the collection header so the numbers feel alive on first paint.
+ */
+function RollingNumber({ to, format, duration = 1.1, inView = false }) {
+  const counter = useCountUp(to, { duration, inView })
+  const value = inView ? counter.value : counter
+  const ref = inView ? counter.ref : undefined
+  const [display, setDisplay] = useState(0)
+  useMotionValueEvent(value, 'change', (next) => setDisplay(Math.round(next)))
+  return <span ref={ref} className="tabular-nums">{format ? format(display) : display}</span>
 }
 
 export default function App() {
@@ -441,16 +458,31 @@ export default function App() {
   const perfNow = usePerf()
   const reduceMotion = useReducedMotion()
   const { scrollY, scrollYProgress } = useScroll()
+  /* Springing the progress bar removes the stepped feel of a raw scroll value on
+     Windows trackpads while staying tight enough to feel immediate. */
+  const scrollProgressSmooth = useSpring(scrollYProgress, { stiffness: 260, damping: 40, mass: 0.6, restDelta: 0.0005 })
+  /* Desktop-only: the ambient field drifts a few pixels toward the cursor. */
+  const drift = usePointerDrift(16)
   const heroY = useTransform(scrollY, [0, 520], [0, -38])
   const heroOpacity = useTransform(scrollY, [0, 520], [1, 0.84])
   const heroScale = useTransform(scrollY, [0, 520], [1, 0.98])
+  /* Depth parallax: the orbit sits closer to the reader than the copy, so it
+     travels further in the opposite direction as the hero leaves. */
+  const heroParallax = reduceMotion ? 0 : perfNow.level === 'lite' ? 0 : 1
+  const heroOrbitY = useTransform(scrollY, [0, 420], [0, 30 * heroParallax])
+  const heroCopyY = useTransform(scrollY, [0, 420], [0, -14 * heroParallax])
+  const heroHaloY = useTransform(scrollY, [0, 420], [0, 44 * heroParallax])
   useEffect(() => { runBenchmark() }, [])
   return (
     <MotionConfig reducedMotion="user">
     <ShellBoundary>
-    <div className="min-h-screen relative overflow-x-clip">
-      <motion.div className="scroll-progress" style={{ scaleX: scrollYProgress }} aria-hidden="true" />
+    <div
+      className="min-h-screen relative overflow-x-clip"
+      onPointerMove={isPhone ? undefined : drift.onPointerMove}
+    >
+      <motion.div className="scroll-progress" style={{ scaleX: reduceMotion ? scrollYProgress : scrollProgressSmooth }} aria-hidden="true" />
       <div className="hero-tint" />
+      <AmbientField drift={drift} />
 
       {/* Top bar */}
       <header className="app-header sticky top-0 z-40 border-b border-line" style={{ background: 'color-mix(in srgb, var(--bg) 92%, transparent)' }}>
@@ -497,38 +529,56 @@ export default function App() {
                 style={{ y: reduceMotion || perfNow.level === 'lite' ? 0 : heroY, opacity: reduceMotion || perfNow.level === 'lite' ? 1 : heroOpacity, scale: reduceMotion || perfNow.level === 'lite' ? 1 : heroScale }}
               >
                 <div className="desktop-home-hero hidden sm:block">
-                  <motion.div className="inline-block mb-5 sm:mb-8" initial={reduceMotion ? false : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={reduceMotion ? { duration: 0 } : { ...SPRING, delay: 0.05 }}>
-                    <Logo className="w-[76px] h-[76px] sm:w-[104px] sm:h-[104px] rounded-[20px] sm:rounded-[22px]" shadow big />
+                  <motion.div
+                    className="inline-block relative mb-5 sm:mb-8"
+                    initial={reduceMotion ? false : { opacity: 0, y: 16, scale: 0.9 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    transition={reduceMotion ? { duration: 0 } : t(DURATION.extraLong1, EASE.overshoot, 0.04)}
+                  >
+                    <motion.span className="hero-mark-halo" aria-hidden="true" style={{ y: heroHaloY }} />
+                    <span className="hero-mark-swap block"><Logo className="w-[76px] h-[76px] sm:w-[104px] sm:h-[104px] rounded-[20px] sm:rounded-[22px]" shadow big /></span>
                   </motion.div>
-                  <motion.div className="eyebrow mb-5" initial={reduceMotion ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={reduceMotion ? { duration: 0 } : { delay: 0.12 }}>By Mubashir</motion.div>
-                  <motion.h1 className="display font-semibold text-[32px] sm:text-[42px] md:text-[60px] leading-[1.08] tracking-tight" initial={reduceMotion ? false : { opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={reduceMotion ? { duration: 0 } : { ...SPRING, delay: 0.16 }}>
-                    Every tool you need,<br /><em className="font-medium" style={{ color: 'var(--accent2)' }}>on one quiet table.</em>
-                  </motion.h1>
-                  <motion.p className="mt-6 text-[15px] leading-relaxed max-w-lg mx-auto" style={{ color: 'var(--muted)' }} initial={reduceMotion ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={reduceMotion ? { duration: 0 } : { delay: 0.28 }}>
-                    A growing workbench for files, media, documents and everyday tasks. Processing stays on this device wherever the tool allows; network-backed features are clearly opt-in.
-                  </motion.p>
+                  <RevealLine delay={0.14} className="eyebrow mb-5">By Mubashir</RevealLine>
+                  <h1 className="display font-semibold text-[32px] sm:text-[42px] md:text-[60px] leading-[1.08] tracking-tight">
+                    <RevealLine delay={0.2}>Every tool you need,</RevealLine>
+                    <RevealLine delay={0.3} className="reveal-gradient-text font-medium">on one quiet table.</RevealLine>
+                  </h1>
+                  <RevealBlock delay={0.44} className="mt-6">
+                    <p className="text-[15px] leading-relaxed max-w-lg mx-auto" style={{ color: 'var(--on-surface-variant)' }}>
+                      A growing workbench for files, media, documents and everyday tasks. Processing stays on this device wherever the tool allows; network-backed features are clearly opt-in.
+                    </p>
+                  </RevealBlock>
+                  <RevealRule delay={0.6} className="hero-underline mt-8 w-24" />
                 </div>
 
                 <div className="mobile-home-hero sm:hidden">
-                  <div className="mobile-hero-orbit" aria-hidden="true">
+                  <motion.div className="mobile-hero-orbit" aria-hidden="true" style={{ y: heroOrbitY }}>
                     <motion.span className="mobile-orbit-ring mobile-orbit-ring-a" animate={reduceMotion ? undefined : { rotate: 360 }} transition={{ duration: 28, repeat: Infinity, ease: 'linear' }} />
                     <motion.span className="mobile-orbit-ring mobile-orbit-ring-b" animate={reduceMotion ? undefined : { rotate: -360 }} transition={{ duration: 38, repeat: Infinity, ease: 'linear' }} />
                     <motion.span className="mobile-orbit-dot" animate={reduceMotion ? undefined : { y: [0, -7, 0], opacity: [0.55, 1, 0.55] }} transition={{ duration: 2.7, repeat: Infinity, ease: 'easeInOut' }} />
-                  </div>
+                  </motion.div>
+                  {/* Parallax wrapper sits outside the animated row so the scroll
+                      offset never competes with its spring entrance. */}
+                  <motion.div className="block" style={{ y: heroCopyY }} aria-hidden={false}>
                   <motion.div className="mobile-hero-brand" initial={reduceMotion ? false : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={reduceMotion ? { duration: 0 } : { ...SPRING, delay: 0.04 }}>
                     <motion.span className="mobile-hero-logo" animate={reduceMotion ? undefined : { y: [0, -3, 0], rotate: [0, 2, 0] }} transition={{ duration: 4.2, repeat: Infinity, ease: 'easeInOut' }}><Logo className="w-12 h-12 rounded-2xl" shadow /></motion.span>
                     <span className="text-left"><span className="eyebrow block">By Mubashir</span><span className="display block text-[13px] font-semibold mt-1">The all-in-one workbench</span></span>
                   </motion.div>
-                  <motion.h1 className="mobile-hero-title display font-semibold" initial={reduceMotion ? false : { opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={reduceMotion ? { duration: 0 } : { ...SPRING, delay: 0.09 }}>
-                    Tools for every<br /><motion.em className="font-medium" style={{ color: 'var(--primary)' }} initial={reduceMotion ? false : { opacity: 0.4 }} animate={{ opacity: 1 }} transition={reduceMotion ? { duration: 0 } : { delay: 0.3 }}>little big moment.</motion.em>
-                  </motion.h1>
+                  </motion.div>
+                  <h1 className="mobile-hero-title display font-semibold">
+                    <RevealLine delay={0.09}>Tools for every</RevealLine>
+                    <RevealLine delay={0.18} className="reveal-gradient-text font-medium">little big moment.</RevealLine>
+                  </h1>
                   <motion.p className="mobile-hero-copy" initial={reduceMotion ? false : { opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={reduceMotion ? { duration: 0 } : { ...SPRING, delay: 0.2 }}>
                     A calm, local-first space for your files, media and everyday tasks. Use the tools you need, on your terms.
                   </motion.p>
                   <div className="mobile-hero-stats">
-                    {[[String(TOOLS.length).padStart(2, '0'), 'tools'], ['LOCAL', 'by default'], ['YOU', 'in control']].map(([value, label], index) => (
-                      <motion.div key={label} className="mobile-hero-stat" initial={reduceMotion ? false : { opacity: 0, y: 10 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={reduceMotion ? { duration: 0 } : { ...SPRING, delay: 0.16 + index * 0.06 }}>
-                        <span>{value}</span><small>{label}</small>
+                    {[[TOOLS.length, String(TOOLS.length).padStart(2, '0'), 'tools'], ['LOCAL', 'LOCAL', 'by default'], ['YOU', 'YOU', 'in control']].map(([count, value, label], index) => (
+                      <motion.div key={label} className="mobile-hero-stat" initial={reduceMotion ? false : { opacity: 0, y: 10 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={reduceMotion ? { duration: 0 } : t(DURATION.long2, EASE.emphasizedDecelerate, 0.16 + index * 0.06) }>
+                        {typeof count === 'number'
+                          ? <RollingNumber to={count} format={(n) => String(n).padStart(2, '0')} />
+                          : <span>{value}</span>}
+                        <small>{label}</small>
                       </motion.div>
                     ))}
                   </div>
@@ -536,8 +586,21 @@ export default function App() {
               </motion.section>
 
               <motion.div className="home-collection-head" initial={reduceMotion ? false : { opacity: 0, y: 10 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: 0.8 }} transition={reduceMotion ? { duration: 0 } : { ...SPRING, delay: 0.06 }}>
-                <div><div className="eyebrow mb-1.5">Browse the collection</div><h2 className="display font-semibold text-[23px] sm:text-[26px]">The table</h2></div>
-                <span className="home-tool-count" aria-live="polite">{visibleTools.length} {visibleTools.length === 1 ? 'tool' : 'tools'} <i /> ready to explore</span>
+                <div>
+                  <RevealLine delay={0.05} className="eyebrow mb-1.5">Browse the collection</RevealLine>
+                  <h2 className="display font-semibold text-[23px] sm:text-[26px]">The table</h2>
+                  <RevealRule delay={0.16} className="hero-underline mt-2 w-14" />
+                </div>
+                <motion.span
+                  key={visibleTools.length}
+                  className="home-tool-count"
+                  aria-live="polite"
+                  initial={reduceMotion ? false : { opacity: 0, x: 10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={t(DURATION.medium2, EASE.emphasizedDecelerate)}
+                >
+                  <b className="tabular-nums">{visibleTools.length}</b> {visibleTools.length === 1 ? 'tool' : 'tools'} <i /> ready to explore
+                </motion.span>
               </motion.div>
 
               <div className="home-browser">

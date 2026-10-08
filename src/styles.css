@@ -1240,3 +1240,239 @@ input[type="search"]::-webkit-search-results-button { -webkit-appearance: none; 
   .tool-actions-scrim { align-items: center; }
   .tool-actions-sheet { border-radius: var(--md-shape-xxl); margin-bottom: 6vh; }
 }
+
+/* =============================================================================
+   PART 4 — Ambient motion layer
+   Cheap, GPU-composited background motion shared by phones and desktop.
+   Only `transform` and `opacity` animate, so scrolling stays smooth.
+   ========================================================================== */
+
+.ambient-field {
+  position: fixed;
+  inset: -10%;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  contain: strict;
+}
+.ambient-wash {
+  position: absolute; inset: -6%;
+  background:
+    radial-gradient(58% 44% at 18% 8%, color-mix(in srgb, var(--primary) 20%, transparent), transparent 62%),
+    radial-gradient(48% 40% at 86% 12%, color-mix(in srgb, var(--tertiary) 16%, transparent), transparent 58%),
+    radial-gradient(70% 55% at 50% 96%, color-mix(in srgb, var(--secondary) 14%, transparent), transparent 64%);
+  filter: blur(30px);
+  transition: transform 600ms var(--md-ease-standard);
+  will-change: transform;
+}
+.ambient-grid {
+  position: absolute; inset: 0;
+  background-image:
+    linear-gradient(to right, color-mix(in srgb, var(--on-surface) 5%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--on-surface) 5%, transparent) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: radial-gradient(120% 90% at 50% 0%, #000 22%, transparent 72%);
+  -webkit-mask-image: radial-gradient(120% 90% at 50% 0%, #000 22%, transparent 72%);
+  animation: ambient-grid-drift 48s linear infinite;
+}
+@keyframes ambient-grid-drift { to { background-position: 64px 64px, 64px 64px; } }
+
+.ambient-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(52px);
+  will-change: transform;
+  animation-name: ambient-drift;
+  animation-timing-function: cubic-bezier(0.45, 0, 0.55, 1);
+  animation-iteration-count: infinite;
+  animation-direction: alternate;
+}
+@keyframes ambient-drift {
+  0%   { transform: translate3d(0, 0, 0) scale(1); }
+  33%  { transform: translate3d(calc(6vmax * var(--ambient-scale, 1)), calc(-4vmax * var(--ambient-scale, 1)), 0) scale(1.08); }
+  66%  { transform: translate3d(calc(-5vmax * var(--ambient-scale, 1)), calc(5vmax * var(--ambient-scale, 1)), 0) scale(.94); }
+  100% { transform: translate3d(calc(3vmax * var(--ambient-scale, 1)), calc(-6vmax * var(--ambient-scale, 1)), 0) scale(1.05); }
+}
+
+.ambient-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px dashed color-mix(in srgb, var(--on-surface) 40%, transparent);
+  will-change: transform;
+}
+.ambient-ring--inner { border-style: solid; border-width: 1px; }
+
+.ambient-halo {
+  position: absolute;
+  inset: -18%;
+  border-radius: 50%;
+  pointer-events: none;
+  background: radial-gradient(circle, color-mix(in srgb, var(--primary) 26%, transparent), transparent 68%);
+  filter: blur(16px);
+  will-change: opacity;
+}
+
+/* -------------------------------------------------------------- spinner --- */
+.ambient-spinner { position: relative; display: grid; place-items: center; }
+.ambient-spinner-track {
+  position: absolute; inset: 0;
+  border-radius: 50%;
+  border: 2px solid var(--outline-variant);
+}
+.ambient-spinner-arc {
+  position: absolute; inset: 0;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  border-top-color: var(--primary);
+  border-right-color: color-mix(in srgb, var(--primary) 40%, transparent);
+  will-change: transform;
+}
+
+/* Every ambient loop stops when the OS asks for reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  .ambient-blob, .ambient-grid { animation: none !important; }
+  .ambient-halo { display: none; }
+}
+
+/* Lite profile keeps motion but sheds the expensive parts. */
+html[data-perf="lite"] .ambient-blob { filter: blur(36px); }
+html[data-perf="lite"] .ambient-grid { display: none; }
+html[data-perf="lite"] .ambient-wash { filter: none; }
+
+/* ------------------------------------------------- text reveal primitives -- */
+.reveal-line { display: block; overflow: hidden; padding-bottom: .06em; margin-bottom: -.06em; }
+.reveal-line > span { display: block; will-change: transform; }
+.reveal-gradient-text {
+  background: linear-gradient(100deg, var(--accent2) 0%, var(--primary) 42%, var(--tertiary) 100%);
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: reveal-gradient-pan 9s var(--md-ease-standard) infinite alternate;
+}
+@keyframes reveal-gradient-pan { from { background-position: 0% 50%; } to { background-position: 100% 50%; } }
+@media (prefers-reduced-motion: reduce) { .reveal-gradient-text { animation: none; background-position: 50% 50%; } }
+
+/* --------------------------------------------------------- hero animation -- */
+.home-hero-scroll { will-change: transform; }
+.hero-mark-swap { animation: hero-mark-breathe 5.2s var(--md-ease-standard) infinite; }
+@keyframes hero-mark-breathe {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50%      { transform: translateY(-6px) rotate(1.5deg); }
+}
+.hero-underline { transform-origin: left center; }
+@media (prefers-reduced-motion: reduce) { .hero-mark-swap { animation: none; } }
+
+.hero-mark-halo {
+  position: absolute;
+  inset: -34%;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--primary) 34%, transparent), transparent 66%);
+  filter: blur(14px);
+  animation: hero-halo-pulse 4.6s var(--md-ease-standard) infinite;
+  pointer-events: none;
+}
+@keyframes hero-halo-pulse {
+  0%, 100% { transform: scale(0.86); opacity: .5; }
+  50%      { transform: scale(1.06); opacity: .9; }
+}
+@media (prefers-reduced-motion: reduce) { .hero-mark-halo { animation: none; } }
+
+.home-tool-count b { font-weight: 600; color: var(--on-surface); }
+.mobile-hero-stat .tabular-nums { font-variant-numeric: tabular-nums; }
+.reveal-line.eyebrow, span.eyebrow.reveal-line { display: block; }
+
+/* ------------------------------------------------------------ card shine --
+   Two sweeps layered on the desktop 3-D card: one slow, always-on ambient pass
+   and one bright pass that fires on hover/focus. Transform-only, GPU composited. */
+.card-shine {
+  position: absolute;
+  inset: -40% -60%;
+  pointer-events: none;
+  z-index: 2;
+  transform: translateX(-130%) rotate(14deg);
+  background: linear-gradient(100deg,
+    transparent 34%,
+    color-mix(in srgb, var(--on-surface) 9%, transparent) 46%,
+    color-mix(in srgb, var(--primary) 26%, transparent) 52%,
+    transparent 64%);
+  will-change: transform;
+}
+.card-shine--ambient { opacity: .5; animation: card-shine-sweep 9.5s cubic-bezier(.5,0,.5,1) infinite; }
+.card-shine--hover { opacity: 0; }
+.card3d:hover .card-shine--hover,
+.card3d:focus-visible .card-shine--hover {
+  opacity: 1;
+  animation: card-shine-sweep 1.15s cubic-bezier(.22,.61,.36,1) 1 both;
+}
+.card3d:active .card-shine--hover { opacity: 0; }
+@keyframes card-shine-sweep {
+  from { transform: translateX(-130%) rotate(14deg); }
+  to   { transform: translateX(130%) rotate(14deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .card-shine { display: none; }
+}
+/* On a phone the 3-D card is not rendered, but keep the rule harmless. */
+@media (hover: none) { .card-shine--hover { display: none; } }
+
+/* ========================================================= command palette */
+.palette-panel { position: relative; overflow: hidden; }
+.palette-scan {
+  position: absolute; inset: 0 0 auto 0; height: 2px;
+  background: linear-gradient(90deg, transparent, var(--primary), transparent);
+  opacity: .55;
+  animation: palette-scan 3.4s cubic-bezier(.4,0,.2,1) infinite;
+  pointer-events: none;
+}
+@keyframes palette-scan { 0% { transform: translateY(0); opacity: 0; } 18% { opacity: .6; } 100% { transform: translateY(260px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .palette-scan { display: none; } }
+
+.palette-row { position: relative; isolation: isolate; }
+.palette-row > * { position: relative; z-index: 1; }
+.palette-pill {
+  position: absolute; inset: 0; z-index: 0;
+  border-radius: inherit;
+  background: var(--surface2);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 26%, transparent);
+}
+
+/* ======================================================== desktop footer -- */
+.desktop-footer-aura {
+  position: absolute; inset: 0; pointer-events: none; overflow: hidden;
+}
+.footer-aura-blob {
+  position: absolute; border-radius: 50%;
+  filter: blur(46px);
+  will-change: transform;
+  animation-name: ambient-drift;
+  animation-timing-function: cubic-bezier(.45,0,.55,1);
+  animation-iteration-count: infinite;
+  animation-direction: alternate;
+}
+.footer-aura-blob--a { width: 46vmax; height: 46vmax; top: -18vmax; left: -8vmax;  background: radial-gradient(circle at 40% 40%, var(--primary), transparent 70%); opacity: .2; animation-duration: 30s; }
+.footer-aura-blob--b { width: 38vmax; height: 38vmax; top: -10vmax; right: -6vmax; background: radial-gradient(circle at 55% 45%, var(--tertiary), transparent 70%); opacity: .18; animation-duration: 37s; animation-delay: -9s; }
+.footer-aura-blob--c { width: 30vmax; height: 30vmax; bottom: -16vmax; left: 34vmax; background: radial-gradient(circle at 50% 50%, var(--secondary), transparent 70%); opacity: .16; animation-duration: 26s; animation-delay: -16s; }
+.footer-aura-scan {
+  position: absolute; inset: 0;
+  background: repeating-linear-gradient(180deg, color-mix(in srgb, var(--ink) 4%, transparent) 0 1px, transparent 1px 4px);
+  mask-image: linear-gradient(180deg, #000, transparent 70%);
+  -webkit-mask-image: linear-gradient(180deg, #000, transparent 70%);
+  animation: footer-scan 9s linear infinite;
+}
+@keyframes footer-scan { to { transform: translateY(4px); } }
+@media (prefers-reduced-motion: reduce) { .footer-aura-blob, .footer-aura-scan { animation: none; } }
+
+.footer-glyph { will-change: transform; transition: color .3s var(--md-ease-standard); }
+.desktop-footer:hover .footer-glyph { color: color-mix(in srgb, var(--accent) 30%, var(--ink)); }
+.footer-top-link { position: relative; }
+.footer-top-link::after {
+  content: '';
+  position: absolute; inset: auto 0 -2px 0; height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  background-size: 200% 100%;
+  animation: footer-top-sheen 4.2s linear infinite;
+  opacity: .5;
+}
+@keyframes footer-top-sheen { from { background-position: 0% 0; } to { background-position: 200% 0; } }
+@media (prefers-reduced-motion: reduce) { .footer-top-link::after { animation: none; } }

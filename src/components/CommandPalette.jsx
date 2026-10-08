@@ -4,8 +4,7 @@ import { TOOLS } from '../toolsRegistry.jsx'
 import { THEMES, THEME_ORDER } from '../themes.js'
 import { getRecent } from '../lib/utils.js'
 import { ToolIcon } from './ToolIcon.jsx'
-
-const SPRING = { type: 'spring', stiffness: 300, damping: 25 }
+import { EASE, DURATION, t, SPRING, useMagnetic } from '../lib/motion.js'
 
 function score(q, text) {
   q = q.toLowerCase(); text = text.toLowerCase()
@@ -40,6 +39,7 @@ export default function CommandPalette({ open, onClose, onTool, onTheme }) {
   useEffect(() => { setSel(0) }, [q])
 
   const exec = (item) => { item?.run(); onClose() }
+  const magnet = useMagnetic({ strength: 0.08, max: 12 })
 
   return (
     <AnimatePresence>
@@ -48,14 +48,24 @@ export default function CommandPalette({ open, onClose, onTool, onTheme }) {
           className="fixed inset-0 z-[80] flex items-start justify-center px-3 pt-[calc(env(safe-area-inset-top)+8vh)] pb-[calc(env(safe-area-inset-bottom)+16px)] sm:px-4 sm:pt-[12vh]"
           style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(6px)' }}
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+          transition={t(DURATION.medium2, EASE.standard)}
           onMouseDown={onClose}
         >
+          {/* The panel is nudged toward the cursor while it is open — the same
+              magnetism the cards use, so the desktop feels like one system. */}
           <motion.div
-            className="card flex w-full max-w-xl flex-col overflow-hidden"
-            initial={{ y: -24, scale: 0.94, opacity: 0 }} animate={{ y: 0, scale: 1, opacity: 1 }} exit={{ y: -18, scale: 0.96, opacity: 0 }}
-            transition={SPRING}
+            ref={magnet.ref}
+            className="card flex w-full max-w-xl flex-col overflow-hidden palette-panel"
+            style={magnet.style}
+            onPointerMove={magnet.onPointerMove}
+            onPointerLeave={magnet.onPointerLeave}
+            initial={{ y: -24, scale: 0.94, opacity: 0 }}
+            animate={{ y: 0, scale: 1, opacity: 1 }}
+            exit={{ y: -18, scale: 0.96, opacity: 0 }}
+            transition={SPRING.gentle}
             onMouseDown={(e) => e.stopPropagation()}
           >
+            <motion.span className="palette-scan" aria-hidden="true" />
             <div className="flex items-center gap-3 px-4 border-b border-line">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{ color: 'var(--muted)' }}>
                 <circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" />
@@ -79,13 +89,23 @@ export default function CommandPalette({ open, onClose, onTool, onTheme }) {
               {items.map((it, i) => (
                 <motion.button
                   key={it.kind + it.label}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-colors"
-                  style={i === sel ? { background: 'var(--surface2)' } : undefined}
+                  className="palette-row w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-colors"
                   onMouseEnter={() => setSel(i)}
                   onClick={() => exec(it)}
+                  animate={{ scale: 1, opacity: 1 }}
+                  whileHover={{ scale: 1.014 }}
                   whileTap={{ scale: 0.98 }}
+                  transition={SPRING.snappy}
                 >
-                  <span className="w-8 h-8 grid place-items-center rounded-lg text-base" style={{ background: 'var(--surface2)', border: '1px solid var(--border)' }}>{it.icon}</span>
+                  {i === sel && (
+                    <motion.span
+                      className="palette-pill"
+                      layoutId="palette-selection"
+                      transition={SPRING.snappy}
+                      aria-hidden="true"
+                    />
+                  )}
+                  <motion.span className="w-8 h-8 grid place-items-center rounded-lg text-base relative z-[1]" style={{ background: 'var(--surface2)', border: '1px solid var(--border)' }} animate={{ rotate: i === sel ? [0, -8, 8, 0] : 0 }} transition={t(DURATION.long1, EASE.emphasized)}>{it.icon}</motion.span>
                   <span className="flex-1 min-w-0">
                     <span className="block font-semibold text-sm truncate">{it.label}</span>
                     <span className="block text-[11px]" style={{ color: 'var(--muted)' }}>{it.sub}</span>

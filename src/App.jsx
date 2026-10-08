@@ -1,13 +1,16 @@
 import Footer from './components/Footer.jsx'
-import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ReactDOM from 'react-dom'
 import { exit, onBackButtonPress } from '@tauri-apps/api/app'
 import { AnimatePresence, MotionConfig, motion, useMotionValue, useReducedMotion, useScroll, useSpring, useTransform } from 'framer-motion'
 import { usePerf, setPerfMode, runBenchmark } from './lib/perf.js'
 import { TOOLS } from './toolsRegistry.jsx'
 import { THEME_CHOICES, SYSTEM_THEME, applyTheme, savedTheme, themeLabel, themeIsDark, themeVars as themeVarsOf, watchSystemTheme } from './themes.js'
-import { popToolHistory, pushToolHistory, resetToolHistory } from './lib/navigation.js'
+import { pushToolHistory, resetToolHistory, resolveBack, installHistorySentinel } from './lib/navigation.js'
 import CommandPalette from './components/CommandPalette.jsx'
+import MobileNavBar from './components/MobileNavBar.jsx'
+import MobileSearch from './components/MobileSearch.jsx'
+import { EASE, DURATION, t, sharedAxis } from './lib/motion.js'
 import { Logo } from './components/Logo.jsx'
 
 const SPRING = { type: 'spring', stiffness: 300, damping: 25 }
@@ -19,17 +22,33 @@ class ErrorBoundary extends React.Component {
   render() {
     if (this.state.err) {
       return (
-        <div className="card p-8 my-10 text-center">
-          <div className="display font-semibold text-[18px]">Something crashed here.</div>
-          <pre className="mono text-[11px] mt-4 text-left overflow-auto max-h-48 card p-4" style={{ color: 'var(--muted)' }}>
-            {String(this.state.err?.stack || this.state.err).slice(0, 800)}
-          </pre>
-          <button className="btn btn-primary mt-5" onClick={() => this.setState({ err: null })}>Try again</button>
+        <div className="crash-screen">
+          <div className="crash-card">
+            <div className="crash-mark" aria-hidden="true">⚠</div>
+            <div className="display font-semibold text-[19px]">This tool stopped unexpectedly</div>
+            <p className="text-[13px] mt-2" style={{ color: 'var(--on-surface-variant)' }}>
+              Your files were not changed. You can go back and pick another tool.
+            </p>
+            <pre className="mono crash-trace">{String(this.state.err?.stack || this.state.err).slice(0, 700)}</pre>
+            <div className="flex flex-wrap gap-2 mt-5">
+              <button type="button" className="md3-filled-button" onClick={() => this.setState({ err: null })}>Try again</button>
+              <button type="button" className="md3-outlined-button" onClick={() => { this.setState({ err: null }); this.props.onExit?.() }}>Back to all tools</button>
+            </div>
+          </div>
         </div>
       )
     }
     return this.props.children
   }
+}
+
+/** Last line of defence: if the shell itself throws, still show a usable screen. */
+function ShellBoundary({ children }) {
+  return (
+    <ErrorBoundary>
+      {children}
+    </ErrorBoundary>
+  )
 }
 
 function SearchIcon() {
@@ -374,22 +393,6 @@ function SettingsIcon() {
   return <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M12 15.3a3.3 3.3 0 1 0 0-6.6 3.3 3.3 0 0 0 0 6.6Z" /><path d="m19.4 15 .1.1 1.2 1-1.5 2.6-1.5-.6a7.8 7.8 0 0 1-1.6.9l-.3 1.6h-3l-.3-1.6a7.8 7.8 0 0 1-1.6-.9l-1.5.6-1.5-2.6 1.2-1-.1-.9.1-.9-1.2-1 1.5-2.6 1.5.6a7.8 7.8 0 0 1 1.6-.9l.3-1.6h3l.3 1.6a7.8 7.8 0 0 1 1.6.9l1.5-.6 1.5 2.6-1.2 1 .1.9-.1.9Z" /></svg>
 }
 
-function MobileBottomNav({ onHome, onSearch, onControls }) {
-  return (
-    <nav className="mobile-bottom-nav sm:hidden" aria-label="Tool navigation">
-      <motion.button type="button" whileTap={{ scale: 0.92 }} onClick={onHome} aria-label="Back to all tools">
-        <span className="mobile-nav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="2" /><rect x="13.5" y="3.5" width="7" height="7" rx="2" /><rect x="3.5" y="13.5" width="7" height="7" rx="2" /><rect x="13.5" y="13.5" width="7" height="7" rx="2" /></svg></span><span>All tools</span>
-      </motion.button>
-      <motion.button type="button" whileTap={{ scale: 0.92 }} onClick={onSearch} aria-label="Search tools">
-        <span className="mobile-nav-icon"><SearchIcon /></span><span>Search</span>
-      </motion.button>
-      <motion.button type="button" whileTap={{ scale: 0.92 }} onClick={onControls} aria-label="Open appearance and performance settings">
-        <span className="mobile-nav-icon"><SettingsIcon /></span><span>Personalize</span>
-      </motion.button>
-    </nav>
-  )
-}
-
 function ToolLoading() {
   return (
     <div className="py-24 grid place-items-center">
@@ -401,80 +404,121 @@ function ToolLoading() {
 export default function App() {
   const [theme, setThemeState] = useState(() => savedTheme())
   const [active, setActive] = useState(null)
-  const [paletteOpen, setPaletteOpen] = useState(false)
-  const [controlsOpen, setControlsOpen] = useState(false)
+  /* One overlay at a time keeps the back contract unambiguous. */
+  const [overlay, setOverlay] = useState(null) // null | 'search' | 'personalize'
   const [homeQuery, setHomeQuery] = useState('')
   const [homeFilter, setHomeFilter] = useState('all')
-  const navRef = useRef(null)
+  const [isPhone, setIsPhone] = useState(() => typeof window !== 'undefined' && window.innerWidth < 640)
+
+  const controlsOpen = overlay === 'personalize'
+  const searchOpen = overlay === 'search'
+  const routeHistoryRef = useRef(resetToolHistory())
   const themeRef = useRef(theme)
   themeRef.current = theme
-  const routeHistoryRef = useRef(resetToolHistory())
-  navRef.current = { active, paletteOpen, controlsOpen }
 
-  const setTheme = (id) => { setThemeState(id); applyTheme(id) }
-  const goHome = () => {
+  /* A ref is the only safe way for the native back listener to see current
+     state. The previous handler closed over the first render's values, so the
+     gesture met an empty tool stack and fell straight through to exit(). */
+  const navRef = useRef({ active: null, overlay: null })
+  navRef.current = { active, overlay }
+
+  const setTheme = useCallback((id) => { setThemeState(id); applyTheme(id) }, [])
+
+  const goHome = useCallback(() => {
     routeHistoryRef.current = resetToolHistory()
-    setPaletteOpen(false); setControlsOpen(false); setActive(null)
+    setOverlay(null)
+    setActive(null)
     window.scrollTo({ top: 0, behavior: 'auto' })
-  }
-  const openTool = (t) => {
-    routeHistoryRef.current = pushToolHistory(routeHistoryRef.current, t.id)
-    setActive(t); setPaletteOpen(false); setControlsOpen(false)
-    window.scrollTo({ top: 0, behavior: 'auto' })
-  }
-  const navigateBack = (exitAtRoot = false) => {
-    const current = navRef.current || {}
-    if (current.controlsOpen) { setControlsOpen(false); return true }
-    if (current.paletteOpen) { setPaletteOpen(false); return true }
+  }, [])
 
-    const previous = popToolHistory(routeHistoryRef.current)
-    routeHistoryRef.current = previous.history
-    if (previous.moved) {
-      setActive(previous.toolId ? TOOLS.find((tool) => tool.id === previous.toolId) || null : null)
+  const openTool = useCallback((tool) => {
+    routeHistoryRef.current = pushToolHistory(routeHistoryRef.current, tool.id)
+    setOverlay(null)
+    setActive(tool)
+    window.scrollTo({ top: 0, behavior: 'auto' })
+  }, [])
+
+  /**
+   * The single back contract, shared by the Android system button, the gesture
+   * bar, the keyboard, the header control and the browser history sentinel.
+   * Precedence: close overlay → unwind one tool → return to the collection →
+   * only then leave the app.
+   */
+  const navigateBack = useCallback((exitAtRoot = false) => {
+    const snapshot = navRef.current || { active: null, overlay: null }
+    const decision = resolveBack({
+      history: routeHistoryRef.current,
+      active: snapshot.active,
+      overlays: snapshot.overlay ? [snapshot.overlay] : [],
+    })
+    routeHistoryRef.current = decision.history
+
+    if (decision.action === 'close-overlay') {
+      setOverlay(null)
+      return true
+    }
+    if (decision.action === 'navigate') {
+      setActive(decision.toolId ? TOOLS.find((tool) => tool.id === decision.toolId) || null : null)
       window.scrollTo({ top: 0, behavior: 'auto' })
       return true
     }
-    if (current.active) {
-      routeHistoryRef.current = resetToolHistory()
+    if (decision.action === 'home') {
       setActive(null)
       window.scrollTo({ top: 0, behavior: 'auto' })
       return true
     }
-    if (exitAtRoot) { void exit(0); return true }
+    /* Root of the app: only here may back leave. */
+    if (exitAtRoot) { void exit(0) }
     return false
-  }
+  }, [])
+
+  const backRef = useRef(navigateBack)
+  backRef.current = navigateBack
+
+  useEffect(() => {
+    const onResize = () => setIsPhone(window.innerWidth < 640)
+    window.addEventListener('resize', onResize)
+    window.addEventListener('orientationchange', onResize)
+    return () => { window.removeEventListener('resize', onResize); window.removeEventListener('orientationchange', onResize) }
+  }, [])
 
   useEffect(() => {
     const h = (event) => {
+      const snapshot = navRef.current || {}
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault()
-        if (navRef.current?.controlsOpen) setControlsOpen(false)
-        setPaletteOpen((open) => !open)
+        setOverlay((current) => (current === 'search' ? null : 'search'))
+        return
       }
       if (event.key === 'Escape') {
-        if (navRef.current?.controlsOpen) setControlsOpen(false)
-        else if (navRef.current?.paletteOpen) setPaletteOpen(false)
-        else if (navRef.current?.active) goHome()
+        if (snapshot.overlay) { setOverlay(null); return }
+        if (snapshot.active) goHome()
       }
     }
     window.addEventListener('keydown', h)
     return () => window.removeEventListener('keydown', h)
-  }, [])
+  }, [goHome])
 
+  /* Line 1: the native Android back button / gesture. */
   useEffect(() => {
-    if (!('__TAURI_INTERNALS__' in window) || !/android/i.test(navigator.userAgent || '')) return
+    const isTauri = typeof window !== 'undefined' && !!(window.__TAURI_INTERNALS__ || window.__TAURI__)
+    if (!isTauri) return undefined
     let cancelled = false
     let listener = null
-    onBackButtonPress(() => {
-      // Prefer the app's tool stack over WebView history. A stale WebView entry
-      // can otherwise navigate to an empty document and leave only the header.
-      navigateBack(true)
-    }).then((result) => {
-      if (cancelled) result.unregister()
-      else listener = result
-    }).catch((error) => console.warn('Android back handler unavailable:', error))
-    return () => { cancelled = true; listener?.unregister() }
+    onBackButtonPress(() => backRef.current(true))
+      .then((result) => { if (cancelled) result?.unregister?.(); else listener = result })
+      .catch((error) => console.warn('Native back handler unavailable:', error))
+    return () => { cancelled = true; listener?.unregister?.() }
   }, [])
+
+  /* Line 2: if the native handler never registers, Android hands the gesture to
+     the WebView, whose empty history navigated the document away and produced
+     the "black screen with only the header" report. A sentinel entry gives
+     history.back() somewhere harmless to land. */
+  useEffect(() => installHistorySentinel(() => backRef.current(true)), [])
+
+  // `auto` should repaint the moment the OS flips light/dark while the app is open.
+  useEffect(() => watchSystemTheme(() => { if (themeRef.current === SYSTEM_THEME) applyTheme(SYSTEM_THEME) }), [])
 
   useEffect(() => { window.scrollTo(0, 0) }, [active])
 
@@ -501,6 +545,7 @@ export default function App() {
   useEffect(() => { runBenchmark() }, [])
   return (
     <MotionConfig reducedMotion="user">
+    <ShellBoundary>
     <div className="min-h-screen relative overflow-x-clip">
       <motion.div className="scroll-progress" style={{ scaleX: scrollYProgress }} aria-hidden="true" />
       <div className="hero-tint" />
@@ -508,7 +553,7 @@ export default function App() {
       {/* Top bar */}
       <header className="app-header sticky top-0 z-40 border-b border-line" style={{ background: 'color-mix(in srgb, var(--bg) 92%, transparent)' }}>
         <div className="app-header-inner max-w-6xl mx-auto px-3 sm:px-6 min-h-16 py-2 flex items-center gap-2 sm:gap-5">
-          <motion.button type="button" aria-label={active ? 'Back to all tools' : 'Back to TheToolTable home'} className="app-brand flex items-center gap-2 sm:gap-3.5 shrink-0" whileTap={{ scale: 0.97 }} onClick={goHome}>
+          <motion.button type="button" aria-label={active ? 'Go back' : 'TheToolTable home'} className="app-brand flex items-center gap-2 sm:gap-3.5 shrink-0" whileTap={{ scale: 0.97 }} onClick={() => (active ? navigateBack(false) : goHome())}>
             <Logo className="w-8 h-8 sm:w-9 sm:h-9 rounded-[10px]" shadow />
             <span className="text-left leading-none">
               <span className="display block font-semibold text-[16px] sm:text-[19px] tracking-tight">TheToolTable</span>
@@ -521,7 +566,7 @@ export default function App() {
               type="button" aria-label="Search tools" title="Search tools (Ctrl+K)"
               className="btn btn-ghost header-search-button !px-2 sm:!px-3 sm:flex-1 sm:max-w-xs sm:justify-start sm:gap-2.5 sm:text-[13px] sm:font-medium"
               style={{ color: 'var(--muted)', background: 'var(--surface)', border: '1px solid var(--border)' }}
-              whileTap={{ scale: 0.97 }} onClick={() => { setControlsOpen(false); setPaletteOpen(true) }}
+              whileTap={{ scale: 0.97 }} onClick={() => setOverlay('search')}
             >
               <SearchIcon />
               <span className="hidden sm:inline">Search the table</span>
@@ -531,7 +576,7 @@ export default function App() {
               <PerfPicker />
               <ThemePicker theme={theme} setTheme={setTheme} />
             </div>
-            <motion.button type="button" className="mobile-settings-trigger sm:hidden" aria-label="Open appearance and performance settings" aria-haspopup="dialog" aria-expanded={controlsOpen} title="Appearance and performance" whileTap={{ scale: 0.92 }} onClick={() => { setPaletteOpen(false); setControlsOpen(true) }}>
+            <motion.button type="button" className="mobile-settings-trigger sm:hidden" aria-label="Open appearance and performance settings" aria-haspopup="dialog" aria-expanded={controlsOpen} title="Appearance and performance" whileTap={{ scale: 0.92 }} onClick={() => setOverlay('personalize')}>
               <SettingsIcon />
             </motion.button>
           </div>
@@ -539,9 +584,12 @@ export default function App() {
       </header>
 
       <main id="app-main" data-screen={active?.id || 'home'} className={`app-main max-w-6xl mx-auto px-3 sm:px-6 relative ${active ? 'app-main-tool' : 'app-main-home'}`}>
-        <AnimatePresence mode="sync" initial={false}>
+        {/* `wait` keeps exactly one screen mounted. With `sync` the outgoing tool
+            stayed alive during its exit animation; if its cleanup threw, React
+            tore down <main> and the user got a header-only black screen. */}
+        <AnimatePresence mode="wait" initial={false}>
           {!active ? (
-            <motion.div key="home" className="home-screen" initial={reduceMotion ? false : { opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={reduceMotion ? { opacity: 1 } : { opacity: 0, y: -12 }} transition={reduceMotion ? { duration: 0 } : SPRING}>
+            <motion.div key="home" className="home-screen" {...sharedAxis(1)}>
               <motion.section
                 className="home-hero pt-12 pb-10 sm:pt-20 sm:pb-16 text-center relative"
                 style={{ y: reduceMotion || perfNow.level === 'lite' ? 0 : heroY, opacity: reduceMotion || perfNow.level === 'lite' ? 1 : heroOpacity, scale: reduceMotion || perfNow.level === 'lite' ? 1 : heroScale }}
@@ -621,9 +669,9 @@ export default function App() {
               )}
             </motion.div>
           ) : (
-            <motion.div key={`tool-${active.id}`} className="tool-screen" initial={reduceMotion ? false : { opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={reduceMotion ? { opacity: 1 } : { opacity: 0, y: -14 }} transition={reduceMotion ? { duration: 0 } : SPRING}>
+            <motion.div key={`tool-${active.id}`} className="tool-screen" {...sharedAxis(-1)}>
               <div className="tool-screen-header pt-5 pb-4 sm:pt-10 sm:pb-8 flex items-center gap-3 sm:gap-5 min-w-0">
-                <motion.button type="button" className="btn btn-ghost tool-back-button shrink-0 !px-3 sm:!px-4" aria-label="Back to the table" whileTap={{ scale: 0.94 }} onClick={goHome}>
+                <motion.button type="button" className="btn btn-ghost tool-back-button shrink-0 !px-3 sm:!px-4" aria-label="Go back" whileTap={{ scale: 0.94 }} onClick={() => navigateBack(false)}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M19 12H5m7-7-7 7 7 7" /></svg>
                   <span className="hidden sm:inline">The table</span><span className="sm:hidden">Back</span>
                 </motion.button>
@@ -631,7 +679,7 @@ export default function App() {
                 <div className="min-w-0 flex-1"><div className="eyebrow mb-1 truncate">Tool {String(active.n).padStart(2, '0')} · {active.tag}</div><h2 tabIndex="-1" className="tool-screen-title display font-semibold text-[20px] sm:text-[26px] leading-tight">{active.name}</h2></div>
                 <span className="tool-screen-badge hidden sm:grid" aria-hidden="true">{String(active.n).padStart(2, '0')}</span>
               </div>
-              <ErrorBoundary key={active.id}>
+              <ErrorBoundary key={active.id} onExit={goHome}>
                 <div className="tool-view">
                   <MotionConfig reducedMotion={perfNow.level === 'lite' ? 'always' : 'user'}><Suspense fallback={<ToolLoading />}><ActiveComp /></Suspense></MotionConfig>
                 </div>
@@ -640,17 +688,35 @@ export default function App() {
           )}
         </AnimatePresence>
       </main>
-      {active && <MobileBottomNav onHome={goHome} onSearch={() => { setControlsOpen(false); setPaletteOpen(true) }} onControls={() => { setPaletteOpen(false); setControlsOpen(true) }} />}
+      {/* Inside a tool the collection is still one back-press away, so its
+          destination stays selected rather than leaving the bar unhighlighted. */}
+      <MobileNavBar
+        destination={overlay === 'personalize' ? 'personalize' : overlay === 'search' ? 'search' : 'home'}
+        onHome={goHome}
+        onSearch={() => setOverlay('search')}
+        onPersonalize={() => setOverlay('personalize')}
+      />
       <Footer />
 
-      <CommandPalette
-        open={paletteOpen}
-        onClose={() => setPaletteOpen(false)}
-        onTool={openTool}
-        onTheme={(id) => { setTheme(id); setPaletteOpen(false) }}
-      />
-      <MobileControlsSheet open={controlsOpen} onClose={() => setControlsOpen(false)} theme={theme} setTheme={setTheme} />
+      {!isPhone && (
+        <CommandPalette
+          open={searchOpen}
+          onClose={() => setOverlay(null)}
+          onTool={openTool}
+          onTheme={(id) => { setTheme(id); setOverlay(null) }}
+        />
+      )}
+      {isPhone && (
+        <MobileSearch
+          open={searchOpen}
+          onClose={() => setOverlay(null)}
+          onTool={openTool}
+          onTheme={(id) => { setTheme(id); setOverlay(null) }}
+        />
+      )}
+      <MobileControlsSheet open={controlsOpen} onClose={() => setOverlay(null)} theme={theme} setTheme={setTheme} />
     </div>
+    </ShellBoundary>
     </MotionConfig>
   )
 }

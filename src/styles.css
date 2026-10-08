@@ -475,10 +475,6 @@ button, input, select, textarea { font-family: inherit; }
 .mobile-perf-bars i:nth-child(3) { height: 17px; }
 .mobile-perf-option[data-selected="true"] .mobile-perf-bars { background: var(--primary-container); }
 .mobile-reduced-note { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 14px; background: var(--surface2); color: var(--muted); font-size: 11.5px; }
-.mobile-bottom-nav { position: fixed; z-index: 45; right: 12px; bottom: calc(8px + env(safe-area-inset-bottom, 0px)); left: 12px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; min-height: 66px; padding: 6px; border: 1px solid color-mix(in srgb, var(--border) 86%, transparent); border-radius: 23px; background: color-mix(in srgb, var(--surface) 93%, transparent); box-shadow: 0 8px 30px rgba(20,18,24,.16); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
-.mobile-bottom-nav button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-width: 0; min-height: 52px; border-radius: 17px; color: var(--muted); font-size: 10.5px; font-weight: 650; }
-.mobile-bottom-nav button:active { color: var(--primary); background: var(--primary-container); }
-.mobile-nav-icon { display: grid; place-items: center; width: 25px; height: 24px; color: var(--primary); }
 
 .mobile-footer { position: relative; overflow: hidden; padding-top: 2px; color: var(--ink); background: var(--surface2); }
 .mobile-footer-glow { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(70% 75% at 95% 5%, var(--glow), transparent 72%); opacity: .76; }
@@ -504,7 +500,7 @@ button, input, select, textarea { font-family: inherit; }
 .mobile-footer-bottom button span { color: var(--primary); font-size: 14px; }
 
 @media (min-width: 640px) {
-  .mobile-controls-overlay, .mobile-bottom-nav { display: none !important; }
+  .mobile-controls-overlay { display: none !important; }
 }
 @media (max-width: 360px) {
   .app-header-inner { padding-inline: 8px; }
@@ -540,11 +536,14 @@ html.android-native .mobile-controls-sheet {
   max-height: min(88dvh, calc(100dvh - var(--ttt-safe-top) - 8px));
   padding-bottom: calc(18px + var(--ttt-safe-bottom));
 }
-html.android-native .mobile-bottom-nav { bottom: calc(8px + var(--ttt-safe-bottom)); }
 html.android-native .app-main-tool { padding-bottom: calc(112px + var(--ttt-safe-bottom)); }
 html.android-native .app-toast { bottom: calc(92px + var(--ttt-safe-bottom)); }
 html.android-native .mobile-footer-bottom { padding-bottom: calc(15px + var(--ttt-safe-bottom)); }
-html.android-native :focus-visible { outline: 3px solid color-mix(in srgb, var(--primary) 62%, white); outline-offset: 3px; }
+/* Scope the heavy focus ring to controls. Applied to text inputs as well it drew a
+   3px ring *offset* from every field, which read as a stray box over the UI; inputs
+   get their Material `:focus-within` treatment instead. */
+html.android-native :focus-visible:not(input):not(textarea) { outline: 3px solid color-mix(in srgb, var(--primary) 62%, white); outline-offset: 3px; }
+html.android-native input:focus-visible, html.android-native textarea:focus-visible { outline: none; }
 html.android-native button, html.android-native [role="button"] { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 
 /* Ten extra, deliberately light discovery animations layered onto the existing
@@ -667,13 +666,13 @@ html.android-native button, html.android-native [role="button"] { -webkit-tap-hi
 
 /* ------------------------------------------------------------- state layers -- */
 .md3-state,
-.btn, .chip, .input, .select, .tool-btn, .mobile-bottom-nav button,
+.btn, .chip, .input, .select, .tool-btn,
 .home-filter-chip, .card3d, .tool-panel, .home-search-field {
   position: relative;
   isolation: isolate;
   overflow: hidden;
 }
-.btn::after, .chip::after, .tool-btn::after, .home-filter-chip::after, .mobile-bottom-nav button::after {
+.btn::after, .chip::after, .tool-btn::after, .home-filter-chip::after {
   content: "";
   position: absolute; inset: 0;
   background: currentColor;
@@ -685,7 +684,7 @@ html.android-native button, html.android-native [role="button"] { -webkit-tap-hi
 .btn:hover::after, .chip:hover::after, .tool-btn:hover::after, .home-filter-chip:hover::after { opacity: var(--md-state-hover); }
 .btn:focus-visible::after, .chip:focus-visible::after, .tool-btn:focus-visible::after { opacity: var(--md-state-focus); }
 .btn:active::after, .chip:active::after, .tool-btn:active::after,
-.home-filter-chip:active::after, .mobile-bottom-nav button:active::after { opacity: var(--md-state-pressed); }
+.home-filter-chip:active::after { opacity: var(--md-state-pressed); }
 .btn > *, .chip > *, .tool-btn > * { position: relative; z-index: 1; }
 
 /* ------------------------------------------------------------------ ripple -- */
@@ -890,3 +889,191 @@ html[data-theme="material-dark"] .hero-tint {
     radial-gradient(120% 82% at 12% -8%, color-mix(in srgb, var(--primary) 20%, transparent), transparent 62%),
     radial-gradient(90% 70% at 92% 4%, color-mix(in srgb, var(--tertiary) 16%, transparent), transparent 58%);
 }
+
+/* =============================================================================
+   PART 2 — Mobile shell
+   Material 3 navigation bar, full-screen search, and a crash screen that can
+   never leave the user staring at a bare header.
+   ========================================================================== */
+
+/* ---------------------------------------------------- navigation bar (M3) -- */
+.md3-nav-bar {
+  position: fixed;
+  z-index: 45;
+  left: 0; right: 0; bottom: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: center;
+  padding: 12px 8px calc(12px + var(--safe-bottom));
+  background: var(--surface-container);
+  border-top: 1px solid transparent;
+  box-shadow: 0 -1px 0 color-mix(in srgb, var(--on-surface) 8%, transparent);
+  transition: transform var(--md-dur-4) var(--md-ease-emphasized-decel),
+              box-shadow var(--md-dur-3) var(--md-ease-standard);
+  will-change: transform;
+}
+@media (min-width: 640px) { .md3-nav-bar { display: none; } }
+
+.md3-nav-item {
+  position: relative;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  min-width: 0; padding: 0;
+  border: 0; background: transparent;
+  color: var(--on-surface-variant);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.md3-nav-indicator {
+  position: relative;
+  display: grid; place-items: center;
+  width: 64px; max-width: 88vw; height: 32px;
+  border-radius: 16px;
+}
+.md3-nav-pill {
+  position: absolute; inset: 0;
+  border-radius: 16px;
+  background: var(--secondary-container);
+}
+.md3-nav-icon {
+  position: relative; z-index: 1;
+  display: grid; place-items: center;
+  width: 24px; height: 24px;
+}
+.md3-nav-label {
+  font-size: 12px; font-weight: 600; letter-spacing: .03em;
+  white-space: nowrap;
+  transition: color var(--md-dur-3) var(--md-ease-emphasized);
+}
+.md3-nav-item[data-active="true"] { color: var(--on-surface); }
+.md3-nav-item[data-active="false"] .md3-nav-label { color: var(--on-surface-variant); }
+
+/* --------------------------------------------------------- full-screen search */
+.md3-search-view {
+  position: fixed; inset: 0; z-index: 95;
+  display: flex; flex-direction: column;
+  background: var(--surface-container-low);
+  color: var(--on-surface);
+  will-change: transform, opacity;
+}
+@media (min-width: 640px) { .md3-search-view { display: none; } }
+
+.md3-search-header {
+  flex: 0 0 auto;
+  padding-inline: max(var(--safe-left), 16px) max(var(--safe-right), 16px);
+  padding-bottom: 10px;
+  background: var(--surface-container-low);
+  border-bottom: 1px solid transparent;
+}
+.md3-search-title-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  min-height: 60px;
+}
+.md3-search-title-row h2 {
+  font-size: 26px; font-weight: 600; letter-spacing: -.02em;
+  will-change: transform, opacity;
+}
+.md3-search-field {
+  display: flex; align-items: center; gap: 12px;
+  height: 54px; padding: 0 14px 0 16px;
+  border-radius: var(--md-shape-lg);
+  background: var(--surface-container-high);
+  transition: background var(--md-dur-3) var(--md-ease-standard),
+              box-shadow var(--md-dur-3) var(--md-ease-standard);
+}
+.md3-search-field:focus-within {
+  background: var(--surface-container-highest);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+.md3-search-field input {
+  flex: 1; min-width: 0; height: 100%;
+  border: 0; outline: none; background: transparent;
+  color: var(--on-surface); font-size: 16px;
+}
+.md3-search-field input::placeholder { color: var(--on-surface-variant); opacity: .9; }
+.md3-search-field input::-webkit-search-cancel-button { display: none; }
+.md3-search-clear {
+  display: grid; place-items: center;
+  flex: 0 0 auto; width: 28px; height: 28px;
+  border: 0; border-radius: 50%;
+  background: var(--surface-container-highest);
+  color: var(--on-surface-variant); font-size: 13px; line-height: 1;
+}
+
+.md3-search-body {
+  flex: 1 1 auto; min-height: 0;
+  overflow-y: auto; overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 6px max(var(--safe-left), 8px) calc(24px + var(--safe-bottom)) max(var(--safe-right), 8px);
+}
+.md3-search-list { list-style: none; margin: 0; padding: 0; }
+.md3-search-result {
+  position: relative; isolation: isolate; overflow: hidden;
+  display: flex; align-items: center; gap: 14px;
+  width: 100%; min-height: 60px; padding: 10px 14px;
+  border: 0; border-radius: var(--md-shape-md);
+  background: transparent; color: var(--on-surface);
+  cursor: pointer;
+  transition: background var(--md-dur-2) var(--md-ease-standard);
+}
+.md3-search-result::after {
+  content: ""; position: absolute; inset: 0; background: currentColor;
+  opacity: 0; pointer-events: none;
+  transition: opacity var(--md-dur-2) var(--md-ease-standard);
+}
+.md3-search-result:hover { background: color-mix(in srgb, var(--on-surface) var(--md-state-hover), transparent); }
+.md3-search-result:active { background: color-mix(in srgb, var(--on-surface) var(--md-state-pressed), transparent); }
+.md3-search-result > * { position: relative; z-index: 1; }
+.md3-search-result-icon {
+  display: grid; place-items: center;
+  flex: 0 0 auto; width: 42px; height: 42px;
+  border-radius: 14px; font-size: 20px;
+  background: var(--secondary-container); color: var(--on-secondary-container);
+}
+.md3-search-chevron { flex: 0 0 auto; color: var(--on-surface-variant); font-size: 22px; line-height: 1; }
+
+.md3-search-empty {
+  display: grid; justify-items: center; gap: 8px;
+  padding: 56px 20px; text-align: center; color: var(--on-surface-variant);
+}
+.md3-search-empty-mark { color: var(--primary); font-size: 40px; line-height: 1; }
+.md3-search-empty strong { color: var(--on-surface); font-size: 16px; }
+.md3-search-empty small { font-size: 12.5px; max-width: 24rem; }
+
+/* ------------------------------------------------------------ crash screen -- */
+.crash-screen {
+  display: grid; place-items: center;
+  min-height: calc(var(--app-vh) - var(--safe-top) - 56px);
+  padding: 24px 18px calc(32px + var(--safe-bottom));
+}
+.crash-card {
+  width: 100%; max-width: 30rem;
+  padding: 26px 22px;
+  border-radius: var(--md-shape-xl);
+  background: var(--error-container);
+  color: var(--on-error-container);
+}
+.crash-mark { font-size: 30px; line-height: 1; margin-bottom: 10px; }
+.crash-trace {
+  max-height: 180px; overflow: auto;
+  margin: 14px 0 0; padding: 12px;
+  border-radius: var(--md-shape-sm);
+  background: color-mix(in srgb, var(--on-error-container) 8%, transparent);
+  font-size: 11px; line-height: 1.5; white-space: pre-wrap; word-break: break-word;
+}
+
+/* The old phone shell showed the appearance trigger only under `sm:hidden`;
+   the Material nav bar now carries that destination, so the header keeps just
+   brand + search on a phone and everything else lives in the bar. */
+@media (max-width: 639.98px) {
+  .mobile-settings-trigger { display: none !important; }
+  .header-search-button { width: 44px; height: 44px; min-height: 44px; border-radius: var(--md-shape-full) !important; }
+  .home-filter-chip, .chip { border-radius: var(--md-shape-full); }
+}
+
+/* Material text-field focus: the filled container darkens and gains a 1dp keyline.
+   Covers the home filter field and every tool input that is not `.input`. */
+.home-search-field input:focus-visible,
+.md3-search-field input:focus-visible { outline: none; }
+input[type="search"]::-webkit-search-decoration,
+input[type="search"]::-webkit-search-cancel-button,
+input[type="search"]::-webkit-search-results-button { -webkit-appearance: none; appearance: none; display: none; }

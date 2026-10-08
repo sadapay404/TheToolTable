@@ -17,7 +17,7 @@ A ground-up mobile pass driven by seven Android defects reported against v1.2.0.
 | Part | Scope | Status |
 |---|---|---|
 | 1 | Material 3 Expressive foundation, safe-area shell, theme engine | **Complete** |
-| 2 | Mobile shell rewrite (header, nav bar, search, back navigation) | Pending |
+| 2 | Mobile shell rewrite (header, nav bar, search, back navigation) | **Complete** |
 | 3 | Home grid redesign | Pending |
 | 4 | Motion system | Pending |
 | 5 | Tool chrome for all 20 tools | Pending |
@@ -78,3 +78,57 @@ A ground-up mobile pass driven by seven Android defects reported against v1.2.0.
 - Tool icons are still **system emoji**; they render as tofu on devices without an emoji font.
   Part 3 replaces them with inline SVG.
 - The mobile appearance sheet truncates "Follow system" — Part 2 rebuilds that sheet.
+---
+
+## Part 2 — Mobile shell rewrite ✅
+
+### Root causes found
+
+- **Bug 6 (back closed the app).** `navigateBack` was recreated on every render but the
+  `onBackButtonPress` effect ran once with `[]` deps, so the native listener called the
+  **first render's** closure. Registration was also gated on `/android/i.test(UA)` *and*
+  `__TAURI_INTERNALS__`, so any mismatch fell through to Android's default behaviour —
+  finishing the Activity. There was no second line of defence at all.
+- **Bug 7 (black screen with only the header).** `AnimatePresence mode="sync"` keeps the
+  outgoing screen mounted through its exit animation. When that subtree threw during
+  cleanup, React tore down `<main>` and left the sticky header on its own.
+- **Bonus bug.** `html.android-native :focus-visible` applied a 3px ring at 3px offset to
+  **text inputs**, which drew a stray floating box over the UI.
+- The old `MobileBottomNav` was three static buttons with no active indicator and no
+  way to reflect which screen you were on.
+
+### Changes
+
+- **`src/lib/navigation.js`** — added `resolveBack()` (pure) and `installHistorySentinel()`.
+  One back contract, shared by the system button, the gesture bar, Escape, the header
+  control and the browser history: **close overlay → unwind one tool → return to the
+  collection → only then leave the app**.
+- **`src/lib/motion.js`** (new) — Material 3 motion tokens: emphasized /
+  emphasized-decelerate / emphasized-accelerate easings, 12 duration steps, spring
+  presets, `riseIn` / `scaleIn` / `pressable` / `sharedAxis` variants and a reduced-motion
+  aware `useTransition`.
+- **`src/components/MobileNavBar.jsx`** (new) — real M3 navigation bar: 64×32dp indicator
+  that *slides* between destinations via a shared `layoutId`, phone-only.
+- **`src/components/MobileSearch.jsx`** (new) — full-screen M3 search view with a
+  collapsing large title, 54dp filled search field and staggered results. Desktop keeps
+  the floating command palette.
+- **`src/App.jsx`** — single `overlay` state, `navigateBack` behind a ref, two independent
+  back listeners (native + `popstate` sentinel), `AnimatePresence mode="wait"` with shared-axis
+  transitions, a `ShellBoundary` around the whole app, and a full-screen crash card.
+- **`src/styles.css`** — M3 nav bar + search view + crash screen; focus ring rescoped to
+  controls; the legacy `.mobile-bottom-nav` rules are gone.
+
+### Verification
+
+- `npm test` — **131/131 passing** (+9 back-navigation tests covering the overlay
+  precedence, the "never exit from inside a tool" guarantee, the defensive branch and the
+  sentinel re-arming).
+- `npm run build` — passing.
+- Headless Chromium with an Android UA, driving the real DOM:
+  - Back **inside** a tool: `metadata → home`, `main` still mounted, header still visible,
+    body text intact — the exact failure from bug 7 no longer occurs.
+  - Back **at the root**: `main` and the nav bar survive instead of a blank document.
+  - Back through `QR Studio → collection`: correct.
+  - Search opens, filters ("pdf" → 13 hits, PDF Studio first), opens a tool and closes.
+  - Nav bar sits flush to the viewport bottom (844/844), no horizontal overflow, desktop
+    correctly hides it, zero console errors throughout.

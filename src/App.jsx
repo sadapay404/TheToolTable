@@ -12,6 +12,9 @@ import MobileNavBar from './components/MobileNavBar.jsx'
 import MobileSearch from './components/MobileSearch.jsx'
 import { EASE, DURATION, t, sharedAxis } from './lib/motion.js'
 import { Logo } from './components/Logo.jsx'
+import ToolCard from './components/ToolCard.jsx'
+import ToolActions from './components/ToolActions.jsx'
+import { ToolIcon } from './components/ToolIcon.jsx'
 
 const SPRING = { type: 'spring', stiffness: 300, damping: 25 }
 
@@ -94,108 +97,6 @@ const HOME_FILTERS = [
   { id: 'docs', label: 'Documents', ids: ['metadata', 'pdf', 'ocr', 'invoice', 'textlab'] },
   { id: 'everyday', label: 'Everyday', ids: ['units', 'decision', 'pkmoney', 'beam', 'qr'] },
 ]
-
-function TiltCard({ tool, onOpen, i, level = 'full' }) {
-  const reduceMotion = useReducedMotion()
-  const maxTilt = reduceMotion ? 0 : level === 'lite' ? 4 : level === 'balanced' ? 7 : 11
-  const pointerX = useMotionValue(0)
-  const pointerY = useMotionValue(0)
-  const smoothX = useSpring(pointerX, { stiffness: 180, damping: 22, mass: 0.45 })
-  const smoothY = useSpring(pointerY, { stiffness: 180, damping: 22, mass: 0.45 })
-  const rotateX = useTransform(smoothY, [-1, 1], [maxTilt, -maxTilt])
-  const rotateY = useTransform(smoothX, [-1, 1], [-maxTilt, maxTilt])
-  const lightX = useTransform(smoothX, [-1, 1], ['8%', '92%'])
-  const lightY = useTransform(smoothY, [-1, 1], ['8%', '92%'])
-  const contentX = useTransform(smoothX, [-1, 1], [-2.5, 2.5])
-  const contentY = useTransform(smoothY, [-1, 1], [-1.5, 1.5])
-  const hoverLift = reduceMotion ? -1 : level === 'lite' ? -3 : -7
-  const hoverDepth = reduceMotion ? 0 : level === 'lite' ? 5 : 20
-  const revealY = level === 'lite' ? 18 : 34
-  const revealScale = level === 'lite' ? 0.97 : 0.92
-
-  function trackPointer(event) {
-    if (reduceMotion || event.pointerType === 'touch') return
-    const bounds = event.currentTarget.getBoundingClientRect()
-    if (!bounds.width || !bounds.height) return
-    pointerX.set(Math.max(-1, Math.min(1, ((event.clientX - bounds.left) / bounds.width) * 2 - 1)))
-    pointerY.set(Math.max(-1, Math.min(1, ((event.clientY - bounds.top) / bounds.height) * 2 - 1)))
-  }
-
-  function resetPointer() {
-    pointerX.set(0)
-    pointerY.set(0)
-  }
-
-  const cardVariants = {
-    rest: { y: 0, z: 0, scale: 1, transition: SPRING },
-    hover: {
-      y: hoverLift,
-      z: hoverDepth,
-      scale: reduceMotion ? 1 : level === 'lite' ? 1.01 : 1.025,
-      transition: { ...SPRING, staggerChildren: 0.035, delayChildren: 0.015 },
-    },
-    tap: { y: 0, z: 0, scale: reduceMotion ? 1 : 0.985, transition: { duration: 0.12 } },
-  }
-
-  return (
-    <motion.div
-      className="tilt-stage h-full"
-      initial={reduceMotion ? false : { opacity: 0, y: revealY, scale: revealScale, filter: level === 'lite' ? 'blur(0px)' : 'blur(8px)' }}
-      whileInView={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
-      viewport={{ once: true, amount: 0.16 }}
-      transition={reduceMotion ? { duration: 0 } : { ...SPRING, delay: 0.025 * (i % 4) }}
-      style={{ perspective: level === 'lite' ? 850 : 1100 }}
-    >
-      <motion.button
-        type="button"
-        className="card3d group block w-full text-left"
-        aria-label={`Open ${tool.name}`}
-        variants={cardVariants}
-        initial="rest"
-        animate="rest"
-        whileHover="hover"
-        whileFocus="hover"
-        whileTap="tap"
-        onPointerMove={trackPointer}
-        onPointerLeave={resetPointer}
-        onPointerEnter={() => tool.comp.preload?.()}
-        onFocus={() => tool.comp.preload?.()}
-        onClick={() => onOpen(tool)}
-        style={{
-          rotateX: reduceMotion ? 0 : rotateX,
-          rotateY: reduceMotion ? 0 : rotateY,
-          transformStyle: 'preserve-3d',
-          '--mx': lightX,
-          '--my': lightY,
-        }}
-      >
-        <div className="sheen" aria-hidden="true" />
-        <div className="inner relative h-full p-5 sm:p-7">
-          <motion.div className="card-content flex min-h-full flex-col gap-4 sm:gap-5" style={{ x: reduceMotion ? 0 : contentX, y: reduceMotion ? 0 : contentY }}>
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex min-w-0 items-center gap-2.5">
-                <motion.span className="tool-icon shrink-0" variants={CARD_ICON_VARIANTS} aria-hidden="true">{tool.icon}</motion.span>
-                <span className="eyebrow truncate">{tool.tag}</span>
-              </div>
-              <motion.span className="ghost-num shrink-0" variants={CARD_NUMBER_VARIANTS} aria-hidden="true">{String(tool.n).padStart(2, '0')}</motion.span>
-            </div>
-            <div className="min-h-[88px]">
-              <motion.h3 className="display font-semibold text-[19px] sm:text-[21px] leading-snug" variants={CARD_TITLE_VARIANTS}>{tool.name}</motion.h3>
-              <motion.p className="text-[13.5px] leading-relaxed mt-2" style={{ color: 'var(--muted)' }} variants={CARD_DESCRIPTION_VARIANTS}>{tool.desc}</motion.p>
-            </div>
-            <div className="mt-auto">
-              <motion.div className="rule" variants={CARD_RULE_VARIANTS} style={{ originX: 0 }} />
-              <div className="mt-3 flex items-center justify-between">
-                <motion.span className="text-[11px] font-semibold tracking-[0.08em] uppercase" style={{ color: 'var(--muted)' }} variants={CARD_CTA_VARIANTS}>Open tool</motion.span>
-                <motion.span className="card-arrow" variants={CARD_ARROW_VARIANTS} aria-hidden="true">↗</motion.span>
-              </div>
-            </div>
-          </motion.div>
-        </div>
-      </motion.button>
-    </motion.div>
-  )
-}
 
 function ThemePicker({ theme, setTheme }) {
   const [open, setOpen] = useState(false)
@@ -409,6 +310,7 @@ export default function App() {
   const [homeQuery, setHomeQuery] = useState('')
   const [homeFilter, setHomeFilter] = useState('all')
   const [isPhone, setIsPhone] = useState(() => typeof window !== 'undefined' && window.innerWidth < 640)
+  const [quickActions, setQuickActions] = useState(null)
 
   const controlsOpen = overlay === 'personalize'
   const searchOpen = overlay === 'search'
@@ -659,8 +561,21 @@ export default function App() {
               </div>
 
               {visibleTools.length ? (
-                <section className="tool-table-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-5" aria-label="Available tools">
-                  {visibleTools.map((tool, index) => <TiltCard key={tool.id} tool={tool} i={index} level={perfNow.level} onOpen={openTool} />)}
+                <section
+                  className={`tool-collection ${isPhone ? 'tool-collection--phone' : 'grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-5'}`}
+                  aria-label="Available tools"
+                >
+                  {visibleTools.map((tool, index) => (
+                    <ToolCard
+                      key={tool.id}
+                      tool={tool}
+                      i={index}
+                      level={perfNow.level}
+                      isPhone={isPhone}
+                      onOpen={openTool}
+                      onLongPress={setQuickActions}
+                    />
+                  ))}
                 </section>
               ) : (
                 <motion.div className="home-empty-state" initial={reduceMotion ? false : { opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={SPRING}>
@@ -676,6 +591,7 @@ export default function App() {
                   <span className="hidden sm:inline">The table</span><span className="sm:hidden">Back</span>
                 </motion.button>
                 <div className="tool-header-divider h-8 w-px shrink-0" style={{ background: 'var(--border)' }} />
+                <span className="tool-screen-icon shrink-0" aria-hidden="true"><ToolIcon name={active.icon} size={isPhone ? 20 : 24} /></span>
                 <div className="min-w-0 flex-1"><div className="eyebrow mb-1 truncate">Tool {String(active.n).padStart(2, '0')} · {active.tag}</div><h2 tabIndex="-1" className="tool-screen-title display font-semibold text-[20px] sm:text-[26px] leading-tight">{active.name}</h2></div>
                 <span className="tool-screen-badge hidden sm:grid" aria-hidden="true">{String(active.n).padStart(2, '0')}</span>
               </div>
@@ -715,6 +631,7 @@ export default function App() {
         />
       )}
       <MobileControlsSheet open={controlsOpen} onClose={() => setOverlay(null)} theme={theme} setTheme={setTheme} />
+      <ToolActions tool={quickActions} onClose={() => setQuickActions(null)} onOpen={openTool} />
     </div>
     </ShellBoundary>
     </MotionConfig>

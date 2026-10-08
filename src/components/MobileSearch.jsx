@@ -4,6 +4,7 @@ import { TOOLS } from '../toolsRegistry.jsx'
 import { THEMES, THEME_CHOICES, themeLabel, themeVars } from '../themes.js'
 import { getRecent } from '../lib/utils.js'
 import { EASE, DURATION, t, stagger, riseIn } from '../lib/motion.js'
+import { ToolIcon } from './ToolIcon.jsx'
 
 /**
  * Full-screen Material 3 search for phones.
@@ -47,17 +48,17 @@ export default function MobileSearch({ open, onClose, onTool, onTheme }) {
 
   const items = useMemo(() => {
     const toolItems = TOOLS.map((tool) => ({
-      kind: 'tool', icon: tool.icon, label: tool.name, sub: `Tool ${String(tool.n).padStart(2, '0')} · ${tool.tag}`,
+      kind: 'tool', icon: ToolIcon({ name: tool.icon, size: 22 }), label: tool.name, sub: `Tool ${String(tool.n).padStart(2, '0')} · ${tool.tag}`,
       s: Math.max(score(q, tool.name), score(q, tool.keywords || '') * 0.9),
       run: () => onTool(tool),
     }))
     const themeItems = THEME_CHOICES.map((id) => ({
-      kind: 'theme', icon: '🎨', label: `Theme: ${themeLabel(id)}`, sub: 'Appearance',
+      kind: 'theme', icon: ToolIcon({ name: 'sparkle', size: 22 }), label: `Theme: ${themeLabel(id)}`, sub: 'Appearance',
       s: score(q, `theme ${themeLabel(id)} appearance`),
       run: () => onTheme(id),
     }))
     const recentItems = q ? [] : getRecent().map((r) => ({
-      kind: 'recent', icon: '🕘', label: r.label, sub: 'Recent action', s: 0.4, run: onClose,
+      kind: 'recent', icon: ToolIcon({ name: 'clock', size: 22 }), label: r.label, sub: 'Recent action', s: 0.4, run: onClose,
     }))
     return [...recentItems, ...toolItems, ...themeItems].filter((i) => i.s > 0).sort((a, b) => b.s - a.s)
   }, [q, onTool, onTheme, onClose])

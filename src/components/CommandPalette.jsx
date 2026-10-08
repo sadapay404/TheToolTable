@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { TOOLS } from '../toolsRegistry.jsx'
 import { THEMES, THEME_ORDER } from '../themes.js'
 import { getRecent } from '../lib/utils.js'
+import { ToolIcon } from './ToolIcon.jsx'
 
 const SPRING = { type: 'spring', stiffness: 300, damping: 25 }
 
@@ -22,15 +23,15 @@ export default function CommandPalette({ open, onClose, onTool, onTheme }) {
 
   const items = useMemo(() => {
     const toolItems = TOOLS.map((t) => ({
-      kind: 'tool', icon: t.icon, label: t.name, sub: `Tool ${String(t.n).padStart(2, '0')} · ${t.tag}`,
+      kind: 'tool', icon: ToolIcon({ name: t.icon, size: 20 }), label: t.name, sub: `Tool ${String(t.n).padStart(2, '0')} · ${t.tag}`,
       s: Math.max(score(q, t.name), score(q, t.keywords) * 0.9), run: () => onTool(t),
     }))
     const themeItems = THEME_ORDER.map((id) => ({
-      kind: 'theme', icon: '🎨', label: `Theme: ${THEMES[id].name}`, sub: 'Appearance',
+      kind: 'theme', icon: ToolIcon({ name: 'sparkle', size: 20 }), label: `Theme: ${THEMES[id].name}`, sub: 'Appearance',
       s: score(q, `theme ${THEMES[id].name}`), run: () => onTheme(id),
     }))
     const recentItems = q ? [] : getRecent().map((r) => ({
-      kind: 'recent', icon: '🕘', label: r.label, sub: 'Recent action', s: 0.5, run: onClose,
+      kind: 'recent', icon: ToolIcon({ name: 'clock', size: 20 }), label: r.label, sub: 'Recent action', s: 0.5, run: onClose,
     }))
     return [...recentItems, ...toolItems, ...themeItems].filter((i) => i.s > 0).sort((a, b) => b.s - a.s)
   }, [q, onTool, onTheme, onClose])

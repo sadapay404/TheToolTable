@@ -1077,3 +1077,166 @@ html[data-theme="material-dark"] .hero-tint {
 input[type="search"]::-webkit-search-decoration,
 input[type="search"]::-webkit-search-cancel-button,
 input[type="search"]::-webkit-search-results-button { -webkit-appearance: none; appearance: none; display: none; }
+
+/* =============================================================================
+   PART 3 — Collection redesign
+   Material 3 list tiles for phones, SVG tool marks, ink ripple, long-press
+   quick actions.
+   ========================================================================== */
+
+.tool-collection--phone {
+  display: flex; flex-direction: column;
+  gap: 10px;
+  list-style: none; margin: 0; padding: 0;
+}
+.tool-tile-wrap { list-style: none; }
+.tool-tile-wrap > .tool-tile { display: flex; }
+
+/* ---------------------------------------------------------- phone tile --- */
+.tool-tile {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  display: flex; align-items: center; gap: 14px;
+  width: 100%; min-height: 84px;
+  padding: 14px 14px 14px 14px;
+  border: 1px solid transparent;
+  border-radius: var(--md-shape-lg);
+  background: var(--surface-container-low);
+  color: var(--on-surface);
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  box-shadow: var(--md-elev-1);
+  transition:
+    box-shadow var(--md-dur-3) var(--md-ease-emphasized),
+    background var(--md-dur-3) var(--md-ease-standard),
+    border-color var(--md-dur-3) var(--md-ease-standard);
+}
+.tool-tile:hover { box-shadow: var(--md-elev-2); background: var(--surface-container); }
+.tool-tile:active { box-shadow: var(--md-elev-0); border-color: color-mix(in srgb, var(--on-surface) 10%, transparent); }
+
+.tool-tile-icon {
+  position: relative; z-index: 1;
+  display: grid; place-items: center;
+  flex: 0 0 auto;
+  width: 52px; height: 52px;
+  border-radius: 17px;
+  background: var(--secondary-container);
+  color: var(--on-secondary-container);
+  transition: transform var(--md-dur-4) var(--md-ease-emphasized),
+              background var(--md-dur-3) var(--md-ease-standard);
+}
+.tool-tile:hover .tool-tile-icon { transform: scale(1.05) rotate(-3deg); }
+.tool-tile-text { position: relative; z-index: 1; min-width: 0; flex: 1; }
+.tool-tile-title {
+  display: block;
+  font-size: 15.5px; font-weight: 600; letter-spacing: -.01em; line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.tool-tile-sub {
+  display: flex; align-items: center; gap: 7px;
+  margin-top: 4px;
+  font-size: 11.5px; font-weight: 550; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--on-surface-variant);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.tool-tile-num {
+  display: inline-grid; place-items: center;
+  min-width: 22px; height: 18px; padding: 0 5px;
+  border-radius: 6px;
+  background: var(--surface-container-highest);
+  color: var(--on-surface-variant);
+  font-size: 10px; font-weight: 700; letter-spacing: .04em;
+}
+.tool-tile-chevron {
+  position: relative; z-index: 1;
+  flex: 0 0 auto;
+  color: var(--on-surface-variant);
+  font-size: 26px; line-height: 1;
+  transition: transform var(--md-dur-3) var(--md-ease-emphasized), color var(--md-dur-2) var(--md-ease-standard);
+}
+.tool-tile:hover .tool-tile-chevron { transform: translateX(4px); color: var(--on-surface); }
+.tool-tile > * { position: relative; z-index: 1; }
+
+/* A soft tonal wash keeps the list from reading as a flat stack of grey cards. */
+.tool-collection--phone > li:nth-child(3n+1) .tool-tile-icon { background: var(--primary-container); color: var(--on-primary-container); }
+.tool-collection--phone > li:nth-child(3n+2) .tool-tile-icon { background: var(--secondary-container); color: var(--on-secondary-container); }
+.tool-collection--phone > li:nth-child(3n+3) .tool-tile-icon { background: var(--tertiary-container); color: var(--on-tertiary-container); }
+
+/* The desktop 3-D card keeps its own sheen and numbering. */
+.tool-collection .card3d .tool-icon {
+  display: grid; place-items: center;
+  width: 40px; height: 40px;
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--primary-container) 72%, var(--surface));
+  color: var(--on-primary-container);
+}
+
+/* ------------------------------------------------- tool screen header mark */
+.tool-screen-icon {
+  display: grid; place-items: center;
+  width: 42px; height: 42px;
+  border-radius: 14px;
+  background: var(--primary-container);
+  color: var(--on-primary-container);
+}
+@media (max-width: 639.98px) { .tool-screen-icon { width: 36px; height: 36px; border-radius: 12px; } }
+
+/* ------------------------------------------------- long-press quick actions */
+.tool-actions-scrim {
+  position: fixed; inset: 0; z-index: 98;
+  display: flex; align-items: flex-end; justify-content: center;
+  padding-top: var(--safe-top);
+  background: color-mix(in srgb, var(--scrim) 42%, transparent);
+  backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+}
+.tool-actions-sheet {
+  position: relative;
+  width: 100%; max-width: 560px;
+  margin-inline: auto;
+  padding: 8px max(var(--safe-left), 14px) calc(14px + var(--safe-bottom)) max(var(--safe-right), 14px);
+  border-radius: var(--md-shape-xxl) var(--md-shape-xxl) 0 0;
+  background: var(--surface-container-high);
+  color: var(--on-surface);
+  box-shadow: 0 -12px 44px rgba(0,0,0,.26);
+  will-change: transform;
+}
+.tool-actions-handle {
+  width: 36px; height: 4px; margin: 2px auto 16px;
+  border-radius: 99px; background: var(--on-surface-variant); opacity: .4;
+}
+.tool-actions-head { display: flex; align-items: center; gap: 14px; }
+.tool-actions-icon {
+  display: grid; place-items: center;
+  flex: 0 0 auto; width: 50px; height: 50px;
+  border-radius: 16px;
+  background: var(--primary-container); color: var(--on-primary-container);
+}
+.tool-actions-desc {
+  margin: 14px 0 10px;
+  font-size: 13px; line-height: 1.5;
+  color: var(--on-surface-variant);
+}
+.tool-actions-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.tool-actions-list > li { display: flex; }
+/* Buttons are replaced-ish and do not stretch inside a grid item by default, so
+   the tonal fill ended up hugging the label instead of spanning the row. */
+.tool-actions-list .md3-list-item { width: 100%; }
+.tool-actions-primary { background: var(--secondary-container); color: var(--on-secondary-container); }
+.tool-actions-glyph {
+  display: grid; place-items: center;
+  flex: 0 0 auto; width: 40px; height: 40px;
+  border-radius: 13px; font-size: 18px;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+.tool-actions-toast {
+  min-height: 18px; margin: 8px 0 0;
+  text-align: center; font-size: 12px; font-weight: 600;
+  color: var(--primary);
+}
+@media (min-width: 640px) {
+  .tool-actions-scrim { align-items: center; }
+  .tool-actions-sheet { border-radius: var(--md-shape-xxl); margin-bottom: 6vh; }
+}

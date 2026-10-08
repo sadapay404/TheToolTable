@@ -18,7 +18,7 @@ A ground-up mobile pass driven by seven Android defects reported against v1.2.0.
 |---|---|---|
 | 1 | Material 3 Expressive foundation, safe-area shell, theme engine | **Complete** |
 | 2 | Mobile shell rewrite (header, nav bar, search, back navigation) | **Complete** |
-| 3 | Home grid redesign | Pending |
+| 3 | Home grid redesign | **Complete** |
 | 4 | Motion system | Pending |
 | 5 | Tool chrome for all 20 tools | Pending |
 | 6 | New animated mobile footer | Pending |
@@ -132,3 +132,52 @@ A ground-up mobile pass driven by seven Android defects reported against v1.2.0.
   - Search opens, filters ("pdf" → 13 hits, PDF Studio first), opens a tool and closes.
   - Nav bar sits flush to the viewport bottom (844/844), no horizontal overflow, desktop
     correctly hides it, zero console errors throughout.
+
+---
+
+## Part 3 — Collection redesign + SVG icon system ✅
+
+### Why the emoji had to go
+
+Every tool mark in the app was a **system emoji**. That is not an icon system:
+
+- emoji are rasterised by the *system* font, so they render as empty tofu boxes on any
+  Android skin without a colour-emoji font — confirmed here in headless Chromium;
+- they cannot inherit `currentColor`, so they ignore the Material state layers entirely;
+- they do not scale crisply, and they cannot be animated or tinted per state.
+
+### Changes
+
+- **`src/components/ToolIcon.jsx** (new) — 25 glyphs on a 24×24 grid, each drawn in
+  `currentColor`: one bespoke mark per tool plus the shell glyphs (grid, search,
+  sliders, sparkle, clock). `hasIcon()` gives a safe fallback rather than an empty box.
+- **`src/toolsRegistry.jsx`** — every `icon` switched from an emoji to a glyph id that
+  matches its tool id, so the registry stays serialisable and greppable.
+- **`src/components/ToolCard.jsx`** (new) — one card, two presentations:
+  - *phone*: a Material 3 list item — 52dp tonal icon container (cycling
+    primary/secondary/tertiary so the list is not a flat grey stack), title, numbered
+    uppercase supporting text, trailing chevron, elevation 1 → 2 on press;
+  - *desktop*: the original 3-D tilt, pointer lighting and layered parallax, with the
+    SVG mark swapped in.
+- **`src/lib/ripple.js`** (new) — a Material ink ripple that fires synchronously on
+  pointer-down and suppresses itself under `prefers-reduced-motion`.
+- **`src/components/ToolActions.jsx`** (new) — long-press bottom sheet with the tool's
+  mark, its description, **Open tool** and **Copy name**. A held gesture is cancelled so
+  it never also fires the click that launches the tool.
+- **`src/App.jsx`** — collection renders `ToolCard`, mounts the sheet, and the tool-screen
+  header now shows the tool's mark.
+- **`src/components/CommandPalette.jsx` / `MobileSearch.jsx`** — SVG marks in results.
+- **`src/styles.css`** — tile, sheet and header-mark styles; action rows forced to
+  full width (buttons do not stretch inside a grid item by default, so the tonal fill
+  was hugging the label).
+
+### Verification
+
+- `npm test` — **137/137 passing** (+6 icon-system tests that assert all 20 tools resolve
+  to a glyph, that **no emoji remain anywhere in the registry**, and that the shared
+  shell glyphs exist).
+- `npm run build` — passing.
+- Headless Chromium: 20 tiles / 20 SVG marks / **0 tofu boxes**; ripple element created on
+  tap; long-press opens the sheet with the right tool and does **not** open it; "Documents"
+  filter returns exactly the 5 expected tools; desktop shows 20 SVG marks inside the 3-D
+  cards and 0 phone tiles; dark theme clean; no console errors.

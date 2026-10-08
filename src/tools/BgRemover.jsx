@@ -9,16 +9,14 @@ import { DownloadPanel } from './bg/Dock.jsx'
 import { warmUp, subscribe, segment, retry, setEngine, shutdown, TIERS } from '../lib/bg/engine.js'
 import { EngineChooser, EnginePill, engineLine } from './bg/EngineSwitch.jsx'
 import { isImageFile } from '../lib/bg/media.js'
-import { compose, matteLUT, matteCanvas, netMaskToWork, paintStroke, fitSize, encode, MIME, DEFAULT_EDGE } from '../lib/bg/compose.js'
+import { compose, matteLUT, matteCanvas, netMaskToWork, paintStroke, fitSize, encode, MIME, DEFAULT_EDGE, MAX_EXPORT_EDGE, MAX_UNDO_STROKES, outputDimensions, pushUndoSnapshot } from '../lib/bg/compose.js'
 import { clamp, download, baseName, recentAction, fmtBytes } from '../lib/utils.js'
 
 const CHECKER = 'conic-gradient(#dcd6c9 25%, #f4f0e7 0 50%, #dcd6c9 0 75%, #f4f0e7 0) 0 0 / 18px 18px'
 const WORK_MAX = 1600
-const MAX_EXPORT_EDGE = 8192
 const MAX_INPUT_PIXELS = 40_000_000
 const MAX_IMAGE_BYTES = 80 * 1024 * 1024
 const MAX_ITEMS = 6
-const MAX_UNDO_STROKES = 8
 const MAX_ZIP_BYTES = 100 * 1024 * 1024
 const TABS = [['background', 'Background', 'layers'], ['refine', 'Refine', 'brush'], ['download', 'Download', 'download']]
 const VIEWS = [['result', 'Result'], ['original', 'Original'], ['matte', 'Matte'], ['split', 'Split']]
@@ -102,6 +100,7 @@ export default function BgRemover() {
     setItems((l) => {
       if (!alive.current) return l
       const next = l.map((i) => (i.id === id ? { ...i, ...p } : i))
+      // Keep async queue/removal checks aligned with React's latest item state.
       itemsRef.current = next
       return next
     })
@@ -261,10 +260,7 @@ export default function BgRemover() {
     const pad = Math.max(bw, bh) * (fit.pad / 100)
     return { w: bw + pad * 2, h: bh + pad * 2 }
   }, [fit, edge])
-  const outDimsFor = useCallback((d, sc) => {
-    const crop = cropDimsFor(d), limit = fit.on ? MAX_EXPORT_EDGE - 4 : MAX_EXPORT_EDGE
-    return fitSize(crop.w * sc, crop.h * sc, limit)
-  }, [cropDimsFor, fit.on])
+  const outDimsFor = useCallback((d, sc) => outputDimensions(cropDimsFor(d), sc, fit.on), [cropDimsFor, fit.on])
   const outDims = useMemo(() => (done && selData?.M ? outDimsFor(selData, scale) : { w: sel?.w || 0, h: sel?.h || 0 }), [done, selData, scale, outDimsFor, rev, sel?.w, sel?.h]) // eslint-disable-line
 
   useEffect(() => {
@@ -293,7 +289,7 @@ export default function BgRemover() {
     if (!done || e.button === 2 || !wrapRef.current?.contains(e.target)) return
     if (tool !== 'none') {
       e.currentTarget.setPointerCapture(e.pointerId)
-      const d = selData; d.dirty = true; d.undo.push(d.M.slice()); if (d.undo.length > MAX_UNDO_STROKES) d.undo.shift(); setUndoN((n) => n + 1)
+      const d = selData; d.dirty = true; pushUndoSnapshot(d.undo, d.M); setUndoN((n) => n + 1)
       const p = ptWork(e); painting.current = p
       paintStroke(d.M, d.work.w, d.work.h, p, p, radiusWork(), brush.hard / 100, tool); setRev((n) => n + 1)
     } else if (zoomMV.get() > 1.02) { painting.current = { pan: true, x: e.clientX, y: e.clientY, px: panX.get(), py: panY.get() }; e.currentTarget.setPointerCapture(e.pointerId) }
@@ -307,8 +303,7 @@ export default function BgRemover() {
   const resetMask = () => {
     const d = selData
     if (!d?.M0) return
-    d.undo.push(d.M.slice())
-    if (d.undo.length > MAX_UNDO_STROKES) d.undo.shift()
+    pushUndoSnapshot(d.undo, d.M)
     d.M = d.M0.slice(); d.dirty = false
     setUndoN((n) => n + 1); setRev((n) => n + 1); say('Back to the original AI cut')
   }
@@ -338,9 +333,8 @@ export default function BgRemover() {
     if (!d?.source || !d.M) throw new Error('This cut-out is no longer available. Re-run background removal first.')
     const lut = matteLUT(edge), crop = cropDimsFor(d)
     const requestedScale = Number.isFinite(sc) && sc > 0 ? sc : 1
-    const expandedEdge = Math.max(crop.w, crop.h) * requestedScale
-    const renderLimit = fit.on ? MAX_EXPORT_EDGE - 4 : MAX_EXPORT_EDGE
-    const renderScale = expandedEdge > renderLimit ? requestedScale * (renderLimit / expandedEdge) : requestedScale
+    const target = outputDimensions(crop, requestedScale, fit.on)
+    const renderScale = requestedScale * target.scale
     const f = fitSize(d.source.w * renderScale, d.source.h * renderScale, MAX_EXPORT_EDGE)
     const out = compose({ src: d.source.canvas, w: f.w, h: f.h, M: d.M, mw: d.work.w, mh: d.work.h, lut, bg, shadow, fit })
     const blob = await encode(out, format, quality / 100, bg.type === 'color' ? bg.color : '#FFFFFF')

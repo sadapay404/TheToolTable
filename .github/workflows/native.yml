@@ -222,6 +222,8 @@ jobs:
           path.write_text(source)
           print(f"Patched AGP 9 source sets and compileSdk 37 in {path}")
           PY
+      - name: Patch Android background-service lifecycle-only startup
+        run: node scripts/patch-android-background-service.mjs
       - name: Declare Android foreground-service and notification permissions
         run: node scripts/ensure-android-transfer-permissions.mjs
       - name: Configure Gradle retries for transient Maven rate limits
@@ -238,14 +240,14 @@ jobs:
           EOF
       - name: Cache Gradle dependencies
         uses: gradle/actions/setup-gradle@v4
-      - name: Build APK (64-bit + 32-bit phones)
+      - name: Build APK (ARM phones + x86_64 Android smoke-test emulator)
         shell: bash
         run: |
           for attempt in 1 2 3; do
             log="android-build-${attempt}.log"
             echo "Android build attempt ${attempt}/3"
             set +e
-            npx tauri android build --apk --target aarch64 --target armv7 2>&1 | tee "$log"
+            npx tauri android build --apk --target aarch64 --target armv7 --target x86_64 2>&1 | tee "$log"
             build_status=${PIPESTATUS[0]}
             set -e
             if [ "$build_status" -eq 0 ]; then exit 0; fi
@@ -301,6 +303,15 @@ jobs:
             "$BT/apksigner" verify --print-certs "$APK_NAME"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+          echo "ANDROID_APK_NAME=$APK_NAME" >> "$GITHUB_ENV"
+      - name: Smoke-test Android launch, Tool 04/06, and back navigation
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: node scripts/android-runtime-smoke.mjs "$ANDROID_APK_NAME"
       - name: Upload APK to the draft release
         run: |
           APK_NAME=TheToolTable.apk

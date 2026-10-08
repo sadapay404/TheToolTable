@@ -7,13 +7,17 @@ import React from 'react'
  */
 export function Logo({ className = 'w-9 h-9', shadow = false, big = false }) {
   const [failed, setFailed] = React.useState(false)
+  const androidAsset = typeof window !== 'undefined'
+    && !!window.__TAURI_INTERNALS__
+    && /android/i.test(navigator.userAgent || '')
+  const logoSrc = androidAsset ? '/icons/icon-512.png' : '/logo.png'
   return (
     <div
       className={`${className} relative shrink-0 overflow-hidden`}
       style={shadow ? { boxShadow: big ? 'var(--shadow-lg)' : 'var(--shadow)', borderRadius: 12 } : undefined}
     >
       {!failed ? (
-        <img src="/logo.png" alt="TheToolTable" className="w-full h-full object-cover rounded-[inherit]" onError={() => setFailed(true)} draggable={false} />
+        <img src={logoSrc} alt="TheToolTable" className="w-full h-full object-cover rounded-[inherit]" onError={() => setFailed(true)} draggable={false} />
       ) : (
         <svg viewBox="0 0 64 64" className="w-full h-full rounded-[inherit]">
           <rect width="64" height="64" fill="#FDFBF7" />

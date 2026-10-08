@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { fitSize, matteLUT, paintStroke } from '../src/lib/bg/compose.js'
+import { fitSize, matteLUT, paintStroke, outputDimensions, MAX_EXPORT_EDGE, MAX_UNDO_STROKES, pushUndoSnapshot } from '../src/lib/bg/compose.js'
 import { isImageFile } from '../src/lib/bg/media.js'
 
 const file = (name, type = '') => ({ name, type })
@@ -18,6 +18,25 @@ test('background source sizing preserves aspect ratio and rejects invalid dimens
   assert.deepEqual(fitSize(1200, 800, 8192), { w: 1200, h: 800, scale: 1, capped: false })
   assert.throws(() => fitSize(Infinity, 100, 1600), /positive finite/)
   assert.throws(() => fitSize(100, 100, 0), /positive finite/)
+})
+
+test('Tool 06 export dimensions share the hard 8192 edge cap in UI and renderer paths', () => {
+  assert.equal(MAX_EXPORT_EDGE, 8192)
+  const standard = outputDimensions({ w: 24_000, h: 12_000 }, 2, false)
+  assert.deepEqual({ w: standard.w, h: standard.h }, { w: 8192, h: 4096 })
+  assert.equal(standard.capped, true)
+
+  const fitted = outputDimensions({ w: 16_000, h: 8_000 }, 1, true)
+  assert.equal(Math.max(fitted.w, fitted.h), MAX_EXPORT_EDGE - 4)
+  const invalidScale = outputDimensions({ w: 400, h: 200 }, 0, false)
+  assert.deepEqual({ w: invalidScale.w, h: invalidScale.h }, { w: 400, h: 200 })
+})
+
+test('Tool 06 undo snapshots are independent and bounded by MAX_UNDO_STROKES', () => {
+  const stack = []
+  for (let i = 0; i < MAX_UNDO_STROKES + 2; i++) pushUndoSnapshot(stack, Uint8Array.of(i))
+  assert.equal(stack.length, MAX_UNDO_STROKES)
+  assert.deepEqual([...stack[0]], [2])
 })
 
 test('matte lookup tables are monotonic and brush strokes restore and erase smoothly', () => {

@@ -6,6 +6,7 @@ import { AnimatePresence, MotionConfig, motion, useMotionValue, useReducedMotion
 import { usePerf, setPerfMode, runBenchmark } from './lib/perf.js'
 import { TOOLS } from './toolsRegistry.jsx'
 import { THEMES, THEME_ORDER, applyTheme, savedTheme } from './themes.js'
+import { popToolHistory, pushToolHistory, resetToolHistory } from './lib/navigation.js'
 import CommandPalette from './components/CommandPalette.jsx'
 import { Logo } from './components/Logo.jsx'
 
@@ -129,6 +130,7 @@ function TiltCard({ tool, onOpen, i, level = 'full' }) {
       <motion.button
         type="button"
         className="card3d group block w-full text-left"
+        aria-label={`Open ${tool.name}`}
         variants={cardVariants}
         initial="rest"
         animate="rest"
@@ -404,16 +406,40 @@ export default function App() {
   const [homeQuery, setHomeQuery] = useState('')
   const [homeFilter, setHomeFilter] = useState('all')
   const navRef = useRef(null)
+  const routeHistoryRef = useRef(resetToolHistory())
   navRef.current = { active, paletteOpen, controlsOpen }
 
   const setTheme = (id) => { setThemeState(id); applyTheme(id) }
   const goHome = () => {
+    routeHistoryRef.current = resetToolHistory()
     setPaletteOpen(false); setControlsOpen(false); setActive(null)
-    window.scrollTo(0, 0)
+    window.scrollTo({ top: 0, behavior: 'auto' })
   }
   const openTool = (t) => {
+    routeHistoryRef.current = pushToolHistory(routeHistoryRef.current, t.id)
     setActive(t); setPaletteOpen(false); setControlsOpen(false)
-    window.scrollTo(0, 0)
+    window.scrollTo({ top: 0, behavior: 'auto' })
+  }
+  const navigateBack = (exitAtRoot = false) => {
+    const current = navRef.current || {}
+    if (current.controlsOpen) { setControlsOpen(false); return true }
+    if (current.paletteOpen) { setPaletteOpen(false); return true }
+
+    const previous = popToolHistory(routeHistoryRef.current)
+    routeHistoryRef.current = previous.history
+    if (previous.moved) {
+      setActive(previous.toolId ? TOOLS.find((tool) => tool.id === previous.toolId) || null : null)
+      window.scrollTo({ top: 0, behavior: 'auto' })
+      return true
+    }
+    if (current.active) {
+      routeHistoryRef.current = resetToolHistory()
+      setActive(null)
+      window.scrollTo({ top: 0, behavior: 'auto' })
+      return true
+    }
+    if (exitAtRoot) { void exit(0); return true }
+    return false
   }
 
   useEffect(() => {
@@ -437,13 +463,10 @@ export default function App() {
     if (!('__TAURI_INTERNALS__' in window) || !/android/i.test(navigator.userAgent || '')) return
     let cancelled = false
     let listener = null
-    onBackButtonPress(({ canGoBack }) => {
-      const current = navRef.current || {}
-      if (current.controlsOpen) { setControlsOpen(false); return }
-      if (current.paletteOpen) { setPaletteOpen(false); return }
-      if (current.active) { goHome(); return }
-      if (canGoBack) { window.history.back(); return }
-      void exit(0)
+    onBackButtonPress(() => {
+      // Prefer the app's tool stack over WebView history. A stale WebView entry
+      // can otherwise navigate to an empty document and leave only the header.
+      navigateBack(true)
     }).then((result) => {
       if (cancelled) result.unregister()
       else listener = result
@@ -510,7 +533,7 @@ export default function App() {
         </div>
       </header>
 
-      <main id="app-main" className={`app-main max-w-6xl mx-auto px-3 sm:px-6 relative ${active ? 'app-main-tool' : 'app-main-home'}`}>
+      <main id="app-main" data-screen={active?.id || 'home'} className={`app-main max-w-6xl mx-auto px-3 sm:px-6 relative ${active ? 'app-main-tool' : 'app-main-home'}`}>
         <AnimatePresence mode="sync" initial={false}>
           {!active ? (
             <motion.div key="home" className="home-screen" initial={reduceMotion ? false : { opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={reduceMotion ? { opacity: 1 } : { opacity: 0, y: -12 }} transition={reduceMotion ? { duration: 0 } : SPRING}>
@@ -595,7 +618,7 @@ export default function App() {
           ) : (
             <motion.div key={`tool-${active.id}`} className="tool-screen" initial={reduceMotion ? false : { opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={reduceMotion ? { opacity: 1 } : { opacity: 0, y: -14 }} transition={reduceMotion ? { duration: 0 } : SPRING}>
               <div className="tool-screen-header pt-5 pb-4 sm:pt-10 sm:pb-8 flex items-center gap-3 sm:gap-5 min-w-0">
-                <motion.button type="button" className="btn btn-ghost tool-back-button shrink-0 !px-3 sm:!px-4" aria-label="Back to all tools" whileTap={{ scale: 0.94 }} onClick={goHome}>
+                <motion.button type="button" className="btn btn-ghost tool-back-button shrink-0 !px-3 sm:!px-4" aria-label="Back to the table" whileTap={{ scale: 0.94 }} onClick={goHome}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M19 12H5m7-7-7 7 7 7" /></svg>
                   <span className="hidden sm:inline">The table</span><span className="sm:hidden">Back</span>
                 </motion.button>

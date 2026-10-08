@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/mobile-schema.json",
+  "identifier": "android-back-navigation",
+  "description": "Allow the Android system back handler to exit only after the app navigation stack is exhausted.",
+  "windows": ["main"],
+  "platforms": ["android"],
+  "permissions": ["core:app:allow-exit"]
+}

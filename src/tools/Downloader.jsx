@@ -3,8 +3,9 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { AnimatedNumber, LiveProgress, Note } from '../components/ui.jsx'
 import RangeTrack, { TimeField, clock } from '../components/RangeTrack.jsx'
 import { fmtBytes, recentAction } from '../lib/utils.js'
-import { engine, getBase, isAndroidPlatform, setBase as persistEngineBase } from '../lib/engine.js'
+import { engine, getBase, isAndroidPlatform, isAndroidTauri, setBase as persistEngineBase } from '../lib/engine.js'
 import { isPlaylistUrl } from '../lib/ytdlp-core.js'
+import { beginBackgroundTransfer, createTransferNotifier } from '../lib/backgroundTransfers.js'
 
 const SPRING = { type: 'spring', stiffness: 300, damping: 25 }
 
@@ -117,6 +118,52 @@ const stepOf = (j) => (j.state === 'done' ? 3 : ['merging', 'converting', 'finis
 function JobCard({ job, onRemove }) {
   const [s, setS] = useState({ state: 'running', stage: 'fetching', percent: null })
   const fired = useRef(false)
+  const transferNotice = useRef(null)
+  const releaseTransfer = useRef(null)
+  const transferTerminal = useRef(false)
+
+  const releaseBackgroundTransfer = () => {
+    const release = releaseTransfer.current
+    releaseTransfer.current = null
+    if (release) void release()
+  }
+
+  useEffect(() => {
+    if (!isAndroidTauri) return
+    let mounted = true
+    transferTerminal.current = false
+    const title = `Download · ${job.title}`.slice(0, 64)
+    transferNotice.current = createTransferNotifier(title)
+    beginBackgroundTransfer(title).then((release) => {
+      if (mounted && !transferTerminal.current) releaseTransfer.current = release
+      else void release()
+    }).catch((error) => {
+      // A notification/service issue must never cancel the engine's download.
+      console.warn('Android download keepalive unavailable:', error)
+    })
+    return () => {
+      mounted = false
+      transferNotice.current?.finish('Download card closed')
+      transferNotice.current = null
+      releaseBackgroundTransfer()
+    }
+  }, [job.id, job.title])
+
+  useEffect(() => {
+    if (!isAndroidTauri) return
+    const state = s.state
+    if (state === 'running') {
+      transferNotice.current?.update(s.downloaded || 0, s.total || 0)
+      return
+    }
+    if (!['done', 'error', 'cancelled'].includes(state)) return
+    transferTerminal.current = true
+    const message = state === 'done'
+      ? 'Download ready to save'
+      : state === 'cancelled' ? 'Download cancelled' : `Download failed: ${String(s.error || 'unknown error').slice(0, 90)}`
+    transferNotice.current?.finish(message)
+    releaseBackgroundTransfer()
+  }, [s.state, s.downloaded, s.total, s.error])
 
   const [savedMsg, setSavedMsg] = useState(null)
   const save = useCallback(async () => {

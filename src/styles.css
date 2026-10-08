@@ -520,3 +520,64 @@ button, input, select, textarea { font-family: inherit; }
   .card3d .sheen { transition: none; }
   .mobile-footer-marquee-track { animation: none !important; transform: none !important; }
 }
+
+/* Android edge-to-edge / camera-cutout safety. The 28px top and 18px bottom
+   minima are fallbacks for WebViews that report zero CSS env() insets. */
+html.android-native {
+  --ttt-safe-top: max(env(safe-area-inset-top, 0px), 28px);
+  --ttt-safe-bottom: max(env(safe-area-inset-bottom, 0px), 18px);
+}
+html.android-native .app-header {
+  padding-top: var(--ttt-safe-top);
+  padding-inline: max(env(safe-area-inset-left, 0px), 8px) max(env(safe-area-inset-right, 0px), 8px);
+}
+html.android-native .scroll-progress { top: var(--ttt-safe-top); }
+html.android-native .mobile-controls-overlay { padding-top: var(--ttt-safe-top); }
+html.android-native .mobile-controls-sheet {
+  max-height: min(88dvh, calc(100dvh - var(--ttt-safe-top) - 8px));
+  padding-bottom: calc(18px + var(--ttt-safe-bottom));
+}
+html.android-native .mobile-bottom-nav { bottom: calc(8px + var(--ttt-safe-bottom)); }
+html.android-native .app-main-tool { padding-bottom: calc(112px + var(--ttt-safe-bottom)); }
+html.android-native .app-toast { bottom: calc(92px + var(--ttt-safe-bottom)); }
+html.android-native .mobile-footer-bottom { padding-bottom: calc(15px + var(--ttt-safe-bottom)); }
+html.android-native :focus-visible { outline: 3px solid color-mix(in srgb, var(--primary) 62%, white); outline-offset: 3px; }
+html.android-native button, html.android-native [role="button"] { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+
+/* Ten extra, deliberately light discovery animations layered onto the existing
+   3-D card interaction, whileInView reveals and orbit. All stop for reduced motion. */
+@media (max-width: 639.98px) {
+  .mobile-home-hero { background-size: 145% 145%; animation: ttt-hero-wash 16s ease-in-out infinite alternate; }
+  .mobile-orbit-ring-a { animation: ttt-orbit-breathe 5.2s ease-in-out infinite; }
+  .mobile-hero-logo { animation: ttt-brand-halo 4s ease-in-out infinite; }
+  .mobile-hero-title em { animation: ttt-title-glint 5s ease-in-out infinite; }
+  .mobile-hero-stat:nth-child(1) { animation: ttt-stat-signal 4.8s ease-in-out infinite; }
+  .mobile-hero-stat:nth-child(2) { animation: ttt-stat-signal 4.8s ease-in-out 1.6s infinite; }
+  .mobile-hero-stat:nth-child(3) { animation: ttt-stat-signal 4.8s ease-in-out 3.2s infinite; }
+  .home-collection-head h2 { position: relative; width: fit-content; }
+  .home-collection-head h2::after { content: ""; position: absolute; right: 0; bottom: -4px; left: 0; height: 2px; border-radius: 2px; background: var(--primary); transform: scaleX(0); transform-origin: left; animation: ttt-collection-rule .85s cubic-bezier(.2,.75,.25,1) .2s forwards; }
+  .home-search-field:focus-within > svg { animation: ttt-search-snap .42s ease-out; }
+  .home-filter-chip:hover { animation: ttt-filter-lift .24s ease-out both; }
+  .home-filter-chip[aria-pressed="true"]::after { content: ""; position: absolute; inset: -3px; border: 1px solid color-mix(in srgb, var(--primary) 38%, transparent); border-radius: inherit; pointer-events: none; animation: ttt-filter-ripple 2.2s ease-out infinite; }
+  .card3d:hover .card-arrow, .card3d:focus-visible .card-arrow { animation: ttt-arrow-light .8s ease-in-out infinite; }
+  .home-empty-state > span { animation: ttt-empty-pulse 2.6s ease-in-out infinite; }
+}
+@keyframes ttt-hero-wash { from { background-position: 0% 10%; } to { background-position: 100% 90%; } }
+@keyframes ttt-orbit-breathe { 0%, 100% { opacity: .38; } 50% { opacity: .95; } }
+@keyframes ttt-brand-halo { 0%, 100% { filter: drop-shadow(0 5px 9px color-mix(in srgb, var(--primary) 12%, transparent)); } 50% { filter: drop-shadow(0 8px 17px color-mix(in srgb, var(--primary) 38%, transparent)); } }
+@keyframes ttt-title-glint { 0%, 100% { text-shadow: 0 0 0 transparent; } 50% { text-shadow: 0 0 16px var(--glow); } }
+@keyframes ttt-stat-signal { 0%, 78%, 100% { border-color: color-mix(in srgb, var(--border) 74%, transparent); } 88% { border-color: color-mix(in srgb, var(--primary) 68%, var(--border)); } }
+@keyframes ttt-collection-rule { to { transform: scaleX(1); } }
+@keyframes ttt-search-snap { 0% { transform: scale(1); } 45% { transform: scale(1.2) rotate(-8deg); } 100% { transform: scale(1); } }
+@keyframes ttt-filter-lift { 50% { transform: translateY(-3px); box-shadow: 0 7px 16px -12px var(--primary); } }
+@keyframes ttt-filter-ripple { 0% { opacity: .7; transform: scale(.98); } 100% { opacity: 0; transform: scale(1.06); } }
+@keyframes ttt-arrow-light { 0%, 100% { box-shadow: 0 0 0 color-mix(in srgb, var(--primary) 0%, transparent); } 50% { box-shadow: 0 0 14px color-mix(in srgb, var(--primary) 36%, transparent); } }
+@keyframes ttt-empty-pulse { 0%, 100% { color: var(--primary); transform: rotate(0deg) scale(1); } 50% { color: var(--tertiary); transform: rotate(-9deg) scale(1.12); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .mobile-home-hero, .mobile-orbit-ring-a, .mobile-hero-logo, .mobile-hero-title em,
+  .mobile-hero-stat, .home-search-field:focus-within > svg, .home-filter-chip:hover,
+  .home-filter-chip[aria-pressed="true"]::after, .card3d:hover .card-arrow,
+  .card3d:focus-visible .card-arrow, .home-empty-state > span { animation: none !important; }
+  .home-collection-head h2::after { transform: scaleX(1); animation: none !important; }
+}

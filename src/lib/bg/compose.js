@@ -5,6 +5,8 @@ const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x)
 const smooth = (a, b, x) => { const t = clamp01((x - a) / Math.max(1e-6, b - a)); return t * t * (3 - 2 * t) }
 
 export const DEFAULT_EDGE = { edge: 0, soft: 30 }
+export const MAX_EXPORT_EDGE = 8192
+export const MAX_UNDO_STROKES = 8
 export const GRADIENTS = [
   ['#FF9A8B', '#FF6A88'], ['#FDC830', '#F37335'], ['#43E97B', '#38F9D7'], ['#4FACFE', '#00F2FE'],
   ['#667EEA', '#764BA2'], ['#232526', '#414345'], ['#F5F7FA', '#B8C6DB'], ['#C87941', '#2A211C'],
@@ -25,6 +27,20 @@ export function fitSize(w, h, max) {
   if (![w, h, max].every(Number.isFinite) || w <= 0 || h <= 0 || max < 1) throw new RangeError('Image dimensions and maximum edge must be positive finite numbers')
   const k = Math.min(1, max / Math.max(w, h))
   return { w: Math.max(1, Math.round(w * k)), h: Math.max(1, Math.round(h * k)), scale: k, capped: k < 1 }
+}
+
+/** Apply Tool 06's shared export-edge limit, leaving rounding room for fit/padding crops. */
+export function outputDimensions(crop, scale = 1, fitted = false) {
+  const requestedScale = Number.isFinite(scale) && scale > 0 ? scale : 1
+  const limit = fitted ? MAX_EXPORT_EDGE - 4 : MAX_EXPORT_EDGE
+  return fitSize(crop.w * requestedScale, crop.h * requestedScale, limit)
+}
+
+/** Keep a bounded, independent copy for one undo step. */
+export function pushUndoSnapshot(stack, mask) {
+  stack.push(mask.slice())
+  if (stack.length > MAX_UNDO_STROKES) stack.shift()
+  return stack.length
 }
 
 /** Bilinear-upscale an 8-bit mask to w×h (uses the canvas resampler — fast and smooth). */

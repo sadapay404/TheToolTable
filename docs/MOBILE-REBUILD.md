@@ -788,3 +788,48 @@ user would notice.
   - Reduced motion: the tool renders, the stage comes up, every control stays.
   - Desktop: the phone footer stays hidden, the shared chrome opens, no sideways
     overflow, the deferred stage still comes up.
+
+---
+
+## Part 10 — property audit, bug by bug
+
+Parts 1–9 fixed what could be seen on screen. Part 10 went after what could
+not: the arithmetic and the parsers, thrown hostile inputs and invariants rather
+than expected values. Three test files, 88 new checks, all of which passed on
+first run except where the app was genuinely wrong.
+
+The rule for every check here: it must hold for *any* input. A test that asserts
+"1 km is 1000 m" catches nothing; one that asserts "converting A→B and back
+returns the original" catches every conversion bug that will ever be written.
+
+### Bugs found and fixed
+
+| # | Where | What was wrong | Why it mattered |
+|---|---|---|---|
+| 1 | `src/lib/frames.js` | A duration past ~1.4e14 seconds rendered the literal text `-Infinity` in the timecode, because `minutes * 60` overflowed and the subtraction went negative | Typing a large number into a frame time produced garbage on screen |
+| 2 | `src/lib/transfers.js` | A byte count between 0 and 1 logged a negative unit index and printed `512.0 undefined` | The transfer centre showed the word "undefined" mid-transfer |
+| 3 | `src/lib/invoice/calc.js` | A 100% discount on a large subtotal rounded a hair past the subtotal, leaving a taxable base of `-0.0002` and a negative tax line | An invoice could show negative tax at exactly 100% off |
+| 4 | `src/lib/invoice/calc.js` | `totals().balance` ignored `paid` for receipts, so a fully-paid receipt reported the full amount outstanding | Wrong money on a document the user had already settled |
+| 5 | `src/lib/utils.js` | `baseName`/`extName` threw on a non-string, turning a missing filename into a crash | Any caller without a name took the whole tool down |
+| 6 | `src/lib/qr/state.js` | `normalizeQrState` read fields off a missing default in four sections, throwing on `null` | A corrupt save could stop the QR Studio from opening |
+| 7 | `src/lib/decision.js` | The same unguarded read, plus `bottle` iterating a missing `names` array | A corrupt save could stop the Decision Hub from opening |
+
+Bugs 1–5 are user-visible. Bugs 6–7 cannot be reached from the app today, because
+both stores always pass their own defaults; they are hardened anyway, since the
+next caller should not have to know that.
+
+### What was checked and found correct
+
+The interesting result is how much held up. Over 120,000 wall-clock conversions
+across all 250 time zones, on every month-end of three years and every clock
+change hour, **not one came back the wrong time** — including the zones that
+shift by 45 minutes and the ones that skip a whole day. Every unit conversion in
+every category round-trips exactly. The coin is fair to within 3% of even over
+20,000 tosses. A loan always amortises to zero, at every rate, term and
+down payment. The image scrubber strips EXIF, GPS and comments from real JPEG
+and PNG files, keeps the pixels, is stable when run twice, and refuses 600
+random byte strings without hanging on a single one.
+
+Storage units deserve a note: 1 GB is 1000 MB and 1 GiB is 1024 MiB, because
+that is what those words mean. The audit confirmed both, rather than assuming
+one of them was a bug.

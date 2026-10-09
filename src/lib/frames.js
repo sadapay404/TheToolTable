@@ -4,10 +4,15 @@ import gifenc from 'gifenc'
 
 const { GIFEncoder, quantize, applyPalette } = gifenc
 
+/* A timecode wider than 999 hours is meaningless, and letting one through costs
+   the seconds digit entirely: at that magnitude `m * 60` overflows to Infinity
+   and `s - m * 60` renders as the literal text "-Infinity". */
+export const MAX_TIMECODE_SECONDS = 999 * 3600 + 59.999
+
 export const tc = (s) => {
-  s = Math.max(0, Number.isFinite(s) ? s : 0)
+  s = Math.min(MAX_TIMECODE_SECONDS, Math.max(0, Number.isFinite(s) ? s : 0))
   const m = Math.floor(s / 60), r = s - m * 60
-  return `${m}:${r.toFixed(3).padStart(6, '0')}`
+  return `${m}:${Math.max(0, r).toFixed(3).padStart(6, '0')}`
 }
 
 export const STD_FPS = [23.976, 24, 25, 29.97, 30, 48, 50, 59.94, 60, 120]

@@ -30,13 +30,15 @@ export function readFile(file) {
 }
 
 export function baseName(name) {
-  const i = name.lastIndexOf('.')
-  return i > 0 ? name.slice(0, i) : name
+  const text = typeof name === 'string' ? name : ''
+  const i = text.lastIndexOf('.')
+  return i > 0 ? text.slice(0, i) : text
 }
 
 export function extName(name) {
-  const i = name.lastIndexOf('.')
-  return i > 0 ? name.slice(i + 1).toLowerCase() : ''
+  const text = typeof name === 'string' ? name : ''
+  const i = text.lastIndexOf('.')
+  return i > 0 ? text.slice(i + 1).toLowerCase() : ''
 }
 
 export function mediaDuration(file) {

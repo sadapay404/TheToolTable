@@ -31,8 +31,9 @@ const CARD_FIELDS = {
 }
 
 function normalizeContent(value, defaults) {
+  const base = isRecord(defaults) ? defaults : { type: 'url' }
   const source = isRecord(value) ? value : {}
-  const type = typeById(typeof source.type === 'string' ? source.type : defaults.type).id
+  const type = typeById(typeof source.type === 'string' ? source.type : base.type).id
   const stored = isRecord(source.vals) ? source.vals : {}
   const vals = {}
   for (const definition of TYPES) {
@@ -86,8 +87,15 @@ function normalizeScans(value) {
 }
 
 /** Validate data read from localStorage, restored from backups, and written by the QR tools. */
+/* Last-resort barcode defaults, so a caller that forgets its init cannot crash the app. */
+const BC_DEFAULTS = { fmt: 'code128', text: '', hrt: false, quiet: true, fg: '#000000', bg: '#FFFFFF', ec: 'M', px: 600 }
+
 export function normalizeQrState(key, value, init) {
   const fallback = init ?? null
+  /* Sections that read a field off their default are the ones that turn a
+     corrupt save into a white screen, so they read from a record, never from
+     something that might be missing. */
+  const fb = isRecord(fallback) ? fallback : {}
   switch (key) {
     case 'tab': return choice(value, ['create', 'scan', 'barcode', 'bulk', 'cards', 'library'], fallback)
     case 'sub': return choice(value, ['content', 'templates', 'style', 'logo', 'frame', 'export'], fallback)
@@ -98,17 +106,18 @@ export function normalizeQrState(key, value, init) {
     case 'presets': return normalizePresets(value)
     case 'scans': return normalizeScans(value)
     case 'bc': {
-      const state = mergeDefaults(value, fallback)
+      const fb = isRecord(fallback) ? fallback : BC_DEFAULTS
+      const state = mergeDefaults(value, fb)
       return {
         ...state,
-        fmt: choice(state.fmt, BARCODE_FORMATS, fallback.fmt),
-        text: text(state.text, fallback.text, 10_000),
-        hrt: bool(state.hrt, fallback.hrt),
-        quiet: bool(state.quiet, fallback.quiet),
-        fg: color(state.fg, fallback.fg),
-        bg: color(state.bg, fallback.bg),
-        ec: choice(state.ec, ['L', 'M', 'Q', 'H'], fallback.ec),
-        px: number(state.px, fallback.px, 300, 8192),
+        fmt: choice(state.fmt, BARCODE_FORMATS, fb.fmt),
+        text: text(state.text, fb.text, 10_000),
+        hrt: bool(state.hrt, fb.hrt),
+        quiet: bool(state.quiet, fb.quiet),
+        fg: color(state.fg, fb.fg),
+        bg: color(state.bg, fb.bg),
+        ec: choice(state.ec, ['L', 'M', 'Q', 'H'], fb.ec),
+        px: number(state.px, fb.px, 300, 8192),
       }
     }
     case 'bsrc': return choice(value, ['paste', 'csv', 'seq'], fallback)
@@ -118,24 +127,24 @@ export function normalizeQrState(key, value, init) {
     case 'bseq': {
       const state = mergeDefaults(value, fallback)
       return {
-        tpl: text(state.tpl, fallback.tpl, 500),
-        start: number(state.start, fallback.start, -1_000_000_000_000, 1_000_000_000_000),
-        count: number(state.count, fallback.count, 0, 1000),
-        pad: number(state.pad, fallback.pad, 0, 12),
+        tpl: text(state.tpl, fb.tpl, 500),
+        start: number(state.start, fb.start, -1_000_000_000_000, 1_000_000_000_000),
+        count: number(state.count, fb.count, 0, 1000),
+        pad: number(state.pad, fb.pad, 0, 12),
       }
     }
     case 'bout': {
       const state = mergeDefaults(value, fallback)
       return {
-        kind: choice(state.kind, ['zip', 'pdf'], fallback.kind),
-        fmt: choice(state.fmt, ['png', 'svg'], fallback.fmt),
-        px: number(state.px, fallback.px, 256, 4096),
-        labels: bool(state.labels, fallback.labels),
-        page: choice(state.page, ['a4', 'letter'], fallback.page),
-        cols: number(state.cols, fallback.cols, 1, 6),
-        rows: number(state.rows, fallback.rows, 1, 10),
-        guides: bool(state.guides, fallback.guides),
-        numbered: bool(state.numbered, fallback.numbered),
+        kind: choice(state.kind, ['zip', 'pdf'], fb.kind ?? 'zip'),
+        fmt: choice(state.fmt, ['png', 'svg'], fb.fmt ?? 'png'),
+        px: number(state.px, fb.px, 256, 4096),
+        labels: bool(state.labels, fb.labels),
+        page: choice(state.page, ['a4', 'letter'], fb.page ?? 'a4'),
+        cols: number(state.cols, fb.cols, 1, 6),
+        rows: number(state.rows, fb.rows, 1, 10),
+        guides: bool(state.guides, fb.guides),
+        numbered: bool(state.numbered, fb.numbered),
       }
     }
     case 'card': return choice(value, Object.keys(CARD_FIELDS), fallback)

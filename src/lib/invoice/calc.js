@@ -34,12 +34,15 @@ export function totals(inv) {
   const items = Array.isArray(inv?.items) ? inv.items.slice(0, 200) : []
   const sub = items.reduce((s, it) => s + Math.min(1_000_000, Math.max(0, num(it?.qty))) * Math.min(1e12, Math.max(0, num(it?.price))), 0)
   const discount = Math.min(1e20, Math.max(0, num(inv?.disc)))
-  const disc = inv?.discType === 'pct' ? (sub * Math.min(100, discount)) / 100 : Math.min(sub, discount)
+  /* Clamp the discount to the money that actually exists. A full 100% discount on a
+     large subtotal can land a hair past the subtotal through float rounding, which
+     left the taxable base slightly negative. */
+  const disc = Math.min(sub, Math.max(0, inv?.discType === 'pct' ? (sub * Math.min(100, discount)) / 100 : discount))
   const base = sub - disc, r = Math.min(100, Math.max(0, num(inv?.taxRate))) / 100
   const tax = inv?.taxMode === 'included' ? base - base / (1 + r) : base * r
   const total = (inv?.taxMode === 'included' ? base : base + tax) + Math.min(1e20, Math.max(0, num(inv?.shipping)))
   const isReceipt = inv?.type === 'receipt', paidInput = Math.min(1e20, Math.max(0, num(inv?.paid))), paid = isReceipt && !paidInput ? total : paidInput
-  const balance = ['invoice', 'proforma'].includes(inv?.type) ? total - paid : total
+  const balance = Math.max(0, total - paid)
   return { sub, disc, tax, total, paid, balance }
 }
 const grp = (s, mode) => (mode === 'sa' ? s.replace(/\B(?=(\d{2})+(?!\d))/g, ',') : s.replace(/\B(?=(\d{3})+(?!\d))/g, ','))

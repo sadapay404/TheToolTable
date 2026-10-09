@@ -95,12 +95,16 @@ function safeHistory(value, defaults) {
 
 /** Keep persisted game settings finite and within the limits exposed by each tool. */
 export function normalizeDecisionState(key, value, defaults) {
-  if (key === 'tab') return oneOf(value, GAME_IDS, defaults)
-  if (key === 'sound') return bool(value, defaults)
-  if (key === 'hist') return safeHistory(value, defaults)
+  /* Reading a field off a missing default is what turns a corrupt save into a
+     white screen. With no default, every field below reads as undefined and the
+     existing fallbacks take over, which is a blank tool rather than a crash. */
+  if (!isRecord(defaults)) defaults = {}
+  if (key === 'tab') return oneOf(value, GAME_IDS, defaults.tab)
+  if (key === 'sound') return bool(value, defaults.sound)
+  if (key === 'hist') return safeHistory(value, defaults.hist)
 
   const source = isRecord(value) ? value : {}
-  const merged = { ...(isRecord(defaults) ? defaults : {}), ...source }
+  const merged = { ...defaults, ...source }
   switch (key) {
     case 'coin':
       return {
@@ -132,7 +136,9 @@ export function normalizeDecisionState(key, value, defaults) {
         items: safeItems(merged.items, defaults),
       }
     case 'bottle': {
-      const names = Array.isArray(merged.names) ? merged.names.slice(0, 12).map((name) => safeText(name, '', 14)) : [...defaults.names]
+      const names = Array.isArray(merged.names)
+        ? merged.names.slice(0, 12).map((name) => safeText(name, '', 14))
+        : (Array.isArray(defaults.names) ? [...defaults.names] : ['', ''])
       while (names.length < 2) names.push('')
       return {
         ...merged,

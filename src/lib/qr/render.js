@@ -142,7 +142,10 @@ export const lightStyle = (s) => {
 export function makeMatrix(text, ecc) {
   const qr = QRCode.create(text && text.length ? text : ' ', { errorCorrectionLevel: ecc })
   const m = qr.modules
-  return { n: m.size, version: qr.version, ecc, get: (r, c) => !!m.get(r, c) }
+  /* The bit matrix wraps out-of-range indices into a real module, so an
+     off-by-one in a loop produces a corrupt code rather than an obvious blank.
+     Refuse instead. */
+  return { n: m.size, version: qr.version, ecc, get: (r, c) => (r < 0 || c < 0 || r >= m.size || c >= m.size ? false : !!m.get(r, c)) }
 }
 
 const hash = (a, b, s) => { let h = (a * 374761393 + b * 668265263 + s * 2147483647) | 0; h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0) / 4294967296 }

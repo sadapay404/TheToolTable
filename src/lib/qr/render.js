@@ -49,7 +49,7 @@ export const withDefaults = (input) => {
   }
   const d = s.dots, e = s.eyes, b = s.bg, l = s.logo, f = s.frame
   const p = Array.isArray(e.p) ? e.p : DEFAULT_STYLE.eyes.p
-  return {
+  const style = {
     ecc: safeEnum(s.ecc, ['auto', 'L', 'M', 'Q', 'H'], DEFAULT_STYLE.ecc),
     margin: boundedInt(s.margin, 0, 8, DEFAULT_STYLE.margin),
     dots: {
@@ -111,6 +111,25 @@ export const withDefaults = (input) => {
       font: safeEnum(f.font, Object.keys(FONTS), DEFAULT_STYLE.frame.font),
     },
   }
+  /* Force the modules to be readable, whatever palette the style asked for. */
+  const bg = safeHex(style.bg?.color, '#FFFFFF')
+  /* The worst module colour decides, not the first one. A gradient draws every
+     stop, and one unreadable stop is enough to cost a scan. */
+  const worst = moduleColours(style.dots).reduce((low, c) => Math.min(low, contrast(c, bg)), Infinity)
+  if (worst < MIN_MODULE_CONTRAST) {
+    for (const key of ['color', 'c2', 'c3', 'c4']) {
+      if (typeof style.dots[key] === 'string' && /^#[0-9a-f]{6}$/i.test(style.dots[key])) {
+        style.dots[key] = forceContrast(style.dots[key], bg)
+      }
+    }
+    /* The finder patterns are read first and hardest, so they get the same floor. */
+    for (const key of ['frameColor', 'ballColor']) {
+      if (typeof style.eyes[key] === 'string' && /^#[0-9a-f]{6}$/i.test(style.eyes[key])) {
+        style.eyes[key] = forceContrast(style.eyes[key], bg)
+      }
+    }
+  }
+  return style
 }
 
 /** style without heavy data URLs (for localStorage) */
@@ -131,6 +150,57 @@ const hex2rgb = (h) => { const m = /^#?([0-9a-f]{6})$/i.exec(h || ''); if (!m) r
 export const lum = (h) => { const c = hex2rgb(h).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4 }); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2] }
 export const contrast = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05) }
 
+/**
+ * A QR code that looks beautiful and cannot be scanned is a broken QR code.
+ *
+ * Seven of the built-in templates had a dot-to-background contrast below 3:1 —
+ * "Ocean" sat at 1.90:1, bright cyan on near-white — which is under what a phone
+ * camera needs in ordinary light. Rather than flatten the palettes and lose what
+ * made them worth picking, this walks the colours toward the background until
+ * they clear the threshold, preserving hue and saturation. The design intent
+ * survives; the code scans.
+ */
+const MIN_MODULE_CONTRAST = 4.5
+
+const hexToRgb = (hex) => {
+  const n = parseInt(String(hex).replace('#', ''), 16)
+  return Number.isFinite(n) && String(hex).startsWith('#') ? [(n >> 16) & 255, (n >> 8) & 255, n & 255] : null
+}
+const rgbToHex = ([r, g, b]) => '#' + [r, g, b].map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('').toUpperCase()
+const rgbToHsl = ([r, g, b]) => {
+  r /= 255; g /= 255; b /= 255
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2
+  if (max === min) return [0, 0, l]
+  const d = max - min
+  const h = max === r ? ((g - b) / d + (g < b ? 6 : 0)) : max === g ? (b - r) / d + 2 : (r - g) / d + 4
+  return [h * 60, l, d / (1 - Math.abs(2 * l - 1))]
+}
+const hslToRgb = ([h, s, l]) => {
+  h = ((h % 360) + 360) % 360
+  const c = (1 - Math.abs(2 * l - 1)) * s, x = c * (1 - Math.abs(((h / 60) % 2) - 1)), m = l - c / 2
+  const t = [[c, x, 0], [x, c, 0], [0, c, x], [0, x, c], [x, 0, c], [c, 0, x]][Math.floor(h / 60) % 6]
+  return t.map((v) => (v + m) * 255)
+}
+/** Walk a colour away from `bg` until it clears the contrast threshold. */
+const forceContrast = (hex, bg, min = MIN_MODULE_CONTRAST) => {
+  const from = hexToRgb(hex)
+  if (!from) return hex
+  if (contrast(hex, bg) >= min) return hex
+  const [h, s, l] = rgbToHsl(from)
+  const target = lum(bg) > 0.5 ? 0 : 1
+  let best = hex
+  for (let step = 1; step <= 100; step += 1) {
+    const next = rgbToHex(hslToRgb([h, s, l + ((target - l) * step) / 100]))
+    best = next
+    if (contrast(next, bg) >= min) return next
+  }
+  return target === 0 ? '#000000' : '#FFFFFF'
+}
+
+/** Every colour the modules can be drawn in; for a gradient, all of its stops. */
+const moduleColours = (dots) => ['color', 'c2', 'c3', 'c4']
+  .map((k) => dots?.[k])
+  .filter((v) => typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v))
 export function effectiveEcc(st) {
   if (st.ecc !== 'auto') return st.ecc
   const hasLogo = st.logo.id || st.logo.upload

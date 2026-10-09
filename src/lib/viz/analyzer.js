@@ -45,7 +45,18 @@ export class Analyzer {
 /** Live bytes from an AnalyserNode → NB log-spaced values. */
 export function bandsFromAnalyser(an, sr, freqs, rawOut, waveOut, tmp) {
   an.getByteFrequencyData(tmp.f); an.getByteTimeDomainData(tmp.w)
-  const N = tmp.f.length, hz = sr / 2 / N
+  /* A Web Audio analyser reports zero bins while the graph is being torn down,
+     and a zero sample rate makes every division below a NaN. A NaN written into
+     a Float32Array that is about to be handed to a canvas leaves the visualiser
+     painted solid black for the rest of the session — nothing clears it but a
+     reload. Bail out with silence instead. */
+  const N = tmp.f.length
+  if (!N || !Number.isFinite(sr) || sr <= 0) {
+    for (let k = 0; k < NB; k++) rawOut[k] = 0
+    for (let i = 0; i < waveOut.length; i++) waveOut[i] = 0
+    return 0
+  }
+  const hz = sr / 2 / N
   const bin = (f) => f / hz
   for (let k = 0; k < NB; k++) {
     const f0 = k === 0 ? freqs[0] / 1.03 : Math.sqrt(freqs[k - 1] * freqs[k]), f1 = k === NB - 1 ? freqs[k] * 1.03 : Math.sqrt(freqs[k] * freqs[k + 1])
@@ -56,7 +67,10 @@ export function bandsFromAnalyser(an, sr, freqs, rawOut, waveOut, tmp) {
     rawOut[k] = clamp(Math.pow(v / 255, 1.55) * (0.85 + 0.95 * u), 0, 1)
   }
   const W = tmp.w, step = W.length / waveOut.length
-  for (let i = 0; i < waveOut.length; i++) waveOut[i] = (W[Math.floor(i * step)] - 128) / 128
+  for (let i = 0; i < waveOut.length; i++) {
+    const sample = W[Math.floor(i * step)] || 128
+    waveOut[i] = (sample - 128) / 128
+  }
   let bs = 0, nb = 0; const bmax = Math.min(N - 1, Math.ceil(160 / hz))
   for (let i = 1; i <= bmax; i++) { bs += tmp.f[i]; nb++ }
   return nb ? Math.pow(bs / nb / 255, 1.2) : 0
@@ -64,17 +78,21 @@ export function bandsFromAnalyser(an, sr, freqs, rawOut, waveOut, tmp) {
 
 /** Synthetic signal: ~120 bpm kick, shimmering mids, airy highs. */
 export function synth(t, raw, wave, intensity = 1) {
-  const bt = (t * 2) % 1, env = Math.exp(-bt * 5.5)
+  /* Same reasoning as above: the clock comes from the audio graph, and a NaN
+     there would freeze the visualiser instead of animating it. */
+  const clock = Number.isFinite(t) ? Math.max(0, t) : 0
+  const gain = Number.isFinite(intensity) ? Math.max(0, Math.min(1, intensity)) : 1
+  const bt = (clock * 2) % 1, env = Math.exp(-bt * 5.5)
   for (let k = 0; k < NB; k++) {
     const u = k / (NB - 1)
-    const body = Math.exp(-u * 2.1) * (0.55 + 0.45 * Math.sin(t * 1.3 + u * 9))
-    const shimmer = Math.pow(Math.sin(t * 3.1 + k * 0.37) * 0.5 + 0.5, 2) * (1 - u * 0.55)
-    const hat = (Math.floor(t * 4) % 2 ? 0.28 : 0.1) * u * Math.pow(Math.sin(k * 1.7 + t * 9) * 0.5 + 0.5, 3)
-    raw[k] = clamp((body * (0.38 + 0.62 * env) + 0.26 * shimmer + hat) * intensity, 0, 1)
+    const body = Math.exp(-u * 2.1) * (0.55 + 0.45 * Math.sin(clock * 1.3 + u * 9))
+    const shimmer = Math.pow(Math.sin(clock * 3.1 + k * 0.37) * 0.5 + 0.5, 2) * (1 - u * 0.55)
+    const hat = (Math.floor(clock * 4) % 2 ? 0.28 : 0.1) * u * Math.pow(Math.sin(k * 1.7 + clock * 9) * 0.5 + 0.5, 3)
+    raw[k] = clamp((body * (0.38 + 0.62 * env) + 0.26 * shimmer + hat) * gain, 0, 1)
   }
   for (let i = 0; i < wave.length; i++) {
     const x = i / wave.length
-    wave[i] = (0.5 * Math.sin(Math.PI * 2 * (x * 3 + t * 1.5)) * (0.35 + env * 0.65) + 0.25 * Math.sin(Math.PI * 2 * (x * 9 - t * 2.3)) + 0.12 * Math.sin(Math.PI * 2 * (x * 23 + t * 4))) * intensity
+    wave[i] = (0.5 * Math.sin(Math.PI * 2 * (x * 3 + clock * 1.5)) * (0.35 + env * 0.65) + 0.25 * Math.sin(Math.PI * 2 * (x * 9 - clock * 2.3)) + 0.12 * Math.sin(Math.PI * 2 * (x * 23 + clock * 4))) * gain
   }
-  return (0.3 + 0.65 * env) * intensity
+  return (0.3 + 0.65 * env) * gain
 }

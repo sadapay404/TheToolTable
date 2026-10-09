@@ -24,7 +24,7 @@ A ground-up mobile pass driven by seven Android defects reported against v1.2.0.
 | 5 | Tool chrome for all 20 tools | **Complete** |
 | 6 | New animated mobile footer | **Complete** |
 | 7 | Background transfers + notification progress | **Complete** |
-| 8 | Android icon, signing, CI de-risking | Pending |
+| 8 | Android icon, signing, CI de-risking | **Complete** |
 | 9 | Functional sweep + regression tests | Pending |
 | 10 | Native builds + draft GitHub release | Pending |
 
@@ -581,3 +581,116 @@ spinner is still there" case.
 cargo, so an APK could not be built and the notification could not be observed on
 a real device. Everything native-side is verified against the plugins' shipped
 typings and API surface instead. Part 10 is where a device build happens.
+
+---
+
+## Part 8 — The APK's own icon, honest signing, and CI de-risking ✅
+
+**Bug #4: "the APK must use TheToolTable's own icon."** The brand launcher icon
+existed the whole time, in `src-tauri/icons/android/`. **Nothing ever installed
+it.** `tauri android init` generates the launcher resources from `icons/icon.png`,
+which is the full-bleed wordmark, and no step copied the real set into the
+generated project. That is what shipped.
+
+Three things were wrong with the committed set as well:
+
+- **The adaptive foreground was fully opaque** — a solid cream square. An
+  adaptive foreground is meant to be transparent outside the mark; an opaque one
+  paints over the launcher's own mask.
+- **The wordmark ran to 93% of the canvas.** An adaptive icon is 108dp and
+  launchers show the middle 72dp, so the ends of "TOOL" and "TABLE" were cut off
+  on exactly the launchers this was meant to look good on.
+- **There was no monochrome layer**, so Android 13+ themed icons had nothing to
+  tint.
+
+### The icon
+
+**`scripts/generate-android-icons.mjs`** (design-time, needs ImageMagick) rebuilds
+the set from the committed wordmark:
+
+- the foreground is transparent, with the mark fitted to **58%** of the canvas.
+  58 rather than 66 because the wordmark is 1.79:1 — the corner of its bounding
+  box sits further from the centre than its ends, so fitting to the full safe zone
+  still clips it on a circular launcher;
+- the background is the **brand cream** `#EFEBDE`, sampled from the artwork,
+  instead of a white hole;
+- a monochrome layer, for themed icons;
+- every file is written as 32-bit RGBA, so the set is one pixel format rather
+  than five;
+- it reads `icons/icon.png`, never a file it writes. The first version derived
+  the mark from its own output, so a second run shrank the icon again.
+
+**`scripts/install-android-launcher-icons.mjs`** is the part CI runs, and it uses
+**nothing but Node built-ins** — `npm ci --ignore-scripts` means `sharp` and every
+other native image library is unusable on the runner. It copies the set into
+`src-tauri/gen/android/app/src/main/res/`, patches
+`values/colors.xml` **in place** (shipping a second declaration of
+`ic_launcher_background` is a duplicate-resource error that surfaces as an AAPT
+link failure at the very end of the build), adds `android:roundIcon`, and then
+**verifies the install** — a silently missing density is how an APK ships with a
+blank launcher slot.
+
+### Signing — the release risk nobody was seeing
+
+The published candidate was uploaded as **`TheToolTable-fallback-signed.apk`**.
+That name is the workflow's own word for *signed with a key generated during the
+run*. **It cannot upgrade v1.1.1.** Android compares signing certificates, so
+installing it over an existing copy is refused as a different app. Nothing in the
+pipeline said so.
+
+- The signing decision is now its **own step, before the build** — a missing
+  keystore secret was previously discovered forty minutes and two hundred
+  megabytes in, by whoever happened to be watching.
+- The build **downloads the published v1.1.1 APK and compares certificate
+  fingerprints**, then states a verdict in the job summary: ✅ matches (this build
+  can upgrade an install), ⚠️ differs (it cannot), or ⚠️ unverifiable.
+- Anything that cannot upgrade v1.1.1 never gets the plain `TheToolTable.apk`
+  name, and the upload step **fails** rather than re-uploading a stale asset.
+- The keystore is removed with `if: always()`.
+
+### The rest of the pipeline
+
+- **The workflow only ran on one branch.** `branches: ['arena/01a10743-thetooltable']`
+  meant nothing built since had ever produced a build. Now `arena/**`, `main`,
+  `master`.
+- **The release tag was hardcoded** to `v1.2.0-build-9acfe2f` with notes claiming
+  the app source was unchanged, while the upload used `--clobber`. Every build
+  silently overwrote that one candidate, so the tag, the notes and the binaries
+  all disagreed about what they were. The tag is now derived from the commit.
+- **Job timeouts were too low to be useful.** A 45-minute Windows job was timing
+  out *after* the build rather than before it; now 90, and 120 for Android, which
+  does two full Rust builds and a 20-minute emulator boot.
+- `concurrency` per ref, so two pushes cannot race to clobber the same tag.
+
+### Verification
+
+- `npm test` — **242/242 passing** (+19). The icon tests decode the PNGs with a
+  small dependency-free reader (`zlib` plus the PNG filters) and assert what
+  actually broke: every density and layer present, the foreground genuinely
+  transparent in every corner, the artwork inside the 66% safe zone and centred,
+  the background exactly the brand cream, the monochrome layer a single flat
+  colour, the legacy icons actually rounded. **No image library is used** — CI
+  installs with `--ignore-scripts`, so any test that imports one passes locally
+  and fails on the runner.
+- The installer was run against a fixture reproducing what `tauri android init`
+  writes, including its conflicting white `ic_launcher_background`: it patches
+  rather than shadows, is idempotent across three runs, and exits non-zero with a
+  clear message when the Android project is absent.
+- The signing step was executed with stubbed `apksigner`/`gh`/`keytool` across
+  four cases — fallback key, release key matching v1.1.1, release key differing
+  from v1.1.1, and v1.1.1 unreachable — and gave the right verdict and asset name
+  in every one.
+- The workflow parses as YAML, and every embedded bash script passes `bash -n`.
+
+**Still needs you.** The release keystore secret is not configured on this
+repository, and it is the one thing that cannot be fixed from here:
+
+```
+gh secret set ANDROID_KEYSTORE_BASE64   # base64 of the release keystore
+gh secret set ANDROID_KEYSTORE_PASSWORD
+```
+
+Until that exists, every Android build is signed with a throwaway key and can only
+ever be installed fresh. **Not verified here:** still no Android SDK, NDK, JDK or
+cargo in this sandbox, so the icon set has been verified as files and as a
+simulated install, but not as pixels inside a real APK. Part 10 covers that.

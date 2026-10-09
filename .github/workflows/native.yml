@@ -4,7 +4,10 @@ name: Build apps
 on:
   workflow_dispatch:
   push:
-    branches: ['arena/01a10743-thetooltable']
+    # Every arena/* branch carries real app work. The list used to name one branch
+    # only, so a build simply never ran for anything built since — the release
+    # assets kept coming from whatever commit that one branch pointed at.
+    branches: ['arena/**', 'main', 'master']
     paths:
       - '**'
       - '!docs/**'
@@ -13,36 +16,56 @@ on:
 permissions:
   contents: write
 
+# Two pushes minutes apart would otherwise race to upload into the same tag and
+# clobber each other's assets.
+concurrency:
+  group: native-build-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   prepare:
     runs-on: ubuntu-latest
     outputs:
       release_tag: ${{ steps.candidate.outputs.release_tag }}
     steps:
-      - name: Create or reuse a private draft release
+      - name: Create the private draft release for this exact commit
         id: candidate
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         shell: bash
         run: |
-          # Reuse the candidate containing the verified Windows installers. Since
-          # 9acfe2f, only this workflow's diagnostics changed; the app source is identical.
-          tag="v1.2.0-build-9acfe2f"
-          if ! gh release view "$tag" --repo "$GH_REPO" >/dev/null 2>&1; then
+          # The tag names the commit the assets are built from. It used to be a
+          # hardcoded v1.2.0-build-9acfe2f with a note claiming the app source
+          # was unchanged, while uploads used --clobber: every build silently
+          # overwrote that candidate's assets, so the tag, the notes and the
+          # binaries all disagreed about which source they were.
+          short="${GITHUB_SHA:0:7}"
+          tag="v1.2.0-build-${short}"
+          if gh release view "$tag" --repo "$GH_REPO" >/dev/null 2>&1; then
+            gh release edit "$tag" --repo "$GH_REPO" --draft \
+              --title "TheToolTable v1.2.0 build candidate (app source $short)" >/dev/null
+            echo "Reusing the draft candidate for this commit." >> "$GITHUB_STEP_SUMMARY"
+          else
             gh release create "$tag" --repo "$GH_REPO" --draft --prerelease \
               --target "$GITHUB_SHA" \
-              --title "TheToolTable v1.2.0 build candidate (app source 9acfe2f)" \
-              --notes "Automated native build candidate for app source commit 9acfe2f. This is a private draft, not a stable release. Test Android and Windows behavior and verify Android signing-certificate continuity with v1.1.1 before publishing."
+              --title "TheToolTable v1.2.0 build candidate (app source $short)" \
+              --notes "Automated native build candidate built from app source commit \`$short\`. This is a private draft, not a stable release. Test Android and Windows behavior, and compare the Android signing certificate with the published v1.1.1 APK before publishing."
+            echo "Created a fresh private draft for this commit." >> "$GITHUB_STEP_SUMMARY"
           fi
           echo "release_tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "Reusing private draft candidate: https://github.com/$GH_REPO/releases/tag/$tag" >> "$GITHUB_STEP_SUMMARY"
+          echo "App source commit: $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+          echo "Draft release: https://github.com/$GH_REPO/releases/tag/$tag" >> "$GITHUB_STEP_SUMMARY"
 
   windows:
     if: ${{ !contains(github.event.head_commit.message, '[android-only]') }}
     needs: prepare
     runs-on: windows-latest
-    timeout-minutes: 45
+    # 45 minutes was set when the build was a single crate with no sidecars. A
+    # release build that also packages NSIS and MSI, with yt-dlp and ffmpeg
+    # embedded, sits uncomfortably close to that on a cold runner, and a timeout
+    # kills the job after the work rather than before it.
+    timeout-minutes: 90
     permissions:
       contents: write
     env:
@@ -98,7 +121,9 @@ jobs:
   android:
     needs: prepare
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # Two full Rust Android builds (ARM, then x86_64), an APK sign and a 20-minute
+    # emulator boot. 60 minutes expired during the build, not before it.
+    timeout-minutes: 120
     permissions:
       contents: write
     env:
@@ -206,6 +231,8 @@ jobs:
           exit "$install_status"
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npx tauri android init
+      - name: Install TheToolTable's own launcher icons
+        run: node scripts/install-android-launcher-icons.mjs
       - name: Patch pinned download plugin for Tauri 2.12 / AGP 9
         shell: bash
         run: |
@@ -244,6 +271,34 @@ jobs:
           EOF
       - name: Cache Gradle dependencies
         uses: gradle/actions/setup-gradle@v4
+      - name: Decide the Android signing key before anything is built
+        id: signing
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Decided up front on purpose. Discovering a missing keystore forty
+          # minutes and two hundred megabytes into the Android build means the
+          # failure is discovered by whoever is watching the run, not by the
+          # person who can fix it.
+          if [ -n "$KS_B64" ]; then
+            echo "mode=release" >> "$GITHUB_OUTPUT"
+            echo '## Android signing key: configured secret' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "mode=fallback" >> "$GITHUB_OUTPUT"
+            echo '## :warning: Android signing key: NOT CONFIGURED' >> "$GITHUB_STEP_SUMMARY"
+            echo '' >> "$GITHUB_STEP_SUMMARY"
+            echo '`ANDROID_KEYSTORE_BASE64` is not set on this repository, so this run will' >> "$GITHUB_STEP_SUMMARY"
+            echo 'generate a throwaway key. The resulting APK installs only as a brand new' >> "$GITHUB_STEP_SUMMARY"
+            echo 'app: Android rejects it as an update over v1.1.1 because the signing' >> "$GITHUB_STEP_SUMMARY"
+            echo 'certificate differs, and it cannot be replaced later without losing the' >> "$GITHUB_STEP_SUMMARY"
+            echo 'install. It is uploaded under a deliberately distinct filename.' >> "$GITHUB_STEP_SUMMARY"
+            echo '' >> "$GITHUB_STEP_SUMMARY"
+            echo 'To fix: add `ANDROID_KEYSTORE_BASE64` (base64 of the release keystore)' >> "$GITHUB_STEP_SUMMARY"
+            echo 'and `ANDROID_KEYSTORE_PASSWORD` as repository secrets.' >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning title=Fallback Android signing key::A throwaway key will be generated; the APK cannot upgrade v1.1.1. See the job summary."
+          fi
       - name: Build ARM APK, then reclaim Rust space for x86_64 smoke APK
         shell: bash
         run: |
@@ -318,6 +373,8 @@ jobs:
         env:
           KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          SIGNING_MODE: ${{ steps.signing.outputs.mode }}
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
@@ -335,13 +392,10 @@ jobs:
             echo "$KS_B64" | base64 -d > ks.jks
             PASS="$KS_PASS"
             APK_NAME=TheToolTable.apk
-            SIGNING_MODE="Configured GitHub keystore secret; compare its certificate with v1.1.1 before publishing."
           else
             PASS="thetooltable"
             keytool -genkeypair -keystore ks.jks -alias ttt -keyalg RSA -keysize 2048 -validity 10000 -storepass "$PASS" -keypass "$PASS" -dname "CN=TheToolTable, O=Mubashir"
             APK_NAME=TheToolTable-fallback-signed.apk
-            SIGNING_MODE="FALLBACK KEY generated for this run. Fresh install only; not update-compatible with v1.1.1."
-            echo "::warning title=Fallback Android signing key::$SIGNING_MODE"
           fi
           sign_apk() {
             local input="$1"
@@ -353,17 +407,56 @@ jobs:
           }
           sign_apk "$ARM_IN" "$APK_NAME" arm
           sign_apk "$X86_IN" TheToolTable-smoke.apk x86_64
+
+          # Certificate continuity. This is the check that turns a silent
+          # "cannot update" into a visible one: the published v1.1.1 APK is
+          # downloaded and its fingerprint compared with this build's.
+          fingerprint_of() { "$BT/apksigner" verify --print-certs "$1" | sed -n 's/.*SHA-256 digest: //p' | head -n1; }
+          new_fingerprint="$(fingerprint_of "$APK_NAME")"
+          prev_fingerprint=""
+          if gh release download v1.1.1 --pattern 'TheToolTable.apk' --dir previous-apk --repo "$GITHUB_REPOSITORY" --clobber >/dev/null 2>&1; then
+            prev_fingerprint="$(fingerprint_of previous-apk/TheToolTable.apk || true)"
+          fi
           {
-            echo '## Android APK signing and certificate fingerprint'
-            echo "Signing mode: $SIGNING_MODE"
-            echo 'Compare the release APK certificate fingerprint with the published v1.1.1 APK before publishing.'
+            echo '## Android APK signing'
+            echo ''
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Signing mode | \`$SIGNING_MODE\` |"
+            echo "| This build (SHA-256) | \`${new_fingerprint:-unknown}\` |"
+            echo "| Published v1.1.1 (SHA-256) | \`${prev_fingerprint:-unavailable}\` |"
+            echo "| APK | \`$APK_NAME\` |"
+            echo ''
+            if [ "$SIGNING_MODE" = 'fallback' ]; then
+              echo ':warning: Signed with a key generated for this run. **This APK cannot be installed'
+              echo 'as an update over v1.1.1** — Android compares signing certificates, and it will'
+              echo 'reject the install as a different app.'
+            elif [ -z "$new_fingerprint" ] || [ -z "$prev_fingerprint" ]; then
+              echo ':warning: One of the two certificates could not be read, so continuity was'
+              echo 'not verified. Check it by hand before publishing.'
+            elif [ "$new_fingerprint" = "$prev_fingerprint" ]; then
+              echo ':white_check_mark: The signing certificate matches v1.1.1, so this build can'
+              echo 'upgrade an existing install.'
+            else
+              echo ':rotating_light: The signing certificate **differs from v1.1.1**. Android will'
+              echo 'treat this as a different app and refuse to install it over an existing copy.'
+            fi
+            echo ''
             echo '```text'
             "$BT/apksigner" verify --print-certs "$APK_NAME"
             echo 'x86_64 smoke APK (same signing key):'
             "$BT/apksigner" verify --print-certs TheToolTable-smoke.apk
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+          # An unnamed, silently-signed APK is how the wrong build reaches a
+          # tester. Anything that cannot upgrade v1.1.1 is called out in the log
+          # and must not be uploaded under the plain release name.
+          if [ "$SIGNING_MODE" != 'release' ] || { [ -n "$prev_fingerprint" ] && [ -n "$new_fingerprint" ] && [ "$new_fingerprint" != "$prev_fingerprint" ]; }; then
+            echo "::warning title=Android signing continuity::This APK is signed with a different certificate than v1.1.1 and cannot upgrade an installed copy."
+          fi
           echo "ANDROID_APK_NAME=TheToolTable-smoke.apk" >> "$GITHUB_ENV"
+          echo "ANDROID_RELEASE_APK=$APK_NAME" >> "$GITHUB_ENV"
       - name: Reclaim build outputs for the emulator userdata partition
         shell: bash
         run: |
@@ -392,10 +485,25 @@ jobs:
           emulator-boot-timeout: 1200
           disable-animations: true
           script: node scripts/android-runtime-smoke.mjs "$ANDROID_APK_NAME"
+      - name: Remove signing material
+        if: always()
+        shell: bash
+        run: rm -f ks.jks aligned-arm.apk aligned-x86_64.apk previous-apk/TheToolTable.apk
       - name: Upload APK to the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          APK_NAME=TheToolTable.apk
-          if [ -f TheToolTable-fallback-signed.apk ]; then APK_NAME=TheToolTable-fallback-signed.apk; fi
+          set -euo pipefail
+          APK_NAME="${ANDROID_RELEASE_APK:-TheToolTable.apk}"
+          if [ ! -f "$APK_NAME" ]; then
+            echo "::error title=Android APK missing::$APK_NAME was not produced; refusing to upload a stale asset."
+            exit 1
+          fi
           gh release upload "$RELEASE_TAG" "$APK_NAME" --repo "$GITHUB_REPOSITORY" --clobber
           sha256sum "$APK_NAME" | tee -a "$GITHUB_STEP_SUMMARY"
+          {
+            echo "### Android"
+            echo "- \`$APK_NAME\` — $(du -h "$APK_NAME" | cut -f1)"
+            echo "- Signing certificate: **compare with v1.1.1 before publishing** (see the build summary)."
+          } >> "$GITHUB_STEP_SUMMARY"
           echo "Draft release: https://github.com/$GITHUB_REPOSITORY/releases/tag/$RELEASE_TAG" >> "$GITHUB_STEP_SUMMARY"

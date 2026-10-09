@@ -171,7 +171,7 @@ test('part 1-3 animation is still present after the part 4 rewrite', () => {
     [cardSource, 'sheen', 'existing card sheen'],
     [css, '.md3-ripple', 'material ink ripple'],
     [read('src/lib/ripple.js'), 'md3-ripple', 'material ink ripple primitive'],
-    [css, '.mobile-footer-marquee-track', 'animated mobile footer ticker'],
+    [css, '.mfoot-ticker-track', 'animated mobile footer ticker'],
     [read('src/components/MobileNavBar.jsx'), 'layoutId', 'sliding nav pill'],
     [read('src/components/Footer.jsx'), 'desktop-footer', 'desktop footer lockup'],
   ]

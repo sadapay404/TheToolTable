@@ -2,6 +2,7 @@ import React from 'react'
 import { motion } from 'framer-motion'
 import { TOOLS } from '../toolsRegistry.jsx'
 import { Logo } from './Logo.jsx'
+import MobileFooter from './MobileFooter.jsx'
 import { useScroll, useTransform } from 'framer-motion'
 
 const SPRING = { type: 'spring', stiffness: 300, damping: 25 }
@@ -25,45 +26,10 @@ function Glyph({ c, i }) {
   )
 }
 
-function MobileFooter() {
-  return (
-    <div className="mobile-footer sm:hidden" aria-label="TheToolTable credits">
-      <div className="mobile-footer-glow" aria-hidden="true" />
-      <div className="mobile-footer-content">
-        <motion.div className="mobile-footer-brand" initial={{ opacity: 0, y: 14 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: 0.35 }} transition={SPRING}>
-          <div className="mobile-footer-brandline"><Logo className="w-10 h-10 rounded-xl" shadow /><span><span className="eyebrow block">TheToolTable</span><span className="text-[11px] block mt-1" style={{ color: 'var(--muted)' }}>A workbench by Mubashir</span></span></div>
-          <div role="img" aria-label="the TOOL TABLE" className="mobile-footer-wordmark">
-            <span className="mobile-footer-the">the</span>
-            <span className="mobile-footer-word">TOOL<span>TABLE</span><i aria-hidden="true" /></span>
-          </div>
-        </motion.div>
-
-        <div className="mobile-footer-credits">
-          {ROLES.map(([role, number], index) => (
-            <motion.div key={role} className="mobile-credit" initial={{ opacity: 0, y: 8 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ ...SPRING, delay: index * 0.06 }}>
-              <span className="mobile-credit-index">{number}</span><span><span className="mobile-credit-role">{role}</span><strong>Mubashir</strong></span>
-            </motion.div>
-          ))}
-        </div>
-      </div>
-
-      <div className="mobile-footer-ticker" aria-label="Ideas, designed with care, and made for everyday work">
-        <div className="mobile-footer-marquee-track" aria-hidden="true">
-          {[0, 1].map((copy) => <span className="mobile-footer-marquee-copy" key={copy}>{TICKER.split(' · ').filter(Boolean).map((word, i) => <React.Fragment key={`${copy}-${i}`}><span>{word}</span><i>✦</i></React.Fragment>)}</span>)}
-        </div>
-      </div>
-
-      <div className="mobile-footer-bottom">
-        <span>© {new Date().getFullYear()} · {TOOLS.length} tools and growing</span>
-        <button type="button" onClick={scrollToTop}>Back to top <span aria-hidden="true">↑</span></button>
-      </div>
-    </div>
-  )
-}
-
 /**
- * Wide desktop lockup and a purpose-built phone footer. The mobile ticker remains
- * continuously animated unless the operating system requests reduced motion.
+ * Wide desktop lockup, plus the purpose-built phone footer in `MobileFooter.jsx`.
+ * Both keep moving continuously unless the operating system requests reduced
+ * motion.
  */
 export default function Footer() {
   const word = [...'TOOL'], word2 = [...'TABLE']
@@ -79,7 +45,7 @@ export default function Footer() {
         <span className="footer-aura-blob footer-aura-blob--c" />
         <span className="footer-aura-scan" />
       </div>
-      <MobileFooter />
+      <div className="sm:hidden"><MobileFooter /></div>
       <div className="desktop-footer hidden sm:block">
         <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(60% 80% at 85% 110%, var(--glow), transparent 70%)' }} />
         <div className="relative max-w-6xl mx-auto px-6 pt-14 pb-8">

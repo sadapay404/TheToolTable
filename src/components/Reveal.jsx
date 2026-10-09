@@ -68,21 +68,30 @@ export function RevealRule({ delay = 0, className = '', origin = 'left', color =
   )
 }
 
-/** One glyph of a wordmark, masked so it rises independently. */
+/**
+ * One glyph of a wordmark, masked so it rises independently.
+ *
+ * The observer is on the mask, not on the glyph: a child clipped away by its own
+ * `overflow: hidden` parent has an intersection ratio of zero, so observing the
+ * child directly would mean it never animates in.
+ */
 export function MaskedGlyph({ char, index, delay = 0 }) {
   const reduced = typeof window !== 'undefined'
     && typeof window.matchMedia === 'function'
     && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  const lift = {
+    hidden: { y: '110%' },
+    show: { y: 0, transition: t(DURATION.long2, EASE.emphasizedDecelerate, delay + index * 0.045) },
+  }
   return (
-    <span className="reveal-line" style={{ lineHeight: 0.82 }}>
-      <motion.span
-        initial={reduced ? false : { y: '110%' }}
-        whileInView={{ y: 0 }}
-        viewport={{ once: true, amount: 0.5 }}
-        transition={t(DURATION.long2, EASE.emphasizedDecelerate, delay + index * 0.045)}
-      >
-        {char}
-      </motion.span>
-    </span>
+    <motion.span
+      className="reveal-line"
+      style={{ lineHeight: 0.82 }}
+      initial={reduced ? false : 'hidden'}
+      whileInView="show"
+      viewport={{ once: true, amount: 0.4 }}
+    >
+      <motion.span variants={lift}>{char}</motion.span>
+    </motion.span>
   )
 }

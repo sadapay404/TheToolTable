@@ -142,7 +142,7 @@ test('nothing from parts 1-4 was removed by the chrome work', () => {
     ['md3-ripple', 'ink ripple'],
     ['ambient-field', 'ambient layer'],
     ['card-shine', 'card shine'],
-    ['mobile-footer-marquee', 'footer ticker'],
+    ['mfoot-ticker-track', 'footer ticker'],
     ['palette-pill', 'command palette pill'],
   ]) {
     assert.ok((css + app + ui + chrome).includes(needle), `${label} disappeared`)

@@ -22,7 +22,7 @@ A ground-up mobile pass driven by seven Android defects reported against v1.2.0.
 | 3 | Home grid redesign | **Complete** |
 | 4 | Motion system (Android **and** Windows) | **Complete** |
 | 5 | Tool chrome for all 20 tools | **Complete** |
-| 6 | New animated mobile footer | Pending |
+| 6 | New animated mobile footer | **Complete** |
 | 7 | Background transfers + notification progress | Pending |
 | 8 | Android icon, signing, CI de-risking | Pending |
 | 9 | Functional sweep + regression tests | Pending |
@@ -373,3 +373,89 @@ tool gets the same introduction without a single tool-specific line of copy.
   duplicated title, and **zero application console errors**. The only network failures
   are the currency and crypto rate APIs the sandbox cannot reach — the tool degrades
   gracefully, exactly as its "local-first, network features are opt-in" promise says.
+
+
+---
+
+## Part 6 — The new phone footer ✅
+
+Reported as *"the mobile footer looks wrong"*. It was, and the reason was
+structural: the old `MobileFooter` was the desktop footer, shrunk. It was a
+`<div>` of scaled-down desktop rows with one marquee on it. Nothing about it was
+built for a thumb.
+
+The brief was a **new mobile-specific footer, always animated, same concept** —
+so the concept (brand, wordmark, credits, ticker, back to top) is intact and the
+surface around it is new.
+
+### What was wrong
+
+| Symptom | Cause |
+|---|---|
+| It looked like a shrunken desktop | One component serving two very different widths |
+| Nothing moved except one ticker | The marquee was the only animation on the surface |
+| Credits were unreadable at 360px | A three-column grid with 8.5px type |
+| "Back to top" was a text link | No feedback, no connection to where you are |
+| The collection was invisible down here | Nothing represented the twenty tools |
+
+### Changes
+
+**`src/components/MobileFooter.jsx` — a new component, phone-only**
+
+- **The wordmark is the centrepiece.** "the TOOL TABLE" stacked, every glyph rising
+  out of its own mask, lit by a light bar that sweeps across the lockup on a 6.5s
+  loop, with a rotating accent square that pulses a halo outward.
+- **Two tickers running in opposite directions**, edge-faded at both ends, one
+  carrying the promises (`LOCAL-FIRST · NO ACCOUNT · NO UPLOAD · NO COMPRESSION`)
+  and one carrying the facts (`20 TOOLS · AND GROWING · ONE QUIET TABLE`).
+- **Credits became real list rows.** Index chips pulse on a staggered loop, each row
+  is a button with an ink ripple, `aria-expanded` and `aria-controls`, and pressing
+  one unfolds a line of copy while the chevron rotates. A highlight sweeps across the
+  whole list on a loop.
+- **A constellation of all twenty tools** — every SVG glyph and its number, popping
+  in on a spring stagger and then floating gently forever. The collection, at a
+  glance, right where your thumb already is.
+- **Back to top became a round button whose ring fills as you scroll**, and which
+  breathes while you are already at the top.
+- **An aurora backdrop**: three drifting blobs, a rotating conic sweep and a scanline
+  texture.
+
+**Kept deliberately:** the brand, the wordmark, all three credits, the ticker and the
+back-to-top control. Same concept, new surface.
+
+**`src/styles.css`** — the old `.mobile-footer-*` block (22 dead rules) was deleted
+rather than left to rot, a 360px breakpoint was added for the new bands, and reduced
+motion is handled in one rule covering every loop.
+
+**A real bug fixed in passing.** The masked wordmark glyphs would never have appeared.
+`whileInView` was on the glyph, but the glyph's own `overflow: hidden` mask clips it
+away — and `IntersectionObserver` accounts for ancestor clipping, so a fully clipped
+element has an intersection ratio of **zero** and the observer never fires. The
+observer now sits on the mask, which drives the glyph through variants. The same
+latent bug existed in `Reveal.jsx`'s `MaskedGlyph` from Part 4 and was fixed there too.
+
+### Verification
+
+- `npm test` — **188/188 passing** (+16 footer tests: the old markup is gone, the
+  concept survived, every loop repeats forever and is slow enough not to glitch, the
+  marquee is seamless, the ticker runs both ways, **the observer sits on the mask and
+  not the clipped glyph**, credit rows are accessible buttons, the ring tracks scroll,
+  reduced motion is handled in one stylesheet rule, and the desktop footer work from
+  Part 4 is untouched).
+- `npm run build` — passing.
+- Headless Chromium (`browsertest/verify6.mjs`, **41/41 checks**):
+  - The wordmark renders all nine glyphs, spells `TOOLTABLE`, is masked, has real
+    width and settles at rest; the light bar keeps sweeping.
+  - Two tickers, both moving, **in opposite directions**.
+  - Three credit rows indexed 01–03, collapsed to start; pressing one sets
+    `aria-expanded`, reveals its note and rotates the chevron.
+  - The constellation shows all twenty tools; the back-to-top ring is filled while
+    scrolled and clicking it returns to `scrollY ≈ 0`.
+  - **Reduced motion**: the wordmark is readable, the light bar's animation is `none`,
+    the tickers are held still, and the credits, constellation and base bar all still
+    render.
+  - **360px**: no horizontal overflow, the wordmark fits its panel, every band stays
+    inside the viewport.
+  - **Desktop**: the phone footer is not rendered, the wide lockup, aura and nine
+    hoverable glyphs are all still there.
+  - Zero console errors throughout.

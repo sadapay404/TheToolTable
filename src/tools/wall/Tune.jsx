@@ -59,8 +59,8 @@ export function TextPanel() {
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
             <div className="space-y-5 pt-1">
               <div className="space-y-2">
-                <textarea className="input w-full" rows={2} value={t.title} placeholder="Headline" onChange={(e) => up({ title: e.target.value })} style={{ resize: 'none' }} />
-                <input className="input w-full" value={t.sub} placeholder="Subtitle (optional)" onChange={(e) => up({ sub: e.target.value })} />
+                <textarea aria-label="Headline" className="input w-full" rows={2} value={t.title} placeholder="Headline" onChange={(e) => up({ title: e.target.value })} style={{ resize: 'none' }} />
+                <input aria-label="Subtitle" className="input w-full" value={t.sub} placeholder="Subtitle (optional)" onChange={(e) => up({ sub: e.target.value })} />
               </div>
               <div><div className="text-[13px] font-semibold mb-2">Typeface</div>
                 <Chips value={t.font} onChange={(v) => up({ font: v })} options={Object.entries(FONTS).map(([k, v]) => [k, v[0]])} /></div>

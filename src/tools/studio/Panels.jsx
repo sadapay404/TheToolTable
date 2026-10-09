@@ -89,7 +89,7 @@ export function LooksPanel({ c }) {
           </div>
         )}
         <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (name.trim()) { c.saveLook(name.trim()); setName('') } }}>
-          <input className="input !py-2 text-[12.5px]" placeholder="Name this look…" value={name} onChange={(e) => setName(e.target.value)} />
+          <input aria-label="Name this look" className="input !py-2 text-[12.5px]" placeholder="Name this look…" value={name} onChange={(e) => setName(e.target.value)} />
           <motion.button whileTap={{ scale: 0.9 }} className="btn btn-primary !px-3.5" type="submit" disabled={!name.trim()}><Icon n="plus" s={16} w={2.2} /></motion.button>
         </form>
       </Group>

@@ -2066,7 +2066,7 @@ html.android-native .mfoot-base { padding-bottom: calc(18px + var(--ttt-safe-bot
 .transfer-actions { flex: 0 0 auto; align-self: center; }
 .transfer-btn {
   position: relative; overflow: hidden;
-  width: 28px; height: 28px; display: grid; place-items: center;
+  width: 32px; height: 32px; display: grid; place-items: center;
   border: 0; cursor: pointer; border-radius: 50%;
   font: inherit; font-size: 12px; font-weight: 700;
   color: var(--on-surface-variant);

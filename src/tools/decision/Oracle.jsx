@@ -81,7 +81,7 @@ export default function Oracle() {
       <div className="space-y-5">
         <Panel delay={0.08}>
           <Label>Question</Label>
-          <input value={o.q} onChange={(e) => upd({ q: e.target.value })} placeholder="Should I…?" maxLength={90} className="input w-full" />
+          <input aria-label="Question to ask" value={o.q} onChange={(e) => upd({ q: e.target.value })} placeholder="Should I…?" maxLength={90} className="input w-full" />
           <div className="mt-4"><Seg value={o.mode} onChange={(mode) => upd({ mode })} options={[['yn', 'Yes / No'], ['ball', 'Magic 8-ball']]} /></div>
         </Panel>
         <AnimatePresence initial={false}>{o.mode === 'yn' && (

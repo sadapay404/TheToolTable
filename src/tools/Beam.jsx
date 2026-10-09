@@ -138,7 +138,7 @@ function Room({ peer, onLeave, toast }) {
             {!chat.length && <Empty icon="text" title="Say hello" sub="Paste links or notes — they travel the same private pipe." />}
             <AnimatePresence initial={false}>{chat.map((c, i) => <motion.div key={i} initial={{ opacity: 0, y: 10, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={SPRING} className={`flex ${c.me ? 'justify-end' : 'justify-start'}`}><div dir="auto" className="rounded-2xl px-3.5 py-2 text-[13.5px] max-w-[85%] break-words whitespace-pre-wrap" style={{ background: c.me ? 'var(--ink)' : 'var(--surface2)', color: c.me ? 'var(--bg)' : 'var(--ink)' }}>{/^https?:\/\/\S+$/.test(c.t) ? <a href={c.t} target="_blank" rel="noreferrer" className="underline">{c.t}</a> : c.t}</div></motion.div>)}</AnimatePresence>
           </div>
-          <div className="flex gap-2 mt-3"><input className="input flex-1" dir="auto" maxLength={MAX_BEAM_CHAT_CHARS} value={msg} placeholder={live ? 'Type a message' : 'Not connected'} disabled={!live} onChange={(e) => setMsg(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && say()} /><Btn primary icon="send" disabled={!live || !msg.trim()} onClick={say}>Send</Btn></div>
+          <div className="flex gap-2 mt-3"><input aria-label="Message" className="input flex-1" dir="auto" maxLength={MAX_BEAM_CHAT_CHARS} value={msg} placeholder={live ? 'Type a message' : 'Not connected'} disabled={!live} onChange={(e) => setMsg(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && say()} /><Btn primary icon="send" disabled={!live || !msg.trim()} onClick={say}>Send</Btn></div>
         </Panel>
       </div>
     </div>

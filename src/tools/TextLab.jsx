@@ -20,7 +20,7 @@ function Editor({ text, setText, undo, canUndo, rtl, toast }) {
   const ref = useRef(null)
   return (
     <Panel className="!p-4 sm:!p-5">
-      <textarea ref={ref} dir="auto" value={text} onChange={(e) => setText(e.target.value, true)} placeholder="Type, paste, or drop a .txt file here…" spellCheck rows={16} className="input w-full" style={{ lineHeight: 1.75, fontSize: 15.5, minHeight: 320, textAlign: rtl ? 'right' : undefined, fontFamily: rtl ? '"Noto Nastaliq Urdu","Noto Naskh Arabic",Inter,sans-serif' : undefined }}
+      <textarea ref={ref} aria-label="Text to analyse" dir="auto" value={text} onChange={(e) => setText(e.target.value, true)} placeholder="Type, paste, or drop a .txt file here…" spellCheck rows={16} className="input w-full" style={{ lineHeight: 1.75, fontSize: 15.5, minHeight: 320, textAlign: rtl ? 'right' : undefined, fontFamily: rtl ? '"Noto Nastaliq Urdu","Noto Naskh Arabic",Inter,sans-serif' : undefined }}
         onDrop={async (e) => {
           e.preventDefault()
           const f = e.dataTransfer.files[0]
@@ -111,7 +111,7 @@ function Diff({ toast }) {
   return (
     <div className="space-y-4">
       <div className="grid gap-4 md:grid-cols-2">
-        {[['Original', a, setA], ['Changed', b, setB]].map(([l, v, set], i) => <Panel key={l} delay={i * 0.05} className="!p-4"><Label>{l}</Label><textarea dir="auto" className="input w-full" rows={10} value={v} onChange={(e) => set(e.target.value)} placeholder={`Paste the ${l.toLowerCase()} text`} style={{ lineHeight: 1.6 }} /></Panel>)}
+        {[['Original', a, setA], ['Changed', b, setB]].map(([l, v, set], i) => <Panel key={l} delay={i * 0.05} className="!p-4"><Label>{l}</Label><textarea aria-label={`${l} text`} dir="auto" className="input w-full" rows={10} value={v} onChange={(e) => set(e.target.value)} placeholder={`Paste the ${l.toLowerCase()} text`} style={{ lineHeight: 1.6 }} /></Panel>)}
       </div>
       <Panel delay={0.1}>
         <Label right={<div className="flex gap-2"><Btn small icon="refresh" onClick={() => { setA(b); setB(a) }}>Swap</Btn><Seg small value={mode} onChange={setMode} options={[['words', 'Words'], ['lines', 'Lines']]} /></div>}>Differences</Label>
@@ -133,7 +133,7 @@ function Urdu({ toast }) {
     <div className="grid gap-4 lg:grid-cols-2 items-start">
       <Panel>
         <Label right={<Seg small value={dir} onChange={(d) => { setDir(d); setT(out) }} options={[['r2u', 'Roman → اردو'], ['u2r', 'اردو → Roman']]} />}>{dir === 'r2u' ? 'Roman Urdu' : 'Urdu script'}</Label>
-        <textarea dir="auto" className="input w-full" rows={10} value={t} onChange={(e) => setT(e.target.value)} style={{ lineHeight: 1.8 }} />
+        <textarea aria-label="Urdu translation" dir="auto" className="input w-full" rows={10} value={t} onChange={(e) => setT(e.target.value)} style={{ lineHeight: 1.8 }} />
         <div className="text-[12px] mt-3" style={{ color: 'var(--muted)' }}>Roman Urdu has no fixed spelling, so this is a smart guess: about 150 common words are exact, the rest follow sound rules. Always proofread.</div>
       </Panel>
       <Panel delay={0.08}>

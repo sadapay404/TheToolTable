@@ -384,6 +384,7 @@ export default function Downloader() {
           <div className="flex gap-2.5 flex-col sm:flex-row">
             <div className="relative flex-1">
               <input
+            aria-label="Link to download"
                 ref={inputRef} className="input text-[14.5px] py-3.5 pr-24" placeholder="https://…  video, audio, shorts, reels, playlists"
                 value={url} onChange={(e) => { setUrl(e.target.value); setInfo(null); setError('') }} onKeyDown={(e) => e.key === 'Enter' && analyze()}
                 disabled={busy || starting || eng.status !== 'online'} spellCheck={false}

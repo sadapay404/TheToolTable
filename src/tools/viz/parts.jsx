@@ -72,7 +72,7 @@ export function ColorField({ label, value, onChange }) {
     <motion.label whileHover={{ y: -2 }} whileTap={{ scale: 0.95 }} className="flex items-center gap-2.5 rounded-xl px-2.5 py-2 cursor-pointer" style={{ background: 'var(--surface2)', border: '1px solid var(--border)' }}>
       <motion.span className="w-7 h-7 rounded-lg shrink-0" style={{ boxShadow: '0 0 0 2px var(--surface), 0 0 0 3px var(--border), 0 3px 8px -2px rgba(0,0,0,.4)' }} animate={{ backgroundColor: value }} transition={{ duration: 0.25 }} />
       <span className="leading-tight min-w-0"><span className="block text-[11px] font-semibold">{label}</span><span className="block mono text-[10.5px] uppercase" style={{ color: 'var(--muted)' }}>{value}</span></span>
-      <input type="color" value={value} onChange={(e) => onChange(e.target.value)} className="sr-only" />
+      <input type="color" aria-label={`${label} colour`} value={value} onChange={(e) => onChange(e.target.value)} className="sr-only" />
     </motion.label>
   )
 }

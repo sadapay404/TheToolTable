@@ -297,7 +297,7 @@ export default function ScanOcr() {
                     <Panel>
                       <Label right={<div className="flex gap-1.5"><Btn small icon="copy" onClick={copy}>Copy</Btn><Btn small icon="file" onClick={() => save(new Blob([text], { type: 'text/plain;charset=utf-8' }), 'scan.txt')}>.txt</Btn></div>}>Text</Label>
                       {stats && <div className="grid grid-cols-3 gap-3 mb-4"><Stat2 i={0} k="Words" v={<CountText value={stats.words} format={(v) => Math.round(v)} />} /><Stat2 i={1} k="Characters" v={<CountText value={stats.chars} format={(v) => Math.round(v)} />} /><Stat2 i={2} k="Confidence" v={<CountText value={stats.conf} format={(v) => Math.round(v) + '%'} />} /></div>}
-                      <textarea className="input w-full" rows={12} dir={isRtl ? 'rtl' : 'auto'} value={text} onChange={(e) => setText(e.target.value)} style={{ fontSize: isRtl ? 18 : 14, lineHeight: 1.7 }} />
+                      <textarea aria-label="Recognised text" className="input w-full" rows={12} dir={isRtl ? 'rtl' : 'auto'} value={text} onChange={(e) => setText(e.target.value)} style={{ fontSize: isRtl ? 18 : 14, lineHeight: 1.7 }} />
                     </Panel>
                   </motion.div>)}
               </AnimatePresence>

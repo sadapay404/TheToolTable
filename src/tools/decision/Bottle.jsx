@@ -88,7 +88,7 @@ export default function Bottle() {
             {o.names.map((nm, i) => (
               <motion.label key={i} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.02 }} className="flex items-center gap-2 rounded-xl px-2.5 py-1.5" style={{ background: 'var(--surface2)' }}>
                 <span className="w-3 h-3 rounded-full shrink-0" style={{ background: COLORS[i % 12] }} />
-                <input value={nm} placeholder={`Player ${i + 1}`} maxLength={14} onChange={(e) => upd({ names: o.names.map((x, j) => (j === i ? e.target.value : x)) })} className="min-w-0 flex-1 bg-transparent outline-none text-[13px] font-medium" />
+                <input aria-label={`Player ${i + 1} name`} value={nm} placeholder={`Player ${i + 1}`} maxLength={14} onChange={(e) => upd({ names: o.names.map((x, j) => (j === i ? e.target.value : x)) })} className="min-w-0 flex-1 bg-transparent outline-none text-[13px] font-medium" />
               </motion.label>
             ))}
           </div>

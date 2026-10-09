@@ -220,7 +220,7 @@ export function Picker({ items, value, onChange, storeId, filters, defaultPins =
             <div className="shrink-0 p-3 pb-2">
               <div className="flex items-center gap-2.5 rounded-2xl px-3.5 py-2.5 border-[1.5px] border-line focus-within:!border-[var(--copper)] transition-colors" style={{ background: 'var(--surface2)' }}>
                 <Ico n="search" s={17} style={{ color: 'var(--muted)' }} />
-                <input ref={input} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={onKey} placeholder={placeholder} className="flex-1 bg-transparent outline-none text-[14px] font-medium min-w-0" spellCheck={false} autoComplete="off" />
+                <input ref={input} aria-label={ariaLabel || placeholder || 'Search'} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={onKey} placeholder={placeholder} className="flex-1 bg-transparent outline-none text-[14px] font-medium min-w-0" spellCheck={false} autoComplete="off" />
                 <AnimatePresence>{q && <motion.button initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} onClick={() => { setQ(''); input.current?.focus() }} aria-label="Clear" className="w-5 h-5 rounded-full grid place-items-center" style={{ background: 'var(--border)', color: 'var(--ink)' }}><Ico n="x" s={11} w={2.6} /></motion.button>}</AnimatePresence>
                 <span className="mono text-[10.5px] px-1.5 py-0.5 rounded-md hidden sm:block" style={{ background: 'var(--border)', color: 'var(--muted)' }}>{view.flat.length}</span>
               </div>

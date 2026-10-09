@@ -92,7 +92,7 @@ export default function Draw() {
       <div className="space-y-5">
         <Panel delay={0.08}>
           <Label right={<span className="text-[11px] font-semibold" style={{ color: 'var(--muted)' }}>{names.length} names</span>}>Names</Label>
-          <textarea value={o.text} maxLength={20000} onChange={(e) => upd({ text: e.target.value })} rows={8} placeholder={'One name per line\n(or separate with commas)'} className="input w-full resize-none leading-relaxed" />
+          <textarea aria-label="Names to draw from" value={o.text} maxLength={20000} onChange={(e) => upd({ text: e.target.value })} rows={8} placeholder={'One name per line\n(or separate with commas)'} className="input w-full resize-none leading-relaxed" />
           {names.length > MAX_DRAW_NAMES && <div className="text-[11.5px] mt-2" style={{ color: 'var(--muted)' }}>The draw uses the first 500 names at a time. All remaining names stay in your list.</div>}
           <div className="flex gap-3 mt-3 text-[12px] font-semibold">
             <button type="button" onClick={() => upd({ text: SAMPLE })} style={{ color: 'var(--copper)' }}>Sample</button>

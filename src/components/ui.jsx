@@ -146,9 +146,9 @@ export function Field({ label, children, className = '' }) {
   )
 }
 
-export function Select({ value, onChange, options, className = '' }) {
+export function Select({ value, onChange, options, className = '', label }) {
   return (
-    <select className={`input ${className}`} value={value} onChange={(e) => onChange(e.target.value)}>
+    <select aria-label={label || options?.find((o) => typeof o !== 'string' && !o.disabled)?.l || options?.[0] || 'Select'} className={`input ${className}`} value={value} onChange={(e) => onChange(e.target.value)}>
       {options.map((o) => typeof o === 'string' ? <option key={o} value={o}>{o}</option> : <option key={o.v} value={o.v}>{o.l}</option>)}
     </select>
   )

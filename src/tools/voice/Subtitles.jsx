@@ -7,7 +7,7 @@ import { fetchFile } from '@ffmpeg/util'
 
 function TimeInput({ value, onCommit }) {
   const [t, setT] = useState(fmtTime(value, false)); useEffect(() => setT(fmtTime(value, false)), [value])
-  return <input className="input mono !py-1 !px-2 !text-[12px] w-[104px]" value={t} onChange={(e) => setT(e.target.value)} onBlur={() => { const v = parseTime(t); if (v == null) setT(fmtTime(value, false)); else onCommit(v) }} onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()} />
+  return <input aria-label="Subtitle start and end time" className="input mono !py-1 !px-2 !text-[12px] w-[104px]" value={t} onChange={(e) => setT(e.target.value)} onBlur={() => { const v = parseTime(t); if (v == null) setT(fmtTime(value, false)); else onCommit(v) }} onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()} />
 }
 
 export default function Subtitles({ media, segs, setSegs, toast }) {
@@ -99,7 +99,7 @@ export default function Subtitles({ media, segs, setSegs, toast }) {
                 <motion.div key={s.id} layout="position" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, x: -30 }} transition={SPRING} className="rounded-2xl border p-3 flex flex-wrap items-start gap-3" style={{ borderColor: on ? 'var(--copper)' : 'var(--border)', background: on ? 'color-mix(in srgb, var(--copper) 9%, var(--surface))' : 'var(--surface)' }}>
                   <div className="flex items-center gap-2"><button type="button" aria-label="Play from here" onClick={() => seek(s.start)} className="w-8 h-8 rounded-full grid place-items-center shrink-0" style={{ background: on ? 'var(--copper)' : 'var(--surface2)', color: on ? '#fff' : 'var(--copper)' }}><KIco n="play" s={13} /></button><span className="mono text-[11px] font-bold w-5" style={{ color: 'var(--muted)' }}>{i + 1}</span></div>
                   <div className="flex gap-1.5 shrink-0"><TimeInput value={s.start} onCommit={(v) => commitTime(s, 'start', v)} /><TimeInput value={s.end} onCommit={(v) => commitTime(s, 'end', v)} /></div>
-                  <textarea dir="auto" rows={Math.max(1, Math.ceil(s.text.length / 46))} className="input flex-1 basis-full order-last !py-2 resize-none" value={s.text} onChange={(e) => upd(s.id, { text: e.target.value })} placeholder="Subtitle text" />
+                  <textarea aria-label="Subtitle text" dir="auto" rows={Math.max(1, Math.ceil(s.text.length / 46))} className="input flex-1 basis-full order-last !py-2 resize-none" value={s.text} onChange={(e) => upd(s.id, { text: e.target.value })} placeholder="Subtitle text" />
                   <div className="flex gap-1 shrink-0"><Btn small icon="split" onClick={() => split(i)} title="Split in two" /><Btn small icon="merge" disabled={i >= segs.length - 1} onClick={() => merge(i)} title="Merge with next" /><Btn small icon="trash" danger onClick={() => del(s.id)} title="Delete" /></div>
                 </motion.div>) })}</AnimatePresence>
             </div>)}

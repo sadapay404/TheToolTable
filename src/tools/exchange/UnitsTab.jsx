@@ -82,7 +82,7 @@ export default function UnitsTab() {
         <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
           <div><div className="eyebrow">Every {cat.name.toLowerCase()} unit</div><div className="text-[12px] mt-1" style={{ color: 'var(--muted)' }}>{value || '0'} {from} · tap a unit to make it the target</div></div>
           <div className="flex items-center gap-2 rounded-full px-3.5 py-2 border border-line focus-within:border-[var(--copper)] transition-colors w-full sm:w-60" style={{ background: 'var(--surface2)' }}>
-            <Ico n="search" s={14} style={{ color: 'var(--muted)' }} /><input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder={`Filter ${cat.units.length} units…`} className="bg-transparent outline-none text-[13px] flex-1 min-w-0" />
+            <Ico n="search" s={14} style={{ color: 'var(--muted)' }} /><input aria-label="Filter units" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder={`Filter ${cat.units.length} units…`} className="bg-transparent outline-none text-[13px] flex-1 min-w-0" />
           </div>
         </div>
         <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-2">

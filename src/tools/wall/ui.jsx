@@ -116,11 +116,11 @@ export function Toast({ msg }) {
 }
 
 /** colour swatch that opens the native picker */
-export function ColorDot({ value, onChange, size = 36, className = '' }) {
+export function ColorDot({ value, onChange, size = 36, className = '', label = 'Colour' }) {
   const ref = useRef(null)
   return (
     <button type="button" onClick={() => ref.current?.click()} className={`relative rounded-full border border-line ${className}`} style={{ width: size, height: size, background: value, boxShadow: 'inset 0 0 0 2px rgba(255,255,255,.5)' }}>
-      <input ref={ref} type="color" value={value} onChange={(e) => onChange(e.target.value)} className="absolute inset-0 opacity-0 w-full h-full cursor-pointer" />
+      <input ref={ref} type="color" aria-label={label} value={value} onChange={(e) => onChange(e.target.value)} className="absolute inset-0 opacity-0 w-full h-full cursor-pointer" />
     </button>
   )
 }

@@ -71,6 +71,7 @@ export default function CommandPalette({ open, onClose, onTool, onTheme }) {
                 <circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" />
               </svg>
               <input
+        aria-label="Search commands"
                 ref={inputRef}
                 className="flex-1 bg-transparent py-4 outline-none text-[15px]"
                 placeholder="Search tools, actions, themes…"

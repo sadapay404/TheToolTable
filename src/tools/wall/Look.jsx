@@ -100,7 +100,7 @@ export function ColourPanel() {
         <AnimatePresence mode="wait" initial={false}>
           <motion.div key={i} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }} className="mt-3 flex items-center gap-2">
             <ColorDot value={cur} onChange={(h) => upd(i, h)} size={38} />
-            <input className="input mono flex-1 min-w-0" value={cur.toUpperCase()} maxLength={7} onChange={(e) => { const v = e.target.value.startsWith('#') ? e.target.value : '#' + e.target.value; if (/^#[0-9a-f]{6}$/i.test(v)) upd(i, v.toLowerCase()) }} />
+            <input aria-label="Colour hex value" className="input mono flex-1 min-w-0" value={cur.toUpperCase()} maxLength={7} onChange={(e) => { const v = e.target.value.startsWith('#') ? e.target.value : '#' + e.target.value; if (/^#[0-9a-f]{6}$/i.test(v)) upd(i, v.toLowerCase()) }} />
             <Btn small icon="arrowl" onClick={() => move(-1)} disabled={i === 0} title="Move earlier" />
             <Btn small icon="arrowr" onClick={() => move(1)} disabled={i === pal.length - 1} title="Move later" />
             <Btn small icon="trash" onClick={() => { if (pal.length > 1) { setPal(pal.filter((_, j) => j !== i)); setSel(Math.max(0, i - 1)) } }} disabled={pal.length <= 1} title="Remove" />
@@ -137,7 +137,7 @@ export function ColourPanel() {
         <Chips value={hk} onChange={setHk} options={HARMONIES} />
         <Btn small icon="wand" onClick={() => setPal(harmony(cur, hk, 5))}>Generate from {cur.toUpperCase()}</Btn>
         <div className="pt-1">
-          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => { onImg(e.target.files?.[0]); e.target.value = '' }} />
+          <input ref={fileRef} type="file" aria-label="Background image" accept="image/*" className="hidden" onChange={(e) => { onImg(e.target.files?.[0]); e.target.value = '' }} />
           <button type="button" onClick={() => fileRef.current?.click()} className="w-full rounded-2xl border border-dashed border-line px-4 py-3 flex items-center gap-3 text-left" style={{ background: 'var(--surface2)' }}>
             {src ? <img src={src} alt="" className="w-12 h-12 rounded-xl object-cover" /> : <span className="w-12 h-12 rounded-xl grid place-items-center" style={{ background: 'var(--surface)', color: 'var(--copper)' }}><Ico n="image" s={22} /></span>}
             <span><span className="block text-[13px] font-bold">Pick colours from a photo</span><span className="block text-[11.5px]" style={{ color: 'var(--muted)' }}>Stays on your device — nothing is uploaded.</span></span>

@@ -64,7 +64,7 @@ export function TemplatesPanel() {
       </div>
       <Sec title={`My presets · ${presets.length}`} right={<span className="text-[11px]" style={{ color: 'var(--muted)' }}>saved on this device</span>}>
         <div className="flex gap-2">
-          <input className="input flex-1 min-w-0" placeholder="Name your current look…" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && name.trim()) { setPresets((p) => [{ id: uid(), name: name.trim(), style: lightStyle(style) }, ...p]); setName('') } }} />
+          <input aria-label="Name this preset" className="input flex-1 min-w-0" placeholder="Name your current look…" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && name.trim()) { setPresets((p) => [{ id: uid(), name: name.trim(), style: lightStyle(style) }, ...p]); setName('') } }} />
           <Btn small copper icon="save" disabled={!name.trim()} onClick={() => { setPresets((p) => [{ id: uid(), name: name.trim(), style: lightStyle(style) }, ...p]); setName('') }}>Save</Btn>
         </div>
         {presets.length === 0 ? <div className="text-[12.5px]" style={{ color: 'var(--muted)' }}>Tweak colours, shapes, logo and frame in the other tabs, then save the look here to reuse it.</div> : (

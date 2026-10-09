@@ -35,7 +35,7 @@ export function LooksPanel({ c }) {
       <Block i={1}>
         <Label right={<span className="mono text-[10.5px]" style={{ color: 'var(--muted)' }}>{c.myLooks.length} saved</span>}>My looks</Label>
         <div className="flex gap-2 mb-3">
-          <input className="input flex-1 !py-2 text-[12.5px]" placeholder="Name this look…" value={name} maxLength={28} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { c.saveLook(name); setName('') } }} />
+          <input aria-label="Name this look" className="input flex-1 !py-2 text-[12.5px]" placeholder="Name this look…" value={name} maxLength={28} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { c.saveLook(name); setName('') } }} />
           <Pill icon="save" onClick={() => { c.saveLook(name); setName('') }}>Save</Pill>
         </div>
         <motion.div layout className="grid grid-cols-2 gap-x-2.5 gap-y-3">
@@ -198,8 +198,8 @@ export function TextPanel({ c }) {
     <div className="space-y-6">
       <Block i={0} className="space-y-3">
         <Label>Title</Label>
-        <input className="input !py-2.5 text-[13px] w-full" placeholder="Track title" value={P.title} onChange={(e) => upd({ title: e.target.value })} />
-        <input className="input !py-2.5 text-[13px] w-full" placeholder="Subtitle / artist" value={P.subtitle} onChange={(e) => upd({ subtitle: e.target.value })} />
+        <input aria-label="Track title" className="input !py-2.5 text-[13px] w-full" placeholder="Track title" value={P.title} onChange={(e) => upd({ title: e.target.value })} />
+        <input aria-label="Subtitle or artist" className="input !py-2.5 text-[13px] w-full" placeholder="Subtitle / artist" value={P.subtitle} onChange={(e) => upd({ subtitle: e.target.value })} />
         <div className="flex flex-wrap gap-1.5">
           {FONTS.map(([k, n, fam, wt]) => (
             <motion.button key={k} type="button" whileHover={{ y: -2 }} whileTap={{ scale: 0.92 }} onClick={() => upd({ font: k }, true)} className="relative px-3.5 py-2 rounded-xl text-[14px] border border-line"
@@ -221,7 +221,7 @@ export function TextPanel({ c }) {
         <Label>Progress &amp; time</Label>
         <Seg value={P.progress} onChange={(v) => upd({ progress: v }, true)} options={[['line', 'Line'], ['pill', 'Pill'], ['dots', 'Dots'], ['none', 'Hidden']]} />
         <Switch on={!!P.showTime} onChange={(v) => upd({ showTime: v ? 1 : 0 }, true)} label="Show timestamps" />
-        <input className="input !py-2.5 text-[13px] w-full" placeholder="Watermark (e.g. @yourname)" value={P.watermark} onChange={(e) => upd({ watermark: e.target.value })} />
+        <input aria-label="Watermark" className="input !py-2.5 text-[13px] w-full" placeholder="Watermark (e.g. @yourname)" value={P.watermark} onChange={(e) => upd({ watermark: e.target.value })} />
       </Block>
       <Divider />
       <Block i={3} className="space-y-4">

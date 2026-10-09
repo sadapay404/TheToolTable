@@ -44,7 +44,7 @@ export default function Dictate({ toast }) {
             {on && <motion.span className="absolute inset-0 rounded-full" style={{ border: '2px solid #C3423F' }} animate={{ scale: [1, 1.5], opacity: [0.6, 0] }} transition={{ repeat: Infinity, duration: 1.4 }} />}<KIco n={on ? 'stop' : 'mic'} s={26} /></motion.button>
           <div><div className="display font-semibold text-[18px]">{on ? 'Listening…' : 'Press and speak'}</div><div className="text-[12.5px]" style={{ color: 'var(--muted)' }}>Words appear as you talk</div></div>
         </div>
-        <textarea dir="auto" className="input w-full" rows={13} value={text} onChange={(e) => setText(e.target.value)} placeholder="Your words will appear here…" style={{ lineHeight: 1.75 }} />
+        <textarea aria-label="Dictated text" dir="auto" className="input w-full" rows={13} value={text} onChange={(e) => setText(e.target.value)} placeholder="Your words will appear here…" style={{ lineHeight: 1.75 }} />
         <AnimatePresence>{interim && <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} dir="auto" className="mt-2 text-[14px] italic" style={{ color: 'var(--muted)' }}>{interim}</motion.div>}</AnimatePresence>
         <div className="flex flex-wrap gap-2 mt-4"><Btn icon="copy" disabled={!text} onClick={async () => { try { await navigator.clipboard.writeText(text); toast('Copied') } catch { toast('Copy blocked by the browser', 'err') } }}>Copy</Btn><Btn icon="file" disabled={!text} onClick={() => save(new Blob([text], { type: 'text/plain;charset=utf-8' }), 'dictation.txt')}>Save .txt</Btn><Btn icon="trash" danger disabled={!text} onClick={() => setText('')}>Clear</Btn></div>
       </Panel>

@@ -92,7 +92,7 @@ export function ExportPanel() {
               <div className="text-[11.5px] mt-1.5" style={{ color: 'var(--muted)' }}>One self-contained file running the exact same shader — works as a website hero, in Lively Wallpaper (Windows) or Wallpaper Engine.</div></div>
             <div><Label>Design code</Label>
               <div className="flex gap-2"><Btn small icon="copy" onClick={() => { navigator.clipboard.writeText(encodeDesign(d)); toast('Design code copied — send it to anyone') }}>Copy my code</Btn></div>
-              <textarea className="input w-full mt-2 mono text-[11px]" maxLength={50_000} rows={2} placeholder="Paste a TTBG1:… code to load a design" value={code} onChange={(e) => setCode(e.target.value)} />
+              <textarea aria-label="Design code" className="input w-full mt-2 mono text-[11px]" maxLength={50_000} rows={2} placeholder="Paste a TTBG1:… code to load a design" value={code} onChange={(e) => setCode(e.target.value)} />
               <Btn small icon="download" className="mt-2" disabled={!code.trim()} onClick={() => { const x = decodeDesign(code); if (x) { apply(x); setCode(''); toast('Design loaded') } else toast('That code is not valid') }}>Load</Btn>
             </div>
           </>}

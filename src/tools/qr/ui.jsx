@@ -111,7 +111,7 @@ export function Color({ label, value, onChange, quick = false }) {
         <label className="relative w-10 h-10 rounded-xl border border-line overflow-hidden shrink-0 cursor-pointer" style={{ background: value, boxShadow: 'inset 0 0 0 3px var(--surface)' }}>
           <input type="color" value={/^#[0-9a-f]{6}$/i.test(value) ? value : '#000000'} onChange={(e) => onChange(e.target.value.toUpperCase())} className="absolute inset-0 opacity-0 w-full h-full cursor-pointer" aria-label={label || 'Colour'} />
         </label>
-        <input className="input mono" style={{ width: '100%', minWidth: 0 }} value={txt} onChange={(e) => { setTxt(e.target.value); if (/^#[0-9a-f]{6}$/i.test(e.target.value)) onChange(e.target.value.toUpperCase()) }} maxLength={7} spellCheck={false} />
+        <input aria-label="Colour hex value" className="input mono" style={{ width: '100%', minWidth: 0 }} value={txt} onChange={(e) => { setTxt(e.target.value); if (/^#[0-9a-f]{6}$/i.test(e.target.value)) onChange(e.target.value.toUpperCase()) }} maxLength={7} spellCheck={false} />
       </div>
       {quick && <div className="flex flex-wrap gap-1.5 mt-2">{QUICK.map((c) => <motion.button key={c} type="button" whileHover={{ y: -2, scale: 1.12 }} whileTap={{ scale: 0.85 }} onClick={() => onChange(c)} aria-label={c} className="w-5 h-5 rounded-full border border-line" style={{ background: c, outline: value.toUpperCase() === c ? '2px solid var(--copper)' : 'none', outlineOffset: 1 }} />)}</div>}
     </div>

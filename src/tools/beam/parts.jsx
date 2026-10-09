@@ -48,7 +48,7 @@ export function CodeOut({ code, label, hint }) {
     <div>
       <Label>{label}</Label>
       <div className="relative">
-        <textarea readOnly rows={4} value={code} onFocus={(e) => e.target.select()} className="input w-full mono text-[11px] break-all" style={{ lineHeight: 1.45 }} />
+        <textarea aria-label={label} readOnly rows={4} value={code} onFocus={(e) => e.target.select()} className="input w-full mono text-[11px] break-all" style={{ lineHeight: 1.45 }} />
       </div>
       <div className="flex flex-wrap gap-2 mt-3">
         <Btn primary icon={ok ? 'check' : 'copy'} onClick={() => { navigator.clipboard?.writeText(code).catch(() => {}); setOk(true); setTimeout(() => setOk(false), 1400) }}>{ok ? 'Copied' : 'Copy code'}</Btn>
@@ -66,7 +66,7 @@ export function CodeIn({ value, onChange, label, onSubmit, submitLabel, busy, er
   return (
     <div>
       <Label>{label}</Label>
-      <textarea rows={4} value={value} onChange={(e) => onChange(e.target.value)} placeholder="BEAM-…" spellCheck={false} className="input w-full mono text-[11px] break-all" />
+      <textarea aria-label={label} rows={4} value={value} onChange={(e) => onChange(e.target.value)} placeholder="BEAM-…" spellCheck={false} className="input w-full mono text-[11px] break-all" />
       <AnimatePresence>{error && <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="text-[12.5px] mt-2 font-semibold" style={{ color: '#C3423F' }}>{error}</motion.div>}</AnimatePresence>
       <div className="flex flex-wrap gap-2 mt-3">
         <Btn primary icon="arrowRight" disabled={!value.trim()} busy={busy} onClick={onSubmit}>{submitLabel}</Btn>

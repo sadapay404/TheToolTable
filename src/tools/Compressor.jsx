@@ -301,7 +301,7 @@ export default function Compressor() {
                     <span className="label">Audio bitrate cap</span>
                     <span className="text-[12px] font-bold tabular-nums shrink-0" style={{ color: 'var(--copper)' }}>{kind === 'video' && !includeAudio ? 'Off' : `${audioKbps} kbps`}</span>
                   </div>
-                  <input type="range" className="w-full" min="64" max="320" step="32" value={audioKbps} disabled={busy || loading || (kind === 'video' && !includeAudio)} onChange={(e) => setAudioKbps(+e.target.value)} />
+                  <input type="range" aria-label="Audio bitrate in kilobits per second" className="w-full" min="64" max="320" step="32" value={audioKbps} disabled={busy || loading || (kind === 'video' && !includeAudio)} onChange={(e) => setAudioKbps(+e.target.value)} />
                   <div className="flex justify-between text-[10px] mt-1" style={{ color: 'var(--muted)' }}><span>64</span><span>320</span></div>
                 </div>
               </div>

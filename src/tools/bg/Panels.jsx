@@ -130,8 +130,8 @@ export function BackgroundPanel({ c }) {
           </div>
           <div className="flex items-center gap-3">
             <label className="label">{bg.type === 'gradient' ? 'From' : 'Custom'}</label>
-            <input type="color" value={bg.color} onChange={(e) => updateBg({ color: e.target.value })} className="w-10 h-8 rounded-lg border border-line bg-transparent cursor-pointer" />
-            {bg.type === 'gradient' && <><label className="label ml-2">To</label><input type="color" value={bg.color2} onChange={(e) => updateBg({ color2: e.target.value })} className="w-10 h-8 rounded-lg border border-line bg-transparent cursor-pointer" /></>}
+            <input type="color" aria-label={bg.type === 'gradient' ? 'Gradient start colour' : 'Custom background colour'} value={bg.color} onChange={(e) => updateBg({ color: e.target.value })} className="w-10 h-8 rounded-lg border border-line bg-transparent cursor-pointer" />
+            {bg.type === 'gradient' && <><label className="label ml-2">To</label><input type="color" aria-label="Gradient end colour" value={bg.color2} onChange={(e) => updateBg({ color2: e.target.value })} className="w-10 h-8 rounded-lg border border-line bg-transparent cursor-pointer" /></>}
           </div>
         </Reveal>
 

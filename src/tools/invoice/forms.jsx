@@ -4,8 +4,8 @@ import { Panel, Label, Chips, Btn, Field, KIco, SPRING, Switch, Empty } from '..
 import { TYPES, CURRENCIES, num, totals, money } from '../../lib/invoice/calc.js'
 import { MAX_INVOICE_ITEMS } from '../../lib/invoice/normalize.js'
 
-const I = ({ v, on, ph, type = 'text', cls = '', ...r }) => <input className={`input ${cls}`} type={type} value={v ?? ''} placeholder={ph} onChange={(e) => on(e.target.value)} {...r} />
-const T = ({ v, on, ph, rows = 3 }) => <textarea dir="auto" className="input w-full" rows={rows} value={v ?? ''} placeholder={ph} onChange={(e) => on(e.target.value)} />
+const I = ({ v, on, ph, type = 'text', cls = '', a, ...r }) => <input aria-label={a || ph} className={`input ${cls}`} type={type} value={v ?? ''} placeholder={ph} onChange={(e) => on(e.target.value)} {...r} />
+const T = ({ v, on, ph, rows = 3, a }) => <textarea aria-label={a || ph} dir="auto" className="input w-full" rows={rows} value={v ?? ''} placeholder={ph} onChange={(e) => on(e.target.value)} />
 const party = (inv, set, k, title, who) => (
   <Panel delay={0.05}>
     <Label>{title}</Label>

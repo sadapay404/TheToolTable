@@ -66,7 +66,7 @@ export default function Transcribe({ media, loadFile, setSegs, go, toast, busy: 
         </Panel>
         <Panel delay={0.1}>
           <Label>Language</Label>
-          <select className="input w-full" value={o.language} onChange={(e) => setO({ ...o, language: e.target.value })}>{WLANGS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+          <select aria-label="Transcription language" className="input w-full" value={o.language} onChange={(e) => setO({ ...o, language: e.target.value })}>{WLANGS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
           <div className="mt-4"><Seg small value={o.task} onChange={(v) => setO({ ...o, task: v })} options={[['transcribe', 'Write what is said'], ['translate', 'Translate to English']]} /></div>
           {typeof navigator !== 'undefined' && navigator.gpu && <div className="mt-4"><Switch on={o.gpu} onChange={(v) => setO({ ...o, gpu: v })} label="Use the graphics card" hint="Much faster on a strong GPU" /></div>}
         </Panel>

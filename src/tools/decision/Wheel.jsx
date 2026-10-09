@@ -108,7 +108,7 @@ export default function Wheel() {
         <Panel delay={0.08}>
           <Label right={<span className="text-[11px] font-semibold" style={{ color: 'var(--muted)' }}>{items.length} options</span>}>Options</Label>
           <div className="flex gap-2 mb-3">
-            <input className="input flex-1 min-w-0" placeholder="Add an option…" value={txt} maxLength={80} disabled={busy || items.length >= 40} onChange={(e) => setTxt(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} />
+            <input aria-label="New option for the wheel" className="input flex-1 min-w-0" placeholder="Add an option…" value={txt} maxLength={80} disabled={busy || items.length >= 40} onChange={(e) => setTxt(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} />
             <motion.button type="button" whileTap={{ scale: 0.88 }} whileHover={{ y: -2 }} onClick={add} disabled={busy || items.length >= 40} className="w-11 rounded-xl grid place-items-center disabled:opacity-50" style={{ background: 'var(--ink)', color: 'var(--bg)' }} aria-label="Add"><DIco n="plus" s={18} w={2.4} /></motion.button>
           </div>
           <div className="space-y-1.5 max-h-[300px] overflow-y-auto pr-1">

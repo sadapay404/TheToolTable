@@ -833,3 +833,89 @@ random byte strings without hanging on a single one.
 Storage units deserve a note: 1 GB is 1000 MB and 1 GiB is 1024 MiB, because
 that is what those words mean. The audit confirmed both, rather than assuming
 one of them was a bug.
+
+### Part 10b–10g — what the property audit found
+
+Seven more batches, 122 checks, run against invariants rather than expected
+values. The rule throughout: a test must hold for *any* input. "1 km is 1000 m"
+catches nothing; "converting A→B and back returns the original" catches every
+conversion bug that will ever be written.
+
+#### Bugs fixed
+
+| # | Where | What was wrong |
+|---|---|---|
+| 8 | `src/lib/frames.js` | A duration past ~1.4e14 s rendered the literal text `-Infinity`; `minutes * 60` overflowed and the subtraction went negative |
+| 9 | `src/lib/transfers.js` | A byte count under 1 logged a negative unit index and printed `512.0 undefined` |
+| 10 | `src/lib/invoice/calc.js` | A 100% discount on a large subtotal rounded a hair past it, leaving a taxable base of `-0.0002` and negative tax |
+| 11 | `src/lib/invoice/calc.js` | `totals().balance` ignored `paid` for receipts, so a settled receipt reported the full amount outstanding |
+| 12 | `src/lib/utils.js` | `baseName`/`extName` threw on a non-string |
+| 13 | `src/lib/qr/state.js` | Four saved-state sections read fields off a missing default and threw |
+| 14 | `src/lib/decision.js` | The same, plus `bottle` iterating a missing `names` array |
+| 15 | `src/lib/qr/render.js` | **Seven QR templates could not scan** — see below |
+| 16 | `src/lib/viz/analyzer.js` | A NaN clock or a zero-bin analyser painted the visualiser solid black until reload |
+
+#### The seven QR templates
+
+Contrast was measured between the module colour and its background, for every
+gradient stop, the way a phone camera sees it. Seven templates sat below 3:1 and
+thirteen below 4.5:1:
+
+| Template | Was | Now |
+|---|---|---|
+| Ocean | 1.90:1 | 4.69:1 |
+| Duotone | 2.01:1 | 4.58:1 |
+| Honeycomb | 2.07:1 | 4.57:1 |
+| Forest | 2.36:1 | 4.57:1 |
+| Event pass | 2.43:1 | 4.51:1 |
+| Instagram | 2.54:1 | 4.52:1 |
+| Candy pop | 2.92:1 | 4.51:1 |
+
+Hand-editing the palettes would have flattened exactly the colours that made
+them worth picking. Instead `withDefaults` walks each module colour away from its
+background until it clears 4.5:1, preserving hue and saturation. Ocean is still
+a blue-teal on pale blue; it is simply dark enough to read. All 33 templates
+now clear the threshold and the worst is exactly 4.50:1.
+
+#### Accessibility
+
+An AST-based scan — not a regex, which cannot tell `onClick={() => go()}` from a
+tag boundary and "found" 92 unnamed controls that did not exist — found:
+
+- **0 unnamed controls.** Every button, link and summary in the app can be named
+  out loud. Parts 1–9 did this properly.
+- **46 unlabelled fields** across 30 files, relying on a placeholder or a
+  neighbouring `<span>` for their name. All 46 now carry a real `aria-label`, and
+  the shared components that render many fields take a label so the fix holds
+  for every future call site.
+- The transfer cancel button was a 28px target on a phone. Now 32px.
+- `index.html` did not declare `color-scheme`, so dark mode got light form
+  controls and scrollbars.
+
+#### What held up
+
+The more interesting result is how much did not break. Over 120,000 wall-clock
+conversions across all 250 time zones — every month-end of three years, every
+clock-change hour — **not one came back the wrong time**, including zones that
+shift by 45 minutes and zones that skip a day. Every unit conversion in every
+category round-trips exactly. The coin is fair to within 3% of even over 20,000
+tosses. A loan amortises to zero at every rate, term and down payment. The image
+scrubber strips EXIF, GPS and comments from real JPEG and PNG files, keeps the
+pixels, is stable when run twice, and refuses 600 random byte strings without
+hanging on one. No two large files in the built bundle are byte-identical.
+
+Storage units deserve a note: 1 GB is 1000 MB and 1 GiB is 1024 MiB, because
+that is what those words mean. The audit confirmed both rather than assuming one
+was a bug.
+
+#### The artefact
+
+Release assets cannot be downloaded from the build sandbox — the CDN is outside
+the network allowlist, the same wall that blocks CI logs — so APK verification
+moved into the job that builds it, where it also runs on every future build. A
+signed APK is not automatically a working one: if the Tauri icon path ever stops
+resolving, Gradle still produces a valid package that installs with the default
+Android robot. That is a valid APK and a broken app. The step rejects it, plus a
+corrupt archive, a missing dex, an undeclared permission and a signature that
+does not verify, and reports size, icon densities, permissions, package
+identity, ABIs and the signing certificate fingerprint into the job summary.

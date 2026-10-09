@@ -23,7 +23,7 @@ A ground-up mobile pass driven by seven Android defects reported against v1.2.0.
 | 4 | Motion system (Android **and** Windows) | **Complete** |
 | 5 | Tool chrome for all 20 tools | **Complete** |
 | 6 | New animated mobile footer | **Complete** |
-| 7 | Background transfers + notification progress | Pending |
+| 7 | Background transfers + notification progress | **Complete** |
 | 8 | Android icon, signing, CI de-risking | Pending |
 | 9 | Functional sweep + regression tests | Pending |
 | 10 | Native builds + draft GitHub release | Pending |
@@ -459,3 +459,125 @@ latent bug existed in `Reveal.jsx`'s `MaskedGlyph` from Part 4 and was fixed the
   - **Desktop**: the phone footer is not rendered, the wide lockup, aura and nine
     hoverable glyphs are all still there.
   - Zero console errors throughout.
+
+---
+
+## Part 7 — Background transfers with live progress ✅
+
+**The reported defect:** the AI Background Remover model download stopped dead
+when you switched apps. Half a model on disk, a spinner that never resolved.
+
+**Why it stopped.** `downloadToAppCache()` ran entirely inside the WebView. The
+upload path had owned an Android foreground service since Part 0; the download
+path never did. No foreground service meant no protection from `onStop`, and no
+notification meant nothing at all on screen while the transfer ran. Switching apps
+suspended the WebView and the transfer died with it.
+
+**`src/lib/transfers.js` — one registry for every transfer in the app.** A
+module-level map plus a snapshot, read through `useSyncExternalStore`. It is
+deliberately free of any Tauri import at module scope, so it works in a browser
+(where it simply stays empty), in the Windows shell and on Android. It owns:
+
+- `beginTransfer` / `updateTransfer` / `finishTransfer` / `failTransfer` /
+  `cancelTransfer`, with progress clamped to `0…1` and queued transfers promoted
+  to running the moment real bytes arrive;
+- **the notification throttle** — one 900 ms rule for the whole app, so a 300 KB/s
+  model cannot flood the shade. A notification posted per chunk is exactly what
+  makes a transfer look like it is stuttering;
+- **terminal retirement** — finished work stays on screen for eight seconds, then
+  drops itself, so the sheet always clears itself without the user tidying up;
+- `syncTransfersFromNative()`, which folds the native download store back in after
+  a resume and, critically, **settles anything the registry still believes is
+  running but the OS no longer knows about** — otherwise a transfer finished while
+  the app was away leaves a spinner that spins forever.
+
+**`src/lib/backgroundTransfers.js` — the fix itself.**
+
+- `downloadToAppCache()` now takes the foreground service, posts a start
+  notification, and **releases the service in `finally`** so a failed download
+  cannot strand Android's notification and battery.
+- `runNativeDownload()` mirrors every native progress event into the registry and
+  the shade, and settles the registry row on **every** exit: the two cache-hit
+  short circuits, the real completion, the failure, and — new in review — a
+  **second caller joining an in-flight download for the same path**, which now
+  waits for the owner and settles its own row instead of returning a promise that
+  leaves its bar frozen mid-air.
+- The notification id and the **exact native path** are recorded on the transfer.
+  Restoring notifications reuses the id the transfer already owns (a fresh id on
+  every resume orphans the previous one, so the shade accumulates stale copies of
+  the same progress bar), and cancelling sends `plugin:download|cancel` with the
+  path the worker was actually registered with — not a filename reconstructed from
+  the title, which misses the timestamped retries and resumed records.
+- `uploadFileInBackground()` and the legacy `createTransferNotifier()` were routed
+  through the same registry, so uploads, Beam and the Downloader now show up in the
+  same place as model downloads.
+- `refreshBackgroundTransfers()` and `restoreProgressNotifications()` are the two
+  resume hooks.
+
+**`src/components/TransferCentre.jsx` — the in-app half.** One sheet and one
+floating button, mounted once by the shell so every tool gets them for free. It is
+a sheet, not a toast: a model download can take a while and a toast that has
+already gone is useless. Rows carry a determinate `role="progressbar"`, live byte
+counts, speed and ETA, per-row cancel, per-row dismiss and a clear-finished
+action. It opens itself the moment work appears, however many transfers start at
+once, then gets out of the way.
+
+**Motion.** Rows spring in on a stagger and spring out sideways; the icon bobs
+while running; the fill is a spring, not a linear tween; the bar shimmers; the FAB
+has a counter and a ring that turns. `prefers-reduced-motion` holds every one of
+them still while keeping the sheet readable — nothing was removed, hidden or
+shortened.
+
+**`src/App.jsx`** — resyncs native transfers and re-posts notifications on
+`focus` and `visibilitychange`, which is the Android "come back to the app and the
+spinner is still there" case.
+
+**`src/lib/bg/engine.js`** — the model notification now names the tier
+("AI Background Remover · model") and says *Keeps running if you leave the app*.
+
+### Verification
+
+- `npm test` — **223/223 passing** (+35 transfer tests: lifecycle, throttling,
+  retirement, native rehydration, the download-service regression, uploads, UI
+  accessibility, CSS coverage, Parts 1–6 preservation, and the four defects found
+  in review — the joined download settling, the retained notification id, the exact
+  cancel path, and per-row dismiss).
+- `npm run build` — passing.
+- **The notification payload is checked against the installed plugin.** A test
+  reads `node_modules/@tauri-apps/plugin-notification`'s own typings and asserts
+  every field we send exists in `Options`. This caught a real problem: `progress`
+  is **not** a field in 2.5.1, so the determinate shade bar was never going to
+  appear, and an unknown key risks the Rust deserializer dropping the whole
+  notification. Progress now goes in the text (`167.8 MB of 167.8 MB · 100%`),
+  which is supported.
+- Headless Chromium (`browsertest/verify7.mjs`, **59/59 checks**) on phone
+  (390×844, Android UA) and desktop (1280×900):
+  - Nothing is shown when nothing is running; the sheet opens itself the moment
+    two transfers start at once.
+  - Two rows, a real `progressbar` each, correct percentages, live byte counts,
+    correct upload/download glyphs, a cancel button per running row, the bar
+    shimmering.
+  - Progress updates live; a completed row shows ✓ and a failed row shows the
+    server's own reason; a **finished row stops quoting a speed**; the FAB retires
+    when nothing runs; clear-finished empties the sheet.
+  - A download surfaces over an open tool, named.
+  - **Reduced motion**: the sheet still opens, progress is still readable, the
+    shimmer never moves.
+  - No horizontal overflow; the sheet stays inside the viewport on phone.
+  - Zero console errors.
+- **A real bug the browser found.** The sheet was centred with
+  `transform: translateX(-50%)`, and framer-motion owns the transform on that
+  element — its enter animation silently replaced the CSS translate and parked the
+  sheet 171px off the right edge of a 390px phone. It is now centred with auto
+  margins.
+- `scripts/ensure-android-transfer-permissions.mjs` injects
+  `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_DATA_SYNC` and `POST_NOTIFICATIONS`
+  into the generated manifest — none of which `tauri android init` adds, and
+  without which Android 14 refuses the dataSync service and Android 13+ drops
+  every progress notification. Verified idempotent against a manifest, and it now
+  exits cleanly when the Android project has not been generated.
+
+**Not verified here.** This sandbox has no Android SDK, no NDK, no JDK and no
+cargo, so an APK could not be built and the notification could not be observed on
+a real device. Everything native-side is verified against the plugins' shipped
+typings and API surface instead. Part 10 is where a device build happens.

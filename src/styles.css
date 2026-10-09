@@ -1972,3 +1972,110 @@ html[data-perf="lite"] .ambient-wash { filter: none; }
   background: var(--secondary-container);
 }
 html.android-native .mfoot-base { padding-bottom: calc(18px + var(--ttt-safe-bottom)); }
+
+/* =============================================================================
+   PART 7 — Transfer centre
+   Android notifications say a model is downloading. This says the same thing
+   without leaving the app, which is what Windows gets and what Android gets
+   when you come back to check.
+   ========================================================================== */
+
+.transfer-fab {
+  position: fixed;
+  right: 16px;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 84px);
+  z-index: 70;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 12px 18px 12px 14px;
+  border: 0; cursor: pointer;
+  border-radius: var(--md-shape-full);
+  font: inherit;
+  color: var(--on-primary-container);
+  background: var(--primary-container);
+  box-shadow: 0 16px 34px -14px color-mix(in srgb, var(--primary) 80%, transparent);
+}
+@media (min-width: 641px) { .transfer-fab { bottom: 22px; right: 22px; } }
+.transfer-fab-count { display: grid; place-items: center; min-width: 22px; height: 22px; border-radius: 50%; background: var(--primary); color: var(--on-primary); font-size: 12px; font-weight: 700; }
+.transfer-fab-label { font-size: 12.5px; font-weight: 600; }
+.transfer-fab-ring {
+  position: absolute; inset: -1px;
+  border-radius: inherit;
+  border: 2px solid color-mix(in srgb, var(--primary) 45%, transparent);
+  border-top-color: var(--primary);
+  will-change: transform;
+}
+
+.transfer-sheet {
+  position: fixed;
+  /* Centred with auto margins, not translateX(-50%): framer-motion owns the
+     transform on this element, and a CSS translate here is silently replaced
+     by the enter animation — which parks the sheet half off-screen. */
+  left: 12px;
+  right: 12px;
+  margin-inline: auto;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 70px);
+  z-index: 75;
+  width: min(560px, calc(100vw - 24px));
+  max-height: min(62dvh, 460px);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+  border-radius: var(--md-shape-xl);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: 0 30px 60px -24px rgba(0, 0, 0, .5);
+}
+@media (min-width: 641px) { .transfer-sheet { bottom: 22px; } }
+.transfer-sheet-grip { width: 34px; height: 4px; border-radius: 999px; background: color-mix(in srgb, var(--on-surface) 22%, transparent); margin: 10px auto 2px; }
+.transfer-sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 14px 10px; }
+.transfer-sheet-title { font-size: 13px; font-weight: 700; letter-spacing: .01em; }
+.transfer-sheet-actions { display: inline-flex; align-items: center; gap: 8px; }
+.transfer-sheet-link { border: 0; background: none; cursor: pointer; font: inherit; font-size: 11.5px; font-weight: 600; color: var(--primary); }
+.transfer-sheet-close { width: 28px; height: 28px; display: grid; place-items: center; border: 0; cursor: pointer; border-radius: 50%; background: var(--surface2); color: var(--on-surface-variant); font-size: 12px; }
+.transfer-list { list-style: none; margin: 0; padding: 0 10px 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+
+.transfer-row {
+  display: flex; align-items: flex-start; gap: 11px;
+  padding: 11px 12px;
+  border-radius: var(--md-shape-lg);
+  background: color-mix(in srgb, var(--surface2) 80%, transparent);
+  border: 1px solid var(--border);
+}
+.transfer-row[data-status="completed"] { border-color: color-mix(in srgb, var(--primary) 34%, transparent); }
+.transfer-row[data-status="failed"] { border-color: color-mix(in srgb, #c3423f 42%, transparent); }
+.transfer-mark {
+  display: grid; place-items: center; flex: 0 0 auto;
+  width: 30px; height: 30px; border-radius: 50%;
+  color: var(--on-secondary-container);
+  background: var(--secondary-container);
+  will-change: transform;
+}
+.transfer-mark[data-kind="upload"] { color: var(--on-primary-container); background: var(--primary-container); }
+.transfer-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 7px; }
+.transfer-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.transfer-title { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.transfer-percent { font-size: 12px; font-weight: 700; color: var(--primary); }
+.transfer-rail { position: relative; height: 6px; border-radius: 999px; overflow: hidden; background: color-mix(in srgb, var(--on-surface) 10%, transparent); }
+.transfer-fill { display: block; height: 100%; width: 100%; transform-origin: left center; border-radius: 999px; background: var(--primary); }
+.transfer-shimmer {
+  position: absolute; inset: 0;
+  background: linear-gradient(100deg, transparent 35%, color-mix(in srgb, var(--on-primary) 55%, transparent) 50%, transparent 65%);
+  will-change: transform;
+}
+.transfer-meta { display: flex; flex-wrap: wrap; gap: 8px; font-size: 10.5px; color: var(--on-surface-variant); }
+.transfer-meta-detail { max-width: min(100%, 34ch); overflow-wrap: anywhere; }
+.transfer-actions { flex: 0 0 auto; align-self: center; }
+.transfer-btn {
+  position: relative; overflow: hidden;
+  width: 28px; height: 28px; display: grid; place-items: center;
+  border: 0; cursor: pointer; border-radius: 50%;
+  font: inherit; font-size: 12px; font-weight: 700;
+  color: var(--on-surface-variant);
+  background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+}
+.transfer-btn--quiet { color: var(--primary); }
+.transfer-row[data-status="failed"] .transfer-btn--quiet { color: #c3423f; }
+@media (prefers-reduced-motion: reduce) {
+  .transfer-shimmer, .transfer-fab-ring { display: none; }
+}
+.transfer-meta-item { white-space: nowrap; }
+.transfer-meta-detail { color: var(--primary); }

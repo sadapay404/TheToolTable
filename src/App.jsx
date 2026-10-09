@@ -15,6 +15,8 @@ import AmbientField from './components/AmbientField.jsx'
 import { AmbientSpinner } from './components/AmbientField.jsx'
 import { RevealLine, RevealBlock, RevealRule } from './components/Reveal.jsx'
 import { ToolShell, ToolIntro } from './components/ToolChrome.jsx'
+import TransferCentre from './components/TransferCentre.jsx'
+import { cancelTransfer } from './lib/transfers.js'
 import { Logo } from './components/Logo.jsx'
 import ToolCard from './components/ToolCard.jsx'
 import ToolActions from './components/ToolActions.jsx'
@@ -474,6 +476,28 @@ export default function App() {
   const heroCopyY = useTransform(scrollY, [0, 420], [0, -14 * heroParallax])
   const heroHaloY = useTransform(scrollY, [0, 420], [0, 44 * heroParallax])
   useEffect(() => { runBenchmark() }, [])
+
+  /* Background work continues while the WebView is suspended. On the way back in
+     the native store is read again so a download that finished off-screen is not
+     still showing a spinner, and its notification is restored. */
+  useEffect(() => {
+    let cancelled = false
+    const resync = async () => {
+      try {
+        const { refreshBackgroundTransfers, restoreProgressNotifications } = await import('./lib/backgroundTransfers.js')
+        await refreshBackgroundTransfers()
+        if (!cancelled) await restoreProgressNotifications()
+      } catch { /* the store is unavailable in a browser; nothing to resync */ }
+    }
+    const onVisible = () => { if (document.visibilityState === 'visible') resync() }
+    window.addEventListener('focus', resync)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      cancelled = true
+      window.removeEventListener('focus', resync)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [])
   return (
     <MotionConfig reducedMotion="user">
     <ShellBoundary>
@@ -709,6 +733,15 @@ export default function App() {
       )}
       <MobileControlsSheet open={controlsOpen} onClose={() => setOverlay(null)} theme={theme} setTheme={setTheme} />
       <ToolActions tool={quickActions} onClose={() => setQuickActions(null)} onOpen={openTool} />
+      <TransferCentre onCancel={async (transfer) => {
+        // Stop the real work first — with the exact native path the transfer
+        // recorded — then take the row off screen.
+        try {
+          const { cancelNativeTransfer } = await import('./lib/backgroundTransfers.js')
+          await cancelNativeTransfer(transfer)
+        } catch { /* the transfer may already be finished */ }
+        cancelTransfer(transfer.id)
+      }} />
     </div>
     </ShellBoundary>
     </MotionConfig>

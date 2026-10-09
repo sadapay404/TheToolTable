@@ -1,6 +1,10 @@
 import { addPluginListener, convertFileSrc, invoke, isTauri } from '@tauri-apps/api/core'
 import { appCacheDir, join } from '@tauri-apps/api/path'
 import { listen } from '@tauri-apps/api/event'
+import {
+  TRANSFER_STATUS, beginTransfer, updateTransfer, finishTransfer, failTransfer,
+  activeTransferCount, syncTransfersFromNative, formatBytes,
+} from './transfers.js'
 
 const isNative = () => typeof window !== 'undefined' && isTauri()
 const isAndroidNative = () => isNative() && /android/i.test(typeof navigator !== 'undefined' ? navigator.userAgent || '' : '')
@@ -88,6 +92,9 @@ async function postProgressNotification(id, title, body, ongoing = true) {
       }).catch(() => {})
     }
     await notificationChannelPromise
+    /* Live progress goes in the text: tauri-plugin-notification 2.5 has no
+       determinate-progress field, and sending an unknown key risks the whole
+       notification being dropped rather than falling back to a text bar. */
     await sendNotification({
       id,
       title,
@@ -99,6 +106,15 @@ async function postProgressNotification(id, title, body, ongoing = true) {
   } catch {
     // Progress callbacks and file transfer continue if notifications are blocked.
   }
+}
+
+/** The body text a transfer's notification shows right now. */
+function progressBody(transfer) {
+  const size = transfer.total > 0
+    ? `${formatBytes(transfer.received)} of ${formatBytes(transfer.total)}`
+    : formatBytes(transfer.received)
+  const percent = transfer.total > 0 ? ` · ${Math.min(100, Math.floor(transfer.progress * 100))}%` : ''
+  return `${size}${percent}`
 }
 
 function normalizeProgress(download) {
@@ -153,6 +169,8 @@ export async function downloadToAppCache(url, {
   expectedBytes = 0,
   onProgress,
   allowMetered = true,
+  title = null,
+  detail = '',
 } = {}) {
   if (!isNative()) throw new Error('Native background downloads require the installed app.')
   if (typeof url !== 'string' || !/^https:\/\//i.test(url)) {
@@ -161,10 +179,75 @@ export async function downloadToAppCache(url, {
   if (isAndroidNative()) await askForNotificationPermission()
 
   const safeName = safeFileName(name, url)
+  /* A model download used to run entirely inside the WebView: no foreground
+     service, no notification. Switching apps suspended it and the transfer died
+     half-finished. Hold the service for the whole download and post live
+     progress, exactly as the upload path already did. */
+  const label = title || `Downloading ${safeName}`
+  const releaseService = await beginBackgroundTransfer(label)
+  const notificationId = nextNotificationId()
+  const transferId = beginTransfer({
+    kind: 'download',
+    title: label,
+    detail,
+    total: expectedBytes || 0,
+    notificationId,
+  })
+  void postProgressNotification(notificationId, label, 'Starting download…', true)
+
+  try {
+    return await runNativeDownload(url, {
+      name: safeName,
+      directory,
+      expectedBytes,
+      onProgress,
+      allowMetered,
+      transferId,
+      notificationId,
+      label,
+    })
+  } catch (error) {
+    const failed = failTransfer(transferId, error)
+    if (failed) void postProgressNotification(notificationId, label, `Failed: ${failed.message}`.slice(0, 140), false)
+    throw error
+  } finally {
+    await releaseService()
+  }
+}
+
+/** The download itself, with every progress event mirrored to the registry. */
+async function runNativeDownload(url, {
+  name: safeName,
+  directory,
+  expectedBytes,
+  onProgress,
+  allowMetered,
+  transferId,
+  notificationId,
+  label,
+}) {
   const folder = await join(await appCacheDir(), ...directory.split('/').filter(Boolean))
   const initialPath = await join(folder, safeName)
-  const existingTask = activeDownloads.get(initialPath)
-  if (existingTask) return existingTask
+  const owner = activeDownloads.get(initialPath)
+  if (owner) {
+    /* Another caller already owns this exact download: join it rather than
+       starting a second native transfer for the same path. The joined row has
+       to reach a terminal state too, otherwise the Transfer Centre shows a
+       spinner that never ends and the shade keeps a progress bar that stops
+       moving the moment the owner's poll stops. */
+    updateTransfer(transferId, { detail: 'Sharing an in-flight download', nativePath: initialPath, canCancel: true }, { notify: false })
+    void postProgressNotification(notificationId, label, 'Sharing an in-flight download', true)
+    try {
+      const shared = await owner.task
+      finishTransfer(transferId, { status: TRANSFER_STATUS.completed, detail: 'Shared an in-flight download', notify: false })
+      void postProgressNotification(notificationId, label, 'Download complete — ready offline', false)
+      return shared
+    } catch (error) {
+      const failed = failTransfer(transferId, error, { notify: false })
+      void postProgressNotification(notificationId, label, `Failed: ${failed?.message || 'download failed'}`.slice(0, 140), false)
+      throw error
+    }
+  }
 
   const task = (async () => {
     const { exists, stat } = await import('@tauri-apps/plugin-fs')
@@ -179,7 +262,10 @@ export async function downloadToAppCache(url, {
     }
 
     if (download?.status === 'completed' && await fileExists(path)) {
-      try { onProgress?.({ status: 'completed', receivedBytes: (await stat(path)).size, totalBytes: expectedBytes || null, progress: 1, fromCache: true }) } catch {}
+      const size = (await stat(path)).size
+      try { onProgress?.({ status: 'completed', receivedBytes: size, totalBytes: expectedBytes || null, progress: 1, fromCache: true }) } catch {}
+      finishTransfer(transferId, { status: TRANSFER_STATUS.completed, detail: 'Already downloaded', notify: false })
+      void postProgressNotification(notificationId, label, 'Already downloaded', false)
       return path
     }
     if (download?.status === 'completed' || download?.status === 'canceled') {
@@ -190,7 +276,10 @@ export async function downloadToAppCache(url, {
       download = await invoke('plugin:download|get', { path })
     } else if ((!download || download.status === 'pending') && await fileExists(path)) {
       // An already complete file without a persisted record is safe to reuse.
-      try { onProgress?.({ status: 'completed', receivedBytes: (await stat(path)).size, totalBytes: expectedBytes || null, progress: 1, fromCache: true }) } catch {}
+      const size = (await stat(path)).size
+      try { onProgress?.({ status: 'completed', receivedBytes: size, totalBytes: expectedBytes || null, progress: 1, fromCache: true }) } catch {}
+      finishTransfer(transferId, { status: TRANSFER_STATUS.completed, detail: 'Already on this device', notify: false })
+      void postProgressNotification(notificationId, label, 'Already on this device', false)
       return path
     }
 
@@ -207,10 +296,32 @@ export async function downloadToAppCache(url, {
       if (!next || settled) return
       const progress = normalizeProgress(next)
       try { onProgress?.(progress) } catch { /* UI callbacks must not break transfers */ }
-      if (progress.status === 'completed') {
+
+      /* Mirror into the registry (in-app) and the shade (system), with one
+         throttle for both so a 300 KB/s model cannot flood either. */
+      const done = progress.status === 'completed'
+      const failed = progress.status === 'failed' || progress.status === 'canceled'
+      const result = done
+        ? finishTransfer(transferId, { status: TRANSFER_STATUS.completed, detail: 'Saved for offline use' })
+        : failed
+          ? failTransfer(transferId, downloadError(next))
+          : updateTransfer(transferId, {
+            status: progress.status === 'paused' ? TRANSFER_STATUS.queued : TRANSFER_STATUS.running,
+            received: progress.receivedBytes,
+            total: progress.totalBytes ?? undefined,
+            progress: progress.progress,
+            canCancel: true,
+          })
+      if (result?.shouldNotify) {
+        void postProgressNotification(notificationId, label, progressBody(result.transfer), true)
+      }
+      if (done) void postProgressNotification(notificationId, label, 'Download complete — ready offline', false)
+      else if (failed) void postProgressNotification(notificationId, label, `Failed: ${result?.message || 'download failed'}`.slice(0, 140), false)
+
+      if (done) {
         settled = true
         settleResolve(path)
-      } else if (progress.status === 'failed' || progress.status === 'canceled') {
+      } else if (failed) {
         settled = true
         settleReject(downloadError(next))
       }
@@ -265,7 +376,10 @@ export async function downloadToAppCache(url, {
     }
   })()
 
-  activeDownloads.set(initialPath, task)
+  /* The row learns the exact path the OS worker is writing to, so cancelling
+     later stops that worker rather than a guessed filename. */
+  updateTransfer(transferId, { nativePath: initialPath, canCancel: true }, { notify: false })
+  activeDownloads.set(initialPath, { task, transferId })
   try {
     return await task
   } finally {
@@ -303,23 +417,29 @@ export function appFileUrl(path) {
  * while the app is backgrounded, and native progress is surfaced in a persistent
  * notification while the UI is available.
  */
-export function createTransferNotifier(title = 'File transfer') {
+export function createTransferNotifier(title = 'File transfer', kind = 'transfer') {
   const id = nextNotificationId()
-  let lastNotice = 0
+  const transferId = beginTransfer({ kind, title, notificationId: id })
   let finished = false
   return {
     update(received, total) {
-      if (finished || Date.now() - lastNotice < 900) return
-      lastNotice = Date.now()
-      const done = Number(received || 0)
-      const size = Number(total || 0)
-      const percent = size > 0 ? ` · ${Math.min(100, Math.floor(done / size * 100))}%` : ''
-      void postProgressNotification(id, title, `${formatBytes(done)} of ${size ? formatBytes(size) : 'unknown'}${percent}`, true)
+      if (finished) return
+      const result = updateTransfer(transferId, { received, total: total || undefined, status: TRANSFER_STATUS.running })
+      if (result?.shouldNotify) {
+        void postProgressNotification(id, title, progressBody({ ...result.transfer, total: result.transfer.total || Number(total || 0) }), true)
+      }
     },
     finish(body = 'Transfer complete') {
       if (finished) return
       finished = true
+      finishTransfer(transferId, { status: TRANSFER_STATUS.completed, detail: body })
       void postProgressNotification(id, title, body, false)
+    },
+    fail(error) {
+      if (finished) return
+      finished = true
+      failTransfer(transferId, error)
+      void postProgressNotification(id, title, `Failed: ${String(error?.message || error).slice(0, 120)}`, false)
     },
   }
 }
@@ -335,7 +455,7 @@ export async function uploadFileInBackground(url, filePath, {
 
   const releaseService = await beginBackgroundTransfer('Uploading a file')
   const id = nextNotificationId()
-  let lastNotice = 0
+  const transferId = beginTransfer({ kind: 'upload', title, detail: filePath.split('/').filter(Boolean).pop() || '', notificationId: id })
   try {
     const { upload, HttpMethod } = await import('@tauri-apps/plugin-upload')
     const httpMethod = method === 'PUT' ? HttpMethod.Put : method === 'PATCH' ? HttpMethod.Patch : HttpMethod.Post
@@ -347,16 +467,20 @@ export async function uploadFileInBackground(url, filePath, {
         speed: Number(event?.transferSpeed || 0),
       }
       try { onProgress?.(progress) } catch { /* keep native transfer alive */ }
-      const now = Date.now()
-      if (now - lastNotice > 1400) {
-        lastNotice = now
-        const percent = progress.total > 0 ? ` · ${Math.min(100, Math.floor(progress.transferred / progress.total * 100))}%` : ''
-        void postProgressNotification(id, title, `${formatBytes(progress.transferred)} sent${percent}`, true)
+      const result = updateTransfer(transferId, {
+        status: TRANSFER_STATUS.running,
+        received: progress.transferred,
+        total: progress.total || undefined,
+      })
+      if (result?.shouldNotify) {
+        void postProgressNotification(id, title, `${progressBody(result.transfer)} sent`, true)
       }
     }, new Map(Object.entries(headers)), httpMethod)
+    finishTransfer(transferId, { status: TRANSFER_STATUS.completed, detail: 'Upload complete' })
     await postProgressNotification(id, title, 'Upload complete', false)
     return response
   } catch (error) {
+    failTransfer(transferId, error)
     await postProgressNotification(id, title, `Upload failed: ${String(error?.message || error).slice(0, 120)}`, false)
     throw error
   } finally {
@@ -364,9 +488,75 @@ export async function uploadFileInBackground(url, filePath, {
   }
 }
 
-function formatBytes(value) {
-  if (!Number.isFinite(value) || value <= 0) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB']
-  const index = Math.min(units.length - 1, Math.floor(Math.log(value) / Math.log(1024)))
-  return `${(value / (1024 ** index)).toFixed(index ? 1 : 0)} ${units[index]}`
+/**
+ * How many transfers are still moving. Used by the shell to decide whether to
+ * hold the Android foreground service open at all.
+ */
+export function runningTransferCount() {
+  return activeTransferCount()
+}
+
+/**
+ * Stop a transfer for real.
+ *
+ * Removing the row is only half of it: on Android the WorkManager job keeps
+ * running and keeps writing the file. The native cancel has to be given the
+ * exact path the worker was registered with — reconstructing a filename from
+ * the title misses the timestamped retries and resumed records this module
+ * creates, and the transfer then appears canceled while still downloading.
+ */
+export async function cancelNativeTransfer(transfer) {
+  if (!isNative() || !transfer) return false
+  const path = transfer.nativePath
+  if (!path) return false
+  try {
+    await invoke('plugin:download|cancel', { path })
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Rebuild the in-app view of background work.
+ *
+ * Android keeps downloading after the WebView is suspended. On resume the UI
+ * would still show the spinner it left behind, so the native store is read back
+ * in and the registry is corrected.
+ */
+export async function refreshBackgroundTransfers() {
+  if (!isNative()) return { adopted: 0, active: 0 }
+  return syncTransfersFromNative({
+    invoke,
+    adopt: ({ id, title }) => beginTransfer({ kind: 'download', title, id }),
+  })
+}
+
+/**
+ * Re-post a notification for anything still running.
+ *
+ * Android drops progress notifications when the process is trimmed under memory
+ * pressure even with a foreground service held, so the shade can go quiet while
+ * work continues. Returning to the app restores it.
+ */
+export async function restoreProgressNotifications() {
+  if (!isNative() || !isAndroidNative()) return 0
+  const { getTransfers, TRANSFER_STATUS: S } = await import('./transfers.js')
+  let restored = 0
+  for (const transfer of getTransfers()) {
+    if (transfer.status !== S.running && transfer.status !== S.queued) continue
+    restored += 1
+    /* Re-post under the id this transfer already owns. A fresh id would leave
+       the previous notification orphaned in the shade, so every resume would
+       add another stale copy of the same progress bar. */
+    const id = transfer.notificationId || nextNotificationId()
+    if (!transfer.notificationId) updateTransfer(transfer.id, { notificationId: id }, { notify: false })
+    void postProgressNotification(
+      id,
+      transfer.title,
+      `${progressBody(transfer)}${transfer.detail ? ` · ${transfer.detail}` : ''}`,
+      true,
+    )
+  }
+  return restored
 }

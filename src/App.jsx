@@ -471,7 +471,11 @@ export default function App() {
   const heroScale = useTransform(scrollY, [0, 520], [1, 0.98])
   /* Depth parallax: the orbit sits closer to the reader than the copy, so it
      travels further in the opposite direction as the hero leaves. */
-  const heroParallax = reduceMotion ? 0 : perfNow.level === 'lite' ? 0 : 1
+  /* Parallax is three scroll transforms on three elements. It costs nothing
+     measurable, and dropping it on a low-tier phone is the difference between
+     an app that has depth and one that looks broken — so only the user's own
+     reduced-motion setting turns it off. */
+  const heroParallax = reduceMotion ? 0 : 1
   const heroOrbitY = useTransform(scrollY, [0, 420], [0, 30 * heroParallax])
   const heroCopyY = useTransform(scrollY, [0, 420], [0, -14 * heroParallax])
   const heroHaloY = useTransform(scrollY, [0, 420], [0, 44 * heroParallax])
@@ -551,7 +555,7 @@ export default function App() {
             <motion.div key="home" className="home-screen" {...sharedAxis(1)}>
               <motion.section
                 className="home-hero pt-12 pb-10 sm:pt-20 sm:pb-16 text-center relative"
-                style={{ y: reduceMotion || perfNow.level === 'lite' ? 0 : heroY, opacity: reduceMotion || perfNow.level === 'lite' ? 1 : heroOpacity, scale: reduceMotion || perfNow.level === 'lite' ? 1 : heroScale }}
+                style={{ y: reduceMotion ? 0 : heroY, opacity: reduceMotion ? 1 : heroOpacity, scale: reduceMotion ? 1 : heroScale }}
               >
                 <div className="desktop-home-hero hidden sm:block">
                   <motion.div
@@ -690,7 +694,11 @@ export default function App() {
               </div>
               <ErrorBoundary key={active.id} onExit={goHome}>
                 <div className="tool-view">
-                  <MotionConfig reducedMotion={perfNow.level === 'lite' ? 'always' : 'user'}>
+                  {/* Motion follows the operating system and nothing else. A
+                      performance tier may lower resolution, frame rate or preview
+                      scale — it may not switch the animation off, which is what
+                      'always' here would do to every tool on a two-core phone. */}
+                  <MotionConfig reducedMotion="user">
                     <Suspense fallback={<ToolLoading />}>
                       {/* Every tool gets the same frame and the same introduction. */}
                       <ToolShell>

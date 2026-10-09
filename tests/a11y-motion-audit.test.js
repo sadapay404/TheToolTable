@@ -206,6 +206,55 @@ test('motion is still allowed when the user did not ask for less of it', () => {
   assert.ok(users.length >= 15, `only ${users.length} components animate; the app has gone still`)
 })
 
+test('motion is never switched off by the performance tier', () => {
+  /*
+   * The standing rule, written down as a test so it cannot quietly change.
+   *
+   * `reducedMotion="always"` tells the animation library to stop animating
+   * altogether. It was set for the 'lite' performance tier, which a two-core
+   * phone reaches automatically — so on exactly the devices least able to run a
+   * heavier app, every tool was rendered motionless. That is the previous
+   * failure repeating under a new name: the animation is still in the source,
+   * and the app still looks dead.
+   */
+  const offenders = []
+  for (const file of JSX) {
+    const source = read(file)
+    source.split('\n').forEach((line, i) => {
+      if (!/reducedMotion/.test(line)) return
+      if (/"always"|'always'/.test(line)) offenders.push(`${file}:${i + 1} ${line.trim().slice(0, 90)}`)
+    })
+  }
+  assert.deepEqual(offenders, [], `motion switched off by something other than the user:\n${offenders.join('\n')}`)
+
+  /*
+   * Scaling intensity by tier is legitimate — a 4° card tilt still tilts, and a
+   * lower ceiling is what keeps the frame budget. Removing the movement is not.
+   * So the rule is precise: the lite branch may never resolve to "no motion".
+   */
+  const gated = []
+  const still = /^(?:0|0\.0|''|""|false|null|undefined|\[\])$/
+  for (const file of JSX) {
+    read(file).split('\n').forEach((line, i) => {
+      const tier = /level\s*===\s*'lite'\s*\?\s*([^:]+?)\s*:/.exec(line)
+      if (!tier) return
+      const value = tier[1].trim()
+      /* A chained ternary chooses again further along; only judge a final value. */
+      if (/\?/.test(value)) return
+      if (still.test(value)) gated.push(`${file}:${i + 1} the lite tier resolves to ${value}`)
+    })
+  }
+  assert.deepEqual(gated, [], `motion gated on the performance tier:\n${gated.join('\n')}`)
+
+  /* And intensity really does scale, so the tiers are not all identical. */
+  const card = read('src/components/ToolCard.jsx')
+  assert.match(card, /level === 'lite' \? 4 : level === 'balanced' \? 7 : 11/,
+    'the card tilt no longer scales with the performance tier')
+
+  /* And the escape hatch must still be wired to the operating system. */
+  assert.match(all, /prefers-reduced-motion/, 'reduced motion is never checked for')
+})
+
 test('nothing is hidden behind a media query the app never sets', () => {
   /* A "lite mode" that silently drops motion, or a perf level that removes
      content, would be the previous failure repeating. */

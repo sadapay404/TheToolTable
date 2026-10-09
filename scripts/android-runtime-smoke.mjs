@@ -1,9 +1,42 @@
 import { execFileSync } from 'node:child_process'
 import { setTimeout as delay } from 'node:timers/promises'
+import { readFileSync } from 'node:fs'
 import path from 'node:path'
 
 const packageId = 'app.thetooltable.mubashir'
 const apkPath = path.resolve(process.argv[2] || '')
+
+/**
+ * Read the labels this test looks for out of the app source.
+ *
+ * They used to be hardcoded. The mobile rebuild renamed the tool back control
+ * from "Back to the table" to "Go back", and every Android build since then was
+ * compiled, signed, and then thrown away by this test waiting two minutes for a
+ * button that no longer existed — while the run reported itself as a build
+ * failure. A label that moves with the UI cannot do that: if it cannot be found
+ * in the source, that is a hard error in a second, not a timeout in two minutes.
+ */
+const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..')
+function sourceLabels() {
+  const read = (p) => readFileSync(path.join(ROOT, p), 'utf8')
+  const app = read('src/App.jsx')
+  const registry = read('src/toolsRegistry.jsx')
+  const back = app.match(/tool-back-button[^>]*aria-label="([^"]+)"/)?.[1]
+  if (!back) throw new Error('Could not find the tool back control\'s aria-label in src/App.jsx. The app must label it for screen readers and for this test.')
+  const toolNames = [...registry.matchAll(/\bid: '[a-z0-9]+', n: \d+, name: '([^']+)'/g)].map(([, name]) => name)
+  if (toolNames.length < 20) throw new Error(`Only found ${toolNames.length} tool names in the registry.`)
+  // ToolCard renders aria-label={`Open ${tool.name}`}.
+  return { back, cards: toolNames.map((name) => `Open ${name}`), byName: new Map(toolNames.map((n) => [`Open ${n}`, n])) }
+}
+const LABELS = sourceLabels()
+console.log(`Driving the real controls: back = "${LABELS.back}", ${LABELS.cards.length} tool cards.`)
+
+/** The home collection heading, read from the app so a copy change cannot stall the run. */
+function homeHeading() {
+  const app = readFileSync(path.join(ROOT, 'src/App.jsx'), 'utf8')
+  return app.match(/Browse the collection/)?.[0] || 'Browse the collection'
+}
+const HOME_HEADING = homeHeading()
 const POLL_MS = 900
 const UI_TIMEOUT_MS = 120_000
 let lastTree = ''
@@ -95,12 +128,14 @@ async function waitUntil(description, predicate, timeout = UI_TIMEOUT_MS) {
   throw new Error(`Timed out waiting for ${description}. Last visible nodes:\n${nodesOf(lastTree).slice(0, 100).map((node) => `${node.className}: ${node.text || node.description}`).join('\n')}`)
 }
 
+function atHome(tree) {
+  const nodes = nodesOf(tree)
+  return nodes.some((node) => node.text === HOME_HEADING)
+    && nodes.some((node) => LABELS.cards.includes(node.description))
+}
+
 async function waitForHome() {
-  const result = await waitUntil('the home collection after back navigation', (tree) => {
-    const nodes = nodesOf(tree)
-    return nodes.some((node) => node.text === 'Browse the collection')
-      && nodes.some((node) => node.description === 'Open Media Clipper & Downloader' || node.description === 'Open AI Background Remover')
-  })
+  const result = await waitUntil('the home collection after back navigation', atHome)
   if (!foreground()) throw new Error('The app left the foreground after returning to its home screen.')
   return result
 }
@@ -123,7 +158,7 @@ async function openTool(label, title) {
   await waitUntil(`the ${title} screen`, (tree) => {
     const nodes = nodesOf(tree)
     return nodes.some((node) => node.text.includes(title))
-      && nodes.some((node) => node.description === 'Back to the table')
+      && nodes.some((node) => node.description === LABELS.back)
   })
   if (!foreground()) throw new Error(`The app is not foregrounded on ${title}.`)
 }
@@ -154,11 +189,7 @@ async function main() {
   const launchResult = adb('shell', 'am', 'start', '-W', '-n', `${packageId}/.MainActivity`)
   if (!/Status:\s*ok/.test(launchResult)) throw new Error(`Android did not start the app's MainActivity:\n${launchResult}`)
   console.log(launchResult)
-  await waitUntil('the Android home collection on launch', (tree) => {
-    const nodes = nodesOf(tree)
-    return nodes.some((node) => node.text === 'Browse the collection')
-      && nodes.some((node) => node.description === 'Open Media Clipper & Downloader')
-  })
+  await waitUntil('the Android home collection on launch', atHome)
   if (!foreground()) throw new Error('The app rendered its home collection but is not the resumed Android activity.')
   console.log('PASS: fresh install launches into the accessible tool collection.')
 
@@ -171,9 +202,9 @@ async function main() {
 
   // Tool 06: verify its own back control also restores the collection.
   await openTool('Open AI Background Remover', 'AI Background Remover')
-  await tapLabel('Back to the table')
+  await tapLabel(LABELS.back)
   await waitForHome()
-  console.log('PASS: Tool 06 app-back returns to the live home collection (no header-only black screen).')
+  console.log(`PASS: Tool 06 the app's own "${LABELS.back}" control returns to the live home collection (no header-only black screen).`)
 
   assertNoAppCrash()
   console.log('PASS: no app-process fatal exception detected in logcat.')

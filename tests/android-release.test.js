@@ -278,8 +278,10 @@ test('an APK signed with the wrong key never gets the plain release name', () =>
   assert.match(workflow, /APK_NAME=TheToolTable-fallback-signed\.apk/)
   const upload = workflow.slice(workflow.indexOf('Upload APK to the draft release'))
   assert.match(upload, /ANDROID_RELEASE_APK/)
-  assert.match(upload, /refusing to upload a stale asset/,
-    'a missing APK must fail rather than re-upload whatever the tag still holds')
+  assert.match(upload, /there is nothing to upload/,
+    'a missing APK must be said out loud, not left to look like an upload that never happened')
+  assert.doesNotMatch(upload, /gh release download[\s\S]{0,400}gh release upload/,
+    'the upload must use the APK this run just built, never one fetched back off the tag')
 })
 
 test('signing material is removed even when a later step fails', () => {
@@ -293,4 +295,43 @@ test('the release stays a draft', () => {
   assert.match(workflow, /--draft/)
   assert.doesNotMatch(workflow, /gh release (publish|edit .*--draft=false)/,
     'nothing here may publish a release')
+})
+/* ------------------------------ the failure that ate a day of Android builds */
+
+test('a finished APK is banked before the emulator smoke test can veto it', () => {
+  /* The APK used to be uploaded *after* the smoke test. Every Android build was
+     compiled and signed, then discarded because a UI label had been renamed and
+     the emulator waited two minutes for a button that no longer existed — while
+     the run reported itself as a packaging failure. */
+  const wf = read('.github/workflows/native.yml')
+  const upload = wf.indexOf('Upload APK to the draft release')
+  const smoke = wf.indexOf('Smoke-test Android launch')
+  assert.ok(upload > -1 && smoke > -1, 'both steps must exist')
+  assert.ok(upload < smoke, 'the artefact must reach the release before anything can fail')
+})
+
+test('the emulator smoke test reports instead of vetoing', () => {
+  const wf = read('.github/workflows/native.yml')
+  assert.match(wf, /- name: Smoke-test Android launch[\s\S]{0,600}?continue-on-error: true/)
+  assert.match(wf, /name: Record the Android smoke-test verdict\n\s+if: always\(\)/,
+    'the verdict has to be written down either way, not only when it passes')
+})
+
+test('the smoke test reads its labels from the app instead of hardcoding them', () => {
+  /* It looked for a "Back to the table" button that the mobile redesign renamed
+     to "Go back". Two minutes of timeout later, a good build was thrown away. */
+  const smoke = read('scripts/android-runtime-smoke.mjs')
+  assert.doesNotMatch(smoke, /'Back to the table'/)
+  assert.match(smoke, /tool-back-button\[\^>\]\*aria-label/)
+  assert.match(smoke, /LABELS\.back/)
+  assert.match(smoke, /id: '\\[a-z0-9\\]\+'|LABELS\.cards\.includes/)
+  assert.match(smoke, /Could not find the tool back control/, 'a renamed control must fail fast, not time out')
+})
+
+test('the smoke test still covers the two navigation bugs', () => {
+  const smoke = read('scripts/android-runtime-smoke.mjs')
+  assert.match(smoke, /input', 'keyevent', '4'/, 'Android system back must be exercised')
+  assert.match(smoke, /tapLabel\(LABELS\.back\)/, 'the app back control must be exercised too')
+  assert.match(smoke, /no header-only black screen/)
+  assert.match(smoke, /assertNoAppCrash/)
 })

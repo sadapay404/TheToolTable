@@ -335,3 +335,45 @@ test('the smoke test still covers the two navigation bugs', () => {
   assert.match(smoke, /no header-only black screen/)
   assert.match(smoke, /assertNoAppCrash/)
 })
+
+/* ============================================== the APK is verified, not assumed */
+
+test('the Android job verifies the APK before it can be banked', () => {
+  const wf = read('.github/workflows/native.yml')
+  const step = wf.indexOf('name: Verify the signed APK before it is banked')
+  assert.notEqual(step, -1, 'nothing verifies the APK any more')
+
+  const upload = wf.indexOf('name: Upload APK to the draft release')
+  const smoke = wf.indexOf('name: Smoke-test Android launch')
+  assert.ok(step < upload, 'the APK must be verified before it is uploaded')
+  assert.ok(upload < smoke, 'the APK must be banked before the emulator can throw it away')
+
+  /* A signed APK is not automatically a working one. These are the ways this
+     project's own build can produce a valid package that is still broken. */
+  const body = wf.slice(step, upload)
+  for (const check of [
+    ['is a readable zip', 'unzip -tq'],
+    ['carries a dex', 'classes.dex'],
+    ['carries its resources', 'resources.arsc'],
+    ['has a launcher icon at every density', 'res/mipmap-'],
+    ['is inspected with aapt2', 'aapt2'],
+    ['declares the notification permission', 'POST_NOTIFICATIONS'],
+    ['declares the foreground-service permission', 'FOREGROUND_SERVICE'],
+    ['verifies its own signature', 'apksigner'],
+    ['reports to the job summary', 'GITHUB_STEP_SUMMARY'],
+  ]) {
+    assert.ok(body.includes(check[1]), `the APK verification does not ${check[0]}`)
+  }
+})
+
+test('a failing APK verification stops the job rather than warning', () => {
+  const wf = read('.github/workflows/native.yml')
+  const step = wf.indexOf('name: Verify the signed APK before it is banked')
+  const body = wf.slice(step, wf.indexOf('name: Remove signing material', step))
+  assert.doesNotMatch(body, /continue-on-error/, 'a broken APK must not be allowed to continue')
+  assert.doesNotMatch(body, /^\s*\|\|\s*true\s*$/m, 'a failing check must not be swallowed')
+  /* Every refusal has to be a failure, not a note. */
+  const refusals = body.match(/::error title=/g) || []
+  assert.ok(refusals.length >= 5, `only ${refusals.length} failure paths are handled`)
+  assert.ok(body.includes('set -euo pipefail'), 'the step must stop on the first failure')
+})

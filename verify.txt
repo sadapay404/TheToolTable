@@ -1,0 +1,4 @@
+Signer #1 certificate DN: CN=TheToolTable, O=Mubashir
+Signer #1 certificate SHA-256 digest: abcdef0123456789
+Verified using v2 scheme (JAR signing): true
+Verified using v3 scheme: true

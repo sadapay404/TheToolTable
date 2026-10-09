@@ -1,6 +1,6 @@
 import { perf } from '../../lib/perf.js'
 import React, { forwardRef, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import { WallRenderer, probe } from '../../lib/wall/renderer.js'
 import { drawText, ensureFonts } from '../../lib/wall/textlayer.js'
 import { textColorFor } from '../../lib/wall/design.js'
@@ -85,6 +85,8 @@ const Stage = forwardRef(function Stage({ playing, setPlaying, mode, setMode, fs
   const R = useRef(null), live = useRef({ d, playing }), dirty = useRef(true), phase = useRef(0)
   const [box, setBox] = useState({ w: 640, h: 400 })
   const [err, setErr] = useState('')
+  const [ready, setReady] = useState(false)
+  const reduceMotion = useReducedMotion()
   const [pr, setPr] = useState({ avg: 0.3, min: 0, max: 1, sd: 0.1 })
   live.current = { d, playing }
   const aspect = fs ? box.w / box.h : mode === 'flat' ? d.size.w / d.size.h : ASPECT[mode]
@@ -100,10 +102,29 @@ const Stage = forwardRef(function Stage({ playing, setPlaying, mode, setMode, fs
 
   // renderer lifecycle
   useEffect(() => {
-    let raf, last = performance.now(), dead = false, lastRun = 0
-    try { R.current = new WallRenderer(canvas.current); R.current.setDesign(live.current.d, true) } catch (e) { setErr(e.message); return }
+    let loopRaf = 0, warmRaf = 0, idle = 0, idleKind = '', last = performance.now(), dead = false, lastRun = 0
+    /* Building the WebGL context and compiling the fragment program is
+       synchronous, and on a phone it is the best part of a second. Doing it
+       inside the commit that mounts this tool meant nothing at all appeared
+       until it finished — the whole screen, chrome included, waited on the GPU.
+       Start it after the first paint instead: the tool lands immediately and the
+       stage fills in a frame later, over a shimmer that is already moving. */
+    const start = () => {
+      if (dead) return
+      try {
+        R.current = new WallRenderer(canvas.current)
+        R.current.setDesign(live.current.d, true)
+        setReady(true)
+      } catch (e) { setErr(e.message) }
+    }
+    const ric = typeof window !== 'undefined' && window.requestIdleCallback
+    warmRaf = requestAnimationFrame(() => {
+      if (dead) return
+      if (ric) { idleKind = 'ric'; idle = window.requestIdleCallback(start, { timeout: 1200 }) }
+      else { idleKind = 'timeout'; idle = setTimeout(start, 48) }
+    })
     const loop = (now) => {
-      if (dead) return; raf = requestAnimationFrame(loop)
+      if (dead) return; loopRaf = requestAnimationFrame(loop)
       if (lastRun && now - lastRun < 1000 / perf.fps() - 3) return; lastRun = now
       const dt = Math.min(0.1, (now - last) / 1000); last = now
       const { d: dd, playing: pl } = live.current, r = R.current
@@ -112,8 +133,14 @@ const Stage = forwardRef(function Stage({ playing, setPlaying, mode, setMode, fs
       if (pl && dd.amp > 0) phase.current = (phase.current + (dt * Math.PI * 2) / dd.loop) % (Math.PI * 2)
       if (moving || dirty.current || (pl && dd.amp > 0)) { if (canvas.current) r.draw(phase.current, canvas.current.width, canvas.current.height); dirty.current = false }
     }
-    raf = requestAnimationFrame(loop)
-    return () => { dead = true; cancelAnimationFrame(raf); R.current?.dispose(); R.current = null }
+    loopRaf = requestAnimationFrame(loop)
+    return () => {
+      dead = true
+      cancelAnimationFrame(loopRaf)
+      cancelAnimationFrame(warmRaf)
+      if (idle) { if (idleKind === 'ric') window.cancelIdleCallback(idle); else clearTimeout(idle) }
+      R.current?.dispose(); R.current = null
+    }
   }, [])
   useEffect(() => { R.current?.setDesign(d); dirty.current = true }, [d])
   useEffect(() => {
@@ -159,6 +186,28 @@ const Stage = forwardRef(function Stage({ playing, setPlaying, mode, setMode, fs
         <motion.div layout={false} className="relative overflow-hidden" initial={false} animate={{ width: W, height: H, borderRadius: frame ? 38 : fs ? 0 : mode === 'flat' ? 8 : 14 }} transition={{ type: 'spring', stiffness: 260, damping: 28 }}
           style={{ boxShadow: fs ? 'none' : frame ? '0 0 0 7px #111, 0 0 0 9px #444, 0 34px 60px -20px rgba(0,0,0,.55)' : '0 30px 60px -24px rgba(0,0,0,.5), 0 0 0 1px rgba(0,0,0,.08)' }}>
           <canvas ref={canvas} className="absolute inset-0 w-full h-full" />
+          {/* The GPU is still warming up. This is what the user sees in the
+              gap, and it moves rather than sitting as a dead grey box. */}
+          {!ready && !err && (
+            <motion.div
+              className="absolute inset-0 overflow-hidden"
+              style={{ background: 'var(--surface)' }}
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18 }}
+              aria-hidden="true"
+            >
+              <motion.div
+                className="absolute inset-y-0 w-1/2"
+                style={{
+                  background: 'linear-gradient(90deg, transparent, color-mix(in srgb, var(--ink) 14%, transparent), transparent)',
+                }}
+                initial={reduceMotion ? false : { x: '-60%' }}
+                animate={reduceMotion ? undefined : { x: ['-60%', '260%'] }}
+                transition={{ duration: 1.5, repeat: reduceMotion ? 0 : Infinity, ease: 'easeInOut' }}
+              />
+            </motion.div>
+          )}
           <canvas ref={over} className="absolute inset-0 w-full h-full pointer-events-none" style={{ opacity: mode === 'flat' || fs ? 1 : 0.0 }} />
           <AnimatePresence mode="wait" initial={false}>{!fs && mode !== 'flat' && <motion.div key={mode} className="absolute inset-0" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }}><Mock mode={mode} tone={tone} /></motion.div>}</AnimatePresence>
           {err && <div className="absolute inset-0 grid place-items-center p-6 text-center text-[13px]" style={{ background: 'var(--surface)' }}>{err}<br />Background Canvas Studio needs WebGL2 (any current Chrome, Edge, Firefox or Safari 15+).</div>}

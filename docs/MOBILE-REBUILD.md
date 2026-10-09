@@ -25,7 +25,7 @@ A ground-up mobile pass driven by seven Android defects reported against v1.2.0.
 | 6 | New animated mobile footer | **Complete** |
 | 7 | Background transfers + notification progress | **Complete** |
 | 8 | Android icon, signing, CI de-risking | **Complete** |
-| 9 | Functional sweep + regression tests | Pending |
+| 9 | Functional sweep + regression tests | **Complete** |
 | 10 | Native builds + draft GitHub release | Pending |
 
 ---
@@ -694,3 +694,97 @@ Until that exists, every Android build is signed with a throwaway key and can on
 ever be installed fresh. **Not verified here:** still no Android SDK, NDK, JDK or
 cargo in this sandbox, so the icon set has been verified as files and as a
 simulated install, but not as pixels inside a real APK. Part 10 covers that.
+
+---
+
+## Part 9 — Functional sweep across all twenty tools ✅
+
+Seven parts of redesign can hide a tool that no longer works. This part opened
+every tool in a real browser the way a user opens it, drove the ones that can be
+driven, and locked the result in.
+
+### What the sweep found
+
+**One real stall: the Background Canvas Studio took two seconds to appear.**
+`Stage.jsx` built its `WallRenderer` — a WebGL2 context plus a compiled fragment
+program — synchronously inside the effect that mounts the tool. Shader
+compilation is synchronous and blocking, and because the tool screen commits in
+one render, **nothing at all appeared until the GPU finished**: not the canvas,
+not the tool body, not even the shared intro card. Measured on a 390×844 Android
+profile: 2054 ms to first paint on a warm visit, against 420–660 ms for every
+other tool.
+
+It is now started after the first paint, in a `requestIdleCallback` (with a
+`setTimeout` fallback). The tool lands immediately and the stage fills in a frame
+later — over a shimmer that is already moving, so nothing is ever a dead grey
+box. Warm time to first paint went from **1110 ms to 494 ms**, in line with the
+rest of the app, and the long frame moved off the critical path.
+
+**Everything else held.** All twenty tools open, carry the shared intro, expose
+real controls, lay out without overflowing at 390 px, keep something moving, and
+produce zero console errors. Six were driven end to end:
+
+- **Metadata Extractor** reads a real uploaded PNG — 4.53 KB, 29 metadata
+  entries, `image/png`, with the scrub and report actions live.
+- **QR Studio** redraws its vector modules when the encoded text changes.
+- **Decision Hub** lands on heads *and* tails across eight flips, read from the
+  result line rather than the coin's own face label, and only after waiting for
+  each flip to finish — the button is disabled while the coin is in the air.
+- **Text Lab** counts what you type; **Pakistan Money Kit** computes from typed
+  numbers; **Icon Forge** draws all eight platform previews with real ink in them.
+
+### What it fixed in the harness, which is the interesting part
+
+Three of the four "failures" the sweep first reported were the sweep's fault, and
+finding out why changed the sweep itself:
+
+- A tool's screen appears immediately while its intro waits on a lazy chunk, so a
+  click-and-sleep loop re-clicked a tool that was merely still loading and
+  reported it as broken. `openTool` now clicks once and waits.
+- Tools remember their last tab and options in `localStorage`, so a shared
+  browser profile made each run test yesterday's state. Every section now starts
+  from a cleared profile.
+- `.display` is the app's display type, so `querySelector('.display')` returned
+  the tool's own heading instead of the coin's result.
+
+### The committed regression suite
+
+**`browsertest/verify9.mjs`** — the sweep itself, with its fixtures, so it can be
+run again: **204/204 checks**, phone and desktop, reduced motion included. It
+starts from a clean profile, clicks once and waits, and only fails on something a
+user would notice.
+
+**`tests/functional-sweep.test.js`** — 20 checks that run in CI, with no browser:
+
+- the registry still describes exactly twenty tools, numbered 1–20 with no gaps,
+  no duplicate ids, names, icons or chunks;
+- every lazy chunk points at a file that exists, every tool has a tag, a
+  description and enough keywords to be found by search;
+- no file in `src/tools/` is unreachable from the registry or from another tool;
+- **the WebGL stage is not constructed on the mount path** — `start` is reachable
+  only from the idle callback, the deferred renderer is still cleaned up, and the
+  live render loop (`r.step` / `r.draw` / `perf.fps()`) is untouched;
+- the stage still shows motion while the GPU warms up, and still holds it under
+  `prefers-reduced-motion`;
+- back navigation keeps one contract, `home` is handled before the app is allowed
+  to exit, and the native back handler reads live state rather than the first
+  render — bugs 6 and 7, guarded.
+
+### Verification
+
+- `npm test` — **262/262 passing** (+20).
+- `npm run build` — passing.
+- `browsertest/verify9.mjs` — **204/204**:
+  - All twenty tools: opens, has the shared intro, has controls, is laid out,
+    nothing overflows sideways, no crash screen, zero console errors, something
+    is moving.
+  - QR, Decision, Text Lab, Pakistan Money Kit, Metadata Extractor and Icon Forge
+    driven with real input and real files.
+  - **Bug 6**: back leaves a tool instead of closing the app, and lands on the
+    collection.
+  - **Bug 7**: leaving five different tools in turn never leaves a header with
+    nothing under it, and never leaves a blank screen.
+  - Re-opening a tool immediately after leaving it still works.
+  - Reduced motion: the tool renders, the stage comes up, every control stays.
+  - Desktop: the phone footer stays hidden, the shared chrome opens, no sideways
+    overflow, the deferred stage still comes up.

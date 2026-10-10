@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ToolIcon } from './ToolIcon.jsx'
 import { EASE, DURATION, t, stagger, riseIn } from '../lib/motion.js'
@@ -12,6 +12,8 @@ import { EASE, DURATION, t, stagger, riseIn } from '../lib/motion.js'
  */
 export default function ToolActions({ tool, onClose, onOpen }) {
   const [toast, setToast] = useState('')
+  const closeTimerRef = useRef(null)
+  const copyRequestRef = useRef(0)
 
   useEffect(() => {
     if (!tool) return undefined
@@ -20,14 +22,36 @@ export default function ToolActions({ tool, onClose, onOpen }) {
     return () => document.removeEventListener('keydown', onKey)
   }, [tool, onClose])
 
+  /* Closing or swapping sheets invalidates an in-flight clipboard result and
+     releases the delayed close, so neither can act on a later tool. */
+  useEffect(() => {
+    copyRequestRef.current += 1
+    if (closeTimerRef.current !== null) window.clearTimeout(closeTimerRef.current)
+    closeTimerRef.current = null
+    if (!tool) setToast('')
+  }, [tool])
+  useEffect(() => () => {
+    copyRequestRef.current += 1
+    if (closeTimerRef.current !== null) window.clearTimeout(closeTimerRef.current)
+  }, [])
+
   const copy = async () => {
+    const request = ++copyRequestRef.current
     try {
       await navigator.clipboard.writeText(tool.name)
+      if (request !== copyRequestRef.current) return
       setToast('Name copied')
     } catch {
+      if (request !== copyRequestRef.current) return
       setToast('Could not copy')
     }
-    window.setTimeout(() => { setToast(''); onClose() }, 700)
+    if (closeTimerRef.current !== null) window.clearTimeout(closeTimerRef.current)
+    closeTimerRef.current = window.setTimeout(() => {
+      closeTimerRef.current = null
+      if (request !== copyRequestRef.current) return
+      setToast('')
+      onClose()
+    }, 700)
   }
 
   return (

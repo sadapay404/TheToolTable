@@ -19,6 +19,7 @@ export default function CommandPalette({ open, onClose, onTool, onTheme }) {
   const [q, setQ] = useState('')
   const [sel, setSel] = useState(0)
   const inputRef = useRef(null)
+  const focusTimerRef = useRef(null)
 
   const items = useMemo(() => {
     const toolItems = TOOLS.map((t) => ({
@@ -35,11 +36,22 @@ export default function CommandPalette({ open, onClose, onTool, onTheme }) {
     return [...recentItems, ...toolItems, ...themeItems].filter((i) => i.s > 0).sort((a, b) => b.s - a.s)
   }, [q, onTool, onTheme, onClose])
 
-  useEffect(() => { if (open) { setQ(''); setSel(0); setTimeout(() => inputRef.current?.focus(), 30) } }, [open])
+  useEffect(() => {
+    if (!open) return undefined
+    setQ(''); setSel(0)
+    focusTimerRef.current = window.setTimeout(() => {
+      focusTimerRef.current = null
+      inputRef.current?.focus()
+    }, 30)
+    return () => {
+      if (focusTimerRef.current !== null) window.clearTimeout(focusTimerRef.current)
+      focusTimerRef.current = null
+    }
+  }, [open])
   useEffect(() => { setSel(0) }, [q])
 
   const exec = (item) => { item?.run(); onClose() }
-  const magnet = useMagnetic({ strength: 0.08, max: 12 })
+  const magnet = useMagnetic({ strength: 0.08, max: 12, disabled: !open })
 
   return (
     <AnimatePresence>

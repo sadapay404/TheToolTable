@@ -229,6 +229,12 @@ export function useMagnetic({ strength = 0.28, max = 14, disabled = false } = {}
   const sx = useSpring(x, { stiffness: 220, damping: 22, mass: 0.55 })
   const sy = useSpring(y, { stiffness: 220, damping: 22, mass: 0.55 })
 
+  /* A closed overlay must not retain its last cursor offset. Reset the source
+     values when a consumer disables magnetism so reopening begins at rest. */
+  useEffect(() => {
+    if (disabled) { x.set(0); y.set(0) }
+  }, [disabled, x, y])
+
   const onPointerMove = useCallback((event) => {
     if (disabled || event.pointerType === 'touch') return
     const bounds = event.currentTarget.getBoundingClientRect()

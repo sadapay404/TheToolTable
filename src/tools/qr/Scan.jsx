@@ -6,6 +6,7 @@ import { decodeSource } from '../../lib/qr/zx.js'
 import { parse } from '../../lib/qr/parse.js'
 import { recentAction } from '../../lib/utils.js'
 import ResultCard from './Result.jsx'
+import { useDecorativeMotion } from '../../lib/motion.js'
 
 const loadImg = (src) => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('Could not open this image')); i.src = src })
 const POLY = (pts) => pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
@@ -28,6 +29,7 @@ function enhance(img) {
 export default function Scan() {
   const { editFrom } = useQR()
   const [toastNode, toast] = useToast()
+  const decorativeMotion = useDecorativeMotion()
   const [mode, setMode] = useState('image')
   const [shot, setShot] = useState(null) // {url,w,h}
   const [found, setFound] = useState(null)
@@ -330,7 +332,7 @@ export default function Scan() {
           <Label right={items.length ? <motion.span key={items.length} initial={{ scale: 1.3 }} animate={{ scale: 1 }} className="mono text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ background: 'var(--surface2)', color: 'var(--copper)' }}><CountText value={items.length} format={(v) => Math.round(v)} /> found</motion.span> : null}>Result</Label>
           <AnimatePresence mode="wait" initial={false}>
             {!found ? (
-              <motion.div key="idle" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="py-10 text-center"><motion.span animate={{ y: [0, -6, 0] }} transition={{ repeat: Infinity, duration: 2.4 }} className="inline-block" style={{ color: 'var(--copper)' }}><QIco n="scan" s={38} /></motion.span><div className="text-[13.5px] font-semibold mt-3">Nothing scanned yet</div><div className="text-[12.5px] mt-1" style={{ color: 'var(--muted)' }}>Results appear here with smart actions and a safety check.</div></motion.div>
+              <motion.div key="idle" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="py-10 text-center"><motion.span animate={decorativeMotion ? { y: [0, -6, 0] } : { y: 0 }} transition={decorativeMotion ? { repeat: Infinity, duration: 2.4 } : { duration: 0 }} className="inline-block" style={{ color: 'var(--copper)' }}><QIco n="scan" s={38} /></motion.span><div className="text-[13.5px] font-semibold mt-3">Nothing scanned yet</div><div className="text-[12.5px] mt-1" style={{ color: 'var(--muted)' }}>Results appear here with smart actions and a safety check.</div></motion.div>
             ) : !items.length ? (
               <motion.div key="none" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="py-8 text-center"><span style={{ color: '#C3423F' }}><QIco n="warn" s={34} /></span><div className="text-[14px] font-bold mt-3">No code found</div><div className="text-[12.5px] mt-1" style={{ color: 'var(--muted)' }}>Try a sharper, closer photo with the whole code in view — or the enhanced-contrast retry.</div></motion.div>
             ) : (

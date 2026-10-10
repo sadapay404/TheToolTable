@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence, useMotionValue, useReducedMotion, useSpring, useMotionValueEvent } from 'framer-motion'
 import { ToolIcon } from './ToolIcon.jsx'
 import { useRipple } from '../lib/ripple.js'
-import { EASE, DURATION, SPRING, t } from '../lib/motion.js'
+import { EASE, DURATION, SPRING, t, useDecorativeMotion } from '../lib/motion.js'
 
 /** Spring-animated numeric readout */
 export function AnimatedNumber({ value, format = (n) => Math.round(n).toLocaleString(), className = '', stiffness = 120 }) {
@@ -47,6 +47,7 @@ export function Dropzone({ onFiles, multiple = false, accept, label = 'Drop file
   const ref = useRef(null)
   const ripple = useRipple()
   const reduceMotion = useReducedMotion()
+  const decorativeMotion = useDecorativeMotion()
   const perimeter = 1180
 
   const accept_ = (files) => {
@@ -90,8 +91,8 @@ export function Dropzone({ onFiles, multiple = false, accept, label = 'Drop file
           <motion.span
             className="tool-dropzone-mark"
             aria-hidden="true"
-            animate={reduceMotion ? undefined : hot ? { y: -4, scale: 1.06 } : { y: [0, -6, 0] }}
-            transition={hot ? SPRING.bouncy : { duration: 2.8, repeat: Infinity, ease: 'easeInOut' }}
+            animate={hot ? { y: -4, scale: 1.06 } : decorativeMotion ? { y: [0, -6, 0] } : { y: 0, scale: 1 }}
+            transition={hot ? SPRING.bouncy : decorativeMotion ? { duration: 2.8, repeat: Infinity, ease: 'easeInOut' } : { duration: 0 }}
           >
             <ToolIcon name={icon} size={compact ? 24 : 30} />
           </motion.span>

@@ -8,7 +8,7 @@ import {
   EASE, DURATION, CSS_MS, SPRING, CARD_SPRING, t, instant, stagger, staggerChildren,
   fadeIn, riseIn, riseInX, maskLine, scaleIn, pressable, containerTransform, sharedAxis,
   drawRule, shineSweep, floatingLoop, spinLoop, breatheLoop, shouldAnimate,
-  AMBIENT_STATIC, ambientProfile, useCountUp, useMagnetic, usePointerDrift, useReveal, useStaggeredDelay,
+  AMBIENT_STATIC, decorativeMotionEnabled, ambientProfile, useCountUp, useDecorativeMotion, useMagnetic, usePointerDrift, useReveal, useStaggeredDelay,
 } from '../src/lib/motion.js'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -147,13 +147,24 @@ test('shouldAnimate is false under prefers-reduced-motion and true otherwise', (
 })
 
 test('every shared motion helper is exported for callers', () => {
-  for (const hook of [useCountUp, useMagnetic, usePointerDrift, useReveal, useStaggeredDelay]) {
+  for (const hook of [useCountUp, useDecorativeMotion, useMagnetic, usePointerDrift, useReveal, useStaggeredDelay]) {
     assert.equal(typeof hook, 'function')
   }
+  assert.equal(typeof decorativeMotionEnabled, 'function')
   assert.equal(typeof ambientProfile, 'function')
 })
 
 /* ------------------------------------------ shell-owned ambient policy -- */
+test('the decorative-loop policy keeps active feedback separate from handset idle work', () => {
+  assert.equal(decorativeMotionEnabled('full', false, true), true, 'an explicit Full profile keeps decoration available')
+  assert.equal(decorativeMotionEnabled('balanced', false, false), true, 'desktop Balanced keeps its ambient treatment')
+  assert.equal(decorativeMotionEnabled('balanced', false, true), false, 'automatic handset Balanced does not sustain idle loops')
+  assert.equal(decorativeMotionEnabled('lite', false, false), false)
+  assert.equal(decorativeMotionEnabled('full', true, false), false)
+  assert.match(motionSource, /export function useDecorativeMotion\(\)[\s\S]*?usePerf\(\)/,
+    'tool consumers must react to the existing profile store instead of polling independently')
+})
+
 test('the ambient profile is pure, polls nowhere, and makes Lite static', () => {
   assert.deepEqual(AMBIENT_STATIC, { enabled: true, level: 'full', count: 5, scale: 1 })
   assert.deepEqual(ambientProfile('full'), { enabled: true, level: 'full', count: 5, scale: 1 })

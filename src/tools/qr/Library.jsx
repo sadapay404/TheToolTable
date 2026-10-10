@@ -6,9 +6,13 @@ import { DEFAULT_STYLE, merge } from '../../lib/qr/render.js'
 import { typeById } from '../../lib/qr/payloads.js'
 import { download } from '../../lib/utils.js'
 import ResultCard from './Result.jsx'
+import { useDecorativeMotion } from '../../lib/motion.js'
 
 const when = (t) => { const d = new Date(t), n = Date.now() - t; if (n < 60e3) return 'just now'; if (n < 3600e3) return Math.floor(n / 60e3) + ' min ago'; if (n < 86400e3) return Math.floor(n / 3600e3) + ' h ago'; return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) }
-const Empty = ({ icon, title, sub, action }) => <div className="py-14 text-center"><motion.div animate={{ y: [0, -6, 0] }} transition={{ repeat: Infinity, duration: 3.2 }} className="inline-block" style={{ color: 'var(--copper)' }}><QIco n={icon} s={36} /></motion.div><div className="font-semibold mt-3 text-[14.5px]">{title}</div><div className="text-[12.5px] mt-1 max-w-xs mx-auto" style={{ color: 'var(--muted)' }}>{sub}</div>{action && <div className="mt-4">{action}</div>}</div>
+function Empty({ icon, title, sub, action }) {
+  const decorativeMotion = useDecorativeMotion()
+  return <div className="py-14 text-center"><motion.div animate={decorativeMotion ? { y: [0, -6, 0] } : { y: 0 }} transition={decorativeMotion ? { repeat: Infinity, duration: 3.2 } : { duration: 0 }} className="inline-block" style={{ color: 'var(--copper)' }}><QIco n={icon} s={36} /></motion.div><div className="font-semibold mt-3 text-[14.5px]">{title}</div><div className="text-[12.5px] mt-1 max-w-xs mx-auto" style={{ color: 'var(--muted)' }}>{sub}</div>{action && <div className="mt-4">{action}</div>}</div>
+}
 
 function Designs() {
   const { editFrom, setStyle, go } = useQR()

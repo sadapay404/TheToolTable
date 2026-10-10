@@ -3,7 +3,7 @@ import { motion, useReducedMotion, AnimatePresence } from 'framer-motion'
 import { ToolIcon } from './ToolIcon.jsx'
 import { useRipple } from '../lib/ripple.js'
 import { RevealLine, RevealRule } from './Reveal.jsx'
-import { EASE, DURATION, SPRING, t } from '../lib/motion.js'
+import { EASE, DURATION, SPRING, t, useDecorativeMotion } from '../lib/motion.js'
 
 /**
  * Tool chrome.
@@ -171,6 +171,7 @@ export function ToolButton({ children, onClick, icon, disabled, busy, tone = 'fi
 
 export function EmptyState({ icon = 'file', title, sub, action, compact = false }) {
   const reduceMotion = useReducedMotion()
+  const decorativeMotion = useDecorativeMotion()
   return (
     <motion.div
       className={`tool-empty ${compact ? 'tool-empty--compact' : ''}`}
@@ -181,8 +182,8 @@ export function EmptyState({ icon = 'file', title, sub, action, compact = false 
       <motion.span
         className="tool-empty-mark"
         aria-hidden="true"
-        animate={reduceMotion ? undefined : { y: [0, -7, 0] }}
-        transition={{ duration: 3.4, repeat: Infinity, ease: 'easeInOut' }}
+        animate={decorativeMotion ? { y: [0, -7, 0] } : { y: 0 }}
+        transition={decorativeMotion ? { duration: 3.4, repeat: Infinity, ease: 'easeInOut' } : { duration: 0 }}
       >
         <ToolIcon name={icon} size={compact ? 26 : 34} />
       </motion.span>

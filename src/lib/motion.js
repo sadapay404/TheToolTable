@@ -13,6 +13,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useInView, useMotionValue, useMotionValueEvent, useReducedMotion, useSpring, useTransform } from 'framer-motion'
+import { usePerf } from './perf.js'
 
 /* M3 easing curves */
 export const EASE = {
@@ -167,12 +168,26 @@ export function useTransition(transition) {
  */
 export const AMBIENT_STATIC = Object.freeze({ enabled: true, level: 'full', count: 5, scale: 1 })
 
-export function ambientProfile(level = 'full', reduced = false, phone = false) {
+export function decorativeMotionEnabled(level = 'full', reduced = false, phone = false) {
   const normalized = level === 'lite' || level === 'balanced' || level === 'full' ? level : 'full'
   /* Balanced is the automatic handset tier. Keep its controls, progress and
      one-shot transitions, but do not keep decorative compositor loops alive
      beneath a phone's screen while it is sitting idle. Full is still opt-in. */
-  const enabled = !reduced && normalized !== 'lite' && !(phone && normalized === 'balanced')
+  return !reduced && normalized !== 'lite' && !(phone && normalized === 'balanced')
+}
+
+/** Reactive counterpart for idle decoration inside an active tool. This is not
+ * a global reduced-motion switch: controls, progress, scanning and recording
+ * feedback remain free to animate while the nonessential loop stays static. */
+export function useDecorativeMotion() {
+  const reduced = useReducedMotion()
+  const profile = usePerf()
+  return decorativeMotionEnabled(profile.level, !!reduced, profile.hw.phone)
+}
+
+export function ambientProfile(level = 'full', reduced = false, phone = false) {
+  const normalized = level === 'lite' || level === 'balanced' || level === 'full' ? level : 'full'
+  const enabled = decorativeMotionEnabled(normalized, reduced, phone)
   return {
     enabled,
     level: normalized,

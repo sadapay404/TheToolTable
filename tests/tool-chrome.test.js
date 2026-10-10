@@ -15,6 +15,9 @@ const icons = read('src/components/ToolIcon.jsx')
 const parts = read('src/tools/exchange/parts.jsx')
 const decision = read('src/tools/decision/parts.jsx')
 const controls = read('src/tools/studio/controls.jsx')
+const kit = read('src/tools/kit/ui.jsx')
+const qrLibrary = read('src/tools/qr/Library.jsx')
+const qrScan = read('src/tools/qr/Scan.jsx')
 const css = read('src/styles.css')
 const registry = read('src/toolsRegistry.jsx')
 
@@ -64,6 +67,22 @@ test('the drop target reacts to a file landing instead of just opening a picker'
   assert.ok(ui.includes('data-hot'), 'the hot state drives the frame colour')
   assert.ok(ui.includes('landed'), 'it confirms the files it accepted')
   assert.match(ui, /tool-dropzone-cta/, 'it keeps a call to action')
+})
+
+test('shared empty states stop only their idle loops on a phone-balanced profile', () => {
+  for (const [name, source] of [
+    ['ToolChrome EmptyState', chrome],
+    ['Material Dropzone', ui],
+    ['tool kit Drop', kit],
+    ['tool kit Empty', kit],
+    ['QR Library Empty', qrLibrary],
+    ['QR Scan empty result', qrScan],
+  ]) {
+    assert.ok(source.includes('useDecorativeMotion'), `${name} must consume the shared decorative-motion policy`)
+  }
+  assert.match(ui, /hot \? \{ y: -4, scale: 1\.06 \}/, 'drag feedback must remain available')
+  assert.match(kit, /hot \? \{ y: -6, scale: 1\.15 \}/, 'tool-kit drag feedback must remain available')
+  assert.match(kit, /useEffect\(\(\) => \(\) => clearTimeout\(t\.current\), \[\]\)/, 'a tool-kit toast timer must be released on unmount')
 })
 
 test('the dashed frame is a real border so the dashes stay uniform', () => {

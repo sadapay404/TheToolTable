@@ -256,7 +256,7 @@ test('the draft release tag names the commit its assets came from', () => {
 test('a missing signing key is discovered before the build, not after it', () => {
   const workflow = read('.github/workflows/native.yml')
   const decide = workflow.indexOf('Decide the Android signing key before anything is built')
-  const build = workflow.indexOf('Build ARM APK, then reclaim Rust space')
+  const build = workflow.indexOf('name: Build the universal APK carrying arm64-v8a and x86_64')
   assert.ok(decide > -1, 'the signing decision must be its own step')
   assert.ok(decide < build, 'and it must run before two hundred megabytes of Android build')
   assert.match(workflow, /ANDROID_KEYSTORE_BASE64/, 'the secret must still be read')
@@ -277,7 +277,7 @@ test('the build checks its certificate against the published v1.1.1 APK', () => 
 test('an APK signed with the wrong key never gets the plain release name', () => {
   const workflow = read('.github/workflows/native.yml')
   assert.match(workflow, /APK_NAME=TheToolTable-fallback-signed\.apk/)
-  const bank = workflow.slice(workflow.indexOf('name: Bank the arm64-verified APK'))
+  const bank = workflow.slice(workflow.indexOf('name: Bank the device-verified APK'))
   assert.match(bank, /android-device-input\.apk/,
     'only the file the device actually installed may be banked')
   assert.doesNotMatch(bank, /gh release download[\s\S]{0,400}gh release upload/,
@@ -298,7 +298,7 @@ test('the release stays a draft', () => {
 })
 /* ------------------- the failure that shipped an APK no ARM phone could run */
 
-test('nothing reaches the release until an arm64 device has run it', () => {
+test('nothing reaches the release until a device has run that exact file', () => {
   /* This design went wrong twice in opposite directions. First the APK was
      uploaded *after* the smoke test, so a renamed UI label discarded builds that
      had already compiled and signed. So it was moved *before* the test, with
@@ -322,7 +322,7 @@ test('nothing reaches the release until an arm64 device has run it', () => {
     'Actions artifact storage is quota-metered and ran out mid-build; the build cannot depend on it')
 
   const smoke = device.indexOf('id: smoke')
-  const bank = device.indexOf('name: Bank the arm64-verified APK')
+  const bank = device.indexOf('name: Bank the device-verified APK')
   assert.ok(smoke > -1 && bank > smoke, 'the app has to run on a device before it is banked')
 
   /* The device job used to boot an arm64 emulator on ubuntu-24.04-arm, and it
@@ -350,7 +350,7 @@ test('nothing reaches the release until an arm64 device has run it', () => {
   assert.match(verify, /expected b7/)
 })
 
-test('the arm64 device test can veto the release, and leaves the crash log behind', () => {
+test('the device test can veto the release, and leaves the crash log behind', () => {
   const wf = read('.github/workflows/native.yml')
   const device = wf.slice(wf.indexOf('\n  android-device:'))
   assert.doesNotMatch(device, /continue-on-error: true/,

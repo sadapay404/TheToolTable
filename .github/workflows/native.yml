@@ -304,7 +304,7 @@ jobs:
             echo 'and `ANDROID_KEYSTORE_PASSWORD` as repository secrets.' >> "$GITHUB_STEP_SUMMARY"
             echo "::warning title=Fallback Android signing key::A throwaway key will be generated; the APK cannot upgrade v1.1.1. See the job summary."
           fi
-      - name: Build ARM APK, then reclaim Rust space for x86_64 smoke APK
+      - name: Build the universal APK carrying arm64-v8a and x86_64
         shell: bash
         run: |
           set -euo pipefail
@@ -688,7 +688,7 @@ jobs:
           cp "$APK_NAME" android-device-input.apk
           sha256sum android-device-input.apk | tee -a "$GITHUB_STEP_SUMMARY"
           echo "### Android" >> "$GITHUB_STEP_SUMMARY"
-          echo "- \`$APK_NAME\` — $(du -h "$APK_NAME" | cut -f1), verified, awaiting an arm64 device test." >> "$GITHUB_STEP_SUMMARY"
+          echo "- \`$APK_NAME\` — $(du -h "$APK_NAME" | cut -f1), verified, awaiting a device test." >> "$GITHUB_STEP_SUMMARY"
 
       # The candidate travels as a short-lived draft release of its own, not as a
       # workflow artifact: Actions artifact storage is quota-metered per account
@@ -767,7 +767,7 @@ jobs:
           gh release download "$CANDIDATE_TAG" --repo "$GITHUB_REPOSITORY" \
             --pattern 'android-device-input.apk' --dir device-input --clobber
 
-      - name: Boot an arm64 emulator and run the app
+      - name: Boot an x86_64 emulator and run the app
         id: smoke
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -785,14 +785,14 @@ jobs:
               echo "::group::logcat from the failed device run"
               adb logcat -d -t 4000 || true
               echo "::endgroup::"
-              echo "### Android arm64 device test failed" >> "$GITHUB_STEP_SUMMARY"
+              echo "### Android device test failed" >> "$GITHUB_STEP_SUMMARY"
               echo '```text' >> "$GITHUB_STEP_SUMMARY"
               adb logcat -d -t 4000 >> "$GITHUB_STEP_SUMMARY" || true
               echo '```' >> "$GITHUB_STEP_SUMMARY"
               exit 1
             }
 
-      - name: Bank the arm64-verified APK
+      - name: Bank the device-verified APK
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
@@ -804,7 +804,7 @@ jobs:
           gh release upload "$RELEASE_TAG" "$APK" --repo "$GITHUB_REPOSITORY" --clobber
           {
             echo ''
-            echo '### Android: banked only after an arm64 device test'
+            echo '### Android: banked only after a device test of this exact file'
             echo "- Bootstrapped to the tool collection, opened Tool 04 and Tool 06, exercised system back and in-app back."
             echo "- SHA-256: \`$(sha256sum "$APK" | cut -d" " -f1)\`"
           } >> "$GITHUB_STEP_SUMMARY"

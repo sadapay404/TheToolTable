@@ -919,3 +919,39 @@ Android robot. That is a valid APK and a broken app. The step rejects it, plus a
 corrupt archive, a missing dex, an undeclared permission and a signature that
 does not verify, and reports size, icon densities, permissions, package
 identity, ABIs and the signing certificate fingerprint into the job summary.
+
+### Batch 10n — the verifier that rejected a good build
+
+Part 10d added the step that checks an APK before it is banked. On the first real
+build it rejected an APK that had already compiled, aligned, signed and passed the
+emulator smoke test, and the draft release shipped with no Android file at all.
+The step existed to stop exactly that outcome, and was instead causing it.
+
+Four bugs, none of them visible by reading the step:
+
+| # | Bug | Why it was fatal |
+| --- | --- | --- |
+| 1 | `aapt2` quotes its values: `application-icon-160:'res/mipmap-mdpi-v4/ic_launcher.png'` | every icon lookup missed, so the package was rejected for having no icons |
+| 2 | `[ -z "$row" ] && continue` inside the icon loop | under `set -e` the AND-list's status *is* the loop body's status, so the first non-empty row aborted the step |
+| 3 | foreground service matched by exact name | Android 14's typed `FOREGROUND_SERVICE_DATA_SYNC` is not `FOREGROUND_SERVICE` |
+| 4 | every `aapt2` field read through a `pipefail` pipeline | one absent line — `native-code`, an SDK level, the certificate digest — killed a step that had already verified the package |
+
+Bug 4 never got the chance to show itself in CI, because CI never got past bug 2.
+
+The expectations are now derived from the artefact instead of guessed: the icons
+to check are the ones `aapt2` actually names, and the summary renders a missing
+field as `?` rather than aborting. Every refusal goes through one `fail()` helper
+that both emits `::error file=native.yml` — so the reason is readable from the
+API — and exits non-zero.
+
+**The lesson is about method, not shell.** A check that has only ever been read
+is an untested check. `tests/verify-apk-step.sh` pulls the step out of
+`native.yml` (never a copy, which would rot), executes it against a real zip with
+mock `aapt2`/`apksigner`, and asserts both the exit code and the *reason* for
+eleven cases: one that must be accepted, ten that must be refused. It found all
+three of bugs 1–3 and the one this batch introduced. It runs as part of the suite,
+so the next person to edit the step finds out immediately.
+
+It also caught a mistake made *while fixing the step*: an edit dropped the YAML
+indentation of two lines, silently truncating the run block. The harness now
+re-parses the workflow and refuses to run a truncated step.

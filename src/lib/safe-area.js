@@ -128,37 +128,80 @@ export function publish(root = document.documentElement) {
 
 let started = false
 
+const sameInsets = (a, b) => (
+  !!a && !!b
+  && a.top === b.top
+  && a.right === b.right
+  && a.bottom === b.bottom
+  && a.left === b.left
+  && a.estimated === b.estimated
+)
+
+/* `visualViewport` dimensions are often fractional while the CSS variables are
+   published as pixels. Compare the published values, otherwise a harmless
+   sub-pixel resize can still trigger a full root-style rewrite. */
+function viewportMetrics() {
+  const vv = typeof window !== 'undefined' ? window.visualViewport : null
+  const vh = vv?.height || (typeof window !== 'undefined' ? window.innerHeight : 0) || 0
+  const vw = vv?.width || (typeof window !== 'undefined' ? window.innerWidth : 0) || 0
+  return { vh: Math.round(vh), vw: Math.round(vw) }
+}
+
+const sameViewport = (a, b) => !!a && !!b && a.vh === b.vh && a.vw === b.vw
+
 /** Measure, publish and keep in sync. Safe to call more than once. */
 export function initSafeArea({ isAndroidNative = false } = {}) {
   if (typeof window === 'undefined' || typeof document === 'undefined') return () => {}
   if (started) return () => {}
   started = true
 
+  let lastViewport = null
+  const root = document.documentElement
   const measure = () => {
     const env = readEnvInsets()
-    current = computeInsets(env, {
+    const next = computeInsets(env, {
       screenWidth: window.screen?.width || window.innerWidth || 0,
       screenHeight: window.screen?.height || window.innerHeight || 0,
       isAndroidNative,
     })
-    publish()
-    emit()
+    const viewport = viewportMetrics()
+    const insetsChanged = !sameInsets(current, next)
+    const viewportChanged = !sameViewport(lastViewport, viewport)
+
+    // Keyboard/address-bar resizes still update `--ttt-vh`; ordinary duplicate
+    // resize events no longer force style recalculation across the whole app.
+    if (!insetsChanged && !viewportChanged) return false
+    if (insetsChanged) current = next
+    lastViewport = viewport
+    publish(root)
+    if (insetsChanged) emit()
+    return true
   }
 
   measure()
 
-  // `visualViewport` is the only reliable signal for Android's gesture bar and
-  // for the on-screen keyboard, both of which move the usable bottom edge.
+  // Resize covers keyboard, gesture-bar and orientation changes. Deliberately do
+  // not listen to `visualViewport.scroll`: safe-area insets do not change when
+  // page content scrolls, and measuring there forced DOM/style work in a hot
+  // Android scroll path.
   const vv = window.visualViewport
+  let orientationTimer = 0
+  const onOrientationChange = () => {
+    if (orientationTimer) clearTimeout(orientationTimer)
+    orientationTimer = setTimeout(() => {
+      orientationTimer = 0
+      measure()
+    }, 120)
+  }
   vv?.addEventListener('resize', measure)
-  vv?.addEventListener('scroll', measure)
   window.addEventListener('resize', measure)
-  window.addEventListener('orientationchange', () => setTimeout(measure, 120))
+  window.addEventListener('orientationchange', onOrientationChange)
   return () => {
     started = false
+    if (orientationTimer) clearTimeout(orientationTimer)
     vv?.removeEventListener('resize', measure)
-    vv?.removeEventListener('scroll', measure)
     window.removeEventListener('resize', measure)
+    window.removeEventListener('orientationchange', onOrientationChange)
   }
 }
 

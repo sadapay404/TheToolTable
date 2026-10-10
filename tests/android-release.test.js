@@ -393,7 +393,7 @@ test('the Android job verifies the APK before it can be banked', () => {
   }
   /* Dex is matched as a whole family so a multidex build is not mistaken for a
      package with no bytecode. */
-  assert.match(body, /grep -qE '\^classes\[0-9\]\*\\\.dex\$'/, 'dex bytecode is not checked')
+  assert.match(body, /grep -cE '\^classes\[0-9\]\*\\\.dex\$'/, 'dex bytecode is not checked')
 })
 
 test('a failing APK verification stops the job rather than warning', () => {
@@ -444,4 +444,123 @@ test('the APK verification step itself accepts a good build and refuses every br
   assert.equal(failed, 0, `the APK verification step misbehaved:\n${out.stdout}`)
   assert.ok(passed >= 10, `only ${passed} cases covered - the harness has stopped testing enough`)
   assert.match(out.stdout, /ok {4}well-formed, signed, fully-iconed APK is accepted/)
+})
+
+test('the verification step cannot race itself into rejecting a good APK', () => {
+  /* `cmd | grep -q ...` looks harmless and is not. grep -q exits the instant it
+     finds its match, closing the pipe on whatever is still writing; that writer
+     dies of SIGPIPE, `pipefail` promotes the 141 to a failure status, and a
+     flawless APK is refused for having no dex, no manifest, or icons it plainly
+     ships. It is a race, so the four-entry mocks never showed it while CI
+     rejected good builds at random. Swapping the producer does not help - moving
+     the pipe from `unzip` to `printf` just found a new victim - so nothing in
+     this step may pipe into `grep -q` at all. Matching a herestring cannot race:
+     grep reads a temporary file, so there is no writer left to kill. */
+  const wf = read('.github/workflows/native.yml')
+  const step = wf.slice(wf.indexOf('name: Verify the signed APK before it is banked'))
+  const code = step.split('\n').filter((l) => !l.trim().startsWith('#')).join('\n')
+  assert.ok(!/\|\s*grep\s+-q/.test(code),
+    'the verification step pipes into grep -q, which can SIGPIPE itself into a false rejection')
+  assert.match(code, /LISTING=\$\(unzip -Z1 "\$APK"\)/,
+    'the entry list should be read once and reused')
+  assert.match(code, /grep -cE '\^classes\[0-9\]\*\\\.dex\$'/,
+    'count the dex files and test the count, rather than short-circuiting mid-pipeline')
+})
+
+/* ==================== the crash that killed the app before its first frame */
+
+test('the Android build detaches WorkManager from Application startup', () => {
+  /* A real phone died here, every launch:
+   *
+   *   java.lang.RuntimeException: Unable to get provider
+   *     androidx.startup.InitializationProvider: Failed to create an instance of
+   *     class androidx.work.impl.WorkDatabase.canonicalName
+   *     at android.app.ActivityThread.handleBindApplication
+   *
+   * WorkManager builds a Room database before a single line of this app's
+   * JavaScript runs, so its failure cannot be caught by the app and the process
+   * is simply killed. */
+  const wf = read('.github/workflows/native.yml')
+  assert.match(wf, /node scripts\/ensure-android-launch-survives\.mjs/,
+    'nothing repairs the launch path')
+  assert.ok(
+    wf.indexOf('ensure-android-launch-survives.mjs') > wf.indexOf('tauri android init'),
+    'the repair has to run after the Android project is generated',
+  )
+})
+
+test('the launch repair is applied to the generated manifest and ProGuard rules', () => {
+  const script = read('scripts/ensure-android-launch-survives.mjs')
+  assert.match(script, /androidx\.startup\.InitializationProvider/)
+  assert.match(script, /androidx\.work\.WorkManagerInitializer/)
+  assert.match(script, /tools:node="remove"/,
+    'removing the initializer needs a manifest merge directive, not a comment')
+  assert.match(script, /androidx\.room\.RoomDatabase/,
+    'the generated Room implementation class has to be kept')
+  assert.match(script, /proguard-rules\.pro/)
+})
+
+test('the launch repair is idempotent and safe before the Android project exists', () => {
+  /* CI runs steps that precede the Android build; a repair that failed there
+     would take the whole pipeline down with it. */
+  const script = read('scripts/ensure-android-launch-survives.mjs')
+  assert.match(script, /Android project not generated yet/)
+  assert.match(script, /process\.exit\(0\)/)
+  assert.match(script, /already detached/)
+  assert.match(script, /already present|already wired|already/)
+})
+
+test('the launch repair actually edits a pristine generated Android project', async () => {
+  /* Regression: the first version of this script looked for
+   * `androidx.work.WorkManagerInitializer` to decide whether the patch was
+   * needed. That string comes from the *library's* merged manifest and is absent
+   * from the generated one, so the script declared a pristine project already
+   * fixed and changed nothing. The repair has to be executed, not eyeballed. */
+  const fs = await import('node:fs/promises')
+  const os = await import('node:os')
+  const cp = await import('node:child_process')
+  const repo = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..')
+
+  const pristine = `<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <application android:label="TheToolTable" android:icon="@mipmap/ic_launcher">
+    <activity android:name=".MainActivity" android:exported="true" />
+  </application>
+</manifest>
+`
+  const tmp = path.join(os.tmpdir(), `ttt-launch-${process.pid}`)
+  await fs.rm(tmp, { recursive: true, force: true })
+  await fs.mkdir(path.join(tmp, 'src-tauri/gen/android/app/src/main'), { recursive: true })
+  await fs.mkdir(path.join(tmp, 'scripts'), { recursive: true })
+  await fs.copyFile(path.join(repo, 'scripts/ensure-android-launch-survives.mjs'),
+    path.join(tmp, 'scripts/ensure-android-launch-survives.mjs'))
+  const app = path.join(tmp, 'src-tauri/gen/android/app')
+  await fs.writeFile(path.join(app, 'src/main/AndroidManifest.xml'), pristine)
+
+  const run = () => cp.execFileSync(process.execPath,
+    ['scripts/ensure-android-launch-survives.mjs'],
+    { cwd: tmp, encoding: 'utf8' })
+  try {
+    const first = run()
+    const manifest = await fs.readFile(path.join(app, 'src/main/AndroidManifest.xml'), 'utf8')
+    const rules = await fs.readFile(path.join(app, 'proguard-rules.pro'), 'utf8')
+
+    assert.match(first, /detached from Application startup/,
+      'the repair must act on a pristine manifest, not assume it is done')
+    assert.ok(!pristine.includes('InitializationProvider'))
+    assert.match(manifest, /xmlns:tools="http:\/\/schemas\.android\.com\/tools"/,
+      'tools:node="remove" is silently ignored without the tools namespace')
+    assert.match(manifest, /android:name="androidx\.startup\.InitializationProvider"/)
+    assert.match(manifest, /android:name="androidx\.work\.WorkManagerInitializer"/)
+    assert.match(manifest, /tools:node="remove"/)
+    assert.match(rules, /-keep class androidx\.work\.impl\.\*\*/)
+    assert.match(rules, /-keep class \* extends androidx\.room\.RoomDatabase/)
+
+    assert.match(run(), /already detached/, 'the repair must be idempotent')
+    assert.equal(
+      await fs.readFile(path.join(app, 'src/main/AndroidManifest.xml'), 'utf8'), manifest,
+      'a second run must not duplicate the provider block')
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true })
+  }
 })

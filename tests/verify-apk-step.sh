@@ -31,6 +31,12 @@ build_apk() { # $1 output, $2 good|no-dex|no-icons
     mkdir -p "$dir/lib/arm64-v8a"
     printf 'so' > "$dir/lib/arm64-v8a/libthetooltable.so"
   fi
+  if [ "$mode" = "good-big" ]; then
+    # A real APK holds thousands of entries; the mock above holds five.
+    local i
+    mkdir -p "$dir/res/drawable" "$dir/assets"
+    for i in $(seq 1 1200); do printf 'i' > "$dir/res/drawable/f$i.png"; done
+  fi
   if [ "$mode" != "no-icons" ]; then
     local d
     for d in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
@@ -205,6 +211,30 @@ run() { # $1 wanted exit, $2 apk path ("" = unset), $3 description, $4 expected 
   pass=$((pass + 1)); printf '  ok    %s\n' "$name"
 }
 
+# run_many <times> <wanted exit> <apk> <description>
+# Repeats a case because the defect it guards against is a race: a single run
+# that happens to win proves nothing.
+run_many() { # $1 times, $2 wanted exit, $3 apk, $4 description
+  local times="$1" want="$2" apk="$3" name="$4" i bad=0 got
+  write_aapt2 < "$WORK/badging/good.txt"
+  write_apksigner ok
+  export ANDROID_RELEASE_APK="$apk"
+  for i in $(seq 1 "$times"); do
+    : > "$GITHUB_STEP_SUMMARY"
+    got=$(bash "$WORK/step.sh" > "$WORK/out.txt" 2>&1; echo $?)
+    if [ "$got" != "$want" ]; then
+      bad=$((bad + 1))
+      [ "$bad" = 1 ] && printf '        first failure (run %s of %s): %s\n' "$i" "$times" "$(head -1 "$WORK/out.txt")"
+    fi
+  done
+  if [ "$bad" -ne 0 ]; then
+    fail=$((fail + 1))
+    printf '  FAIL  %-52s %s of %s runs wrongly failed\n' "$name" "$bad" "$times"
+    return
+  fi
+  pass=$((pass + 1)); printf '  ok    %s (%s runs)\n' "$name" "$times"
+}
+
 build_apk "$WORK/good.apk" good
 write_apksigner ok
 
@@ -222,6 +252,14 @@ run 1 "$WORK/no-dex.apk" "a package with no dex is refused" "dex bytecode" "" "$
 run 1 "$WORK/good.apk" "a package whose signature fails is refused" "signature does not verify" "$WORK/badging/good.txt" bad
 
 build_apk "$WORK/no-icons.apk" no-icons
+# The mocks above hold a handful of entries, which is not enough to trigger the
+# race the real step fell into: `grep -q` closes the pipe on a still-writing
+# `unzip`, `pipefail` reports that SIGPIPE as failure, and a flawless package is
+# rejected for having no dex. It passed here for months and then rejected good
+# builds intermittently in CI, where a real APK has thousands of entries. So
+# this case has to be repeated enough times to fail if the race is back.
+build_apk "$WORK/big.apk" good-big
+run_many 30 0 "$WORK/big.apk" "a package with thousands of entries is not mistaken for a broken one"
 printf 'package: name=%s\nsdkVersion:%s24%s\ntargetSdkVersion:%s35%s\nuses-permission: name=%sandroid.permission.INTERNET%s\nuses-permission: name=%sandroid.permission.POST_NOTIFICATIONS%s\nuses-permission: name=%sandroid.permission.FOREGROUND_SERVICE%s\nnative-code: %sarm64-v8a%s\n' "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" > "$WORK/badging/no-icons.txt"
 run 1 "$WORK/no-icons.apk" "a package with no launcher icon is refused" "default Android robot" "$WORK/badging/no-icons.txt"
 

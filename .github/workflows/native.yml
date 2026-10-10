@@ -257,6 +257,11 @@ jobs:
         run: node scripts/patch-android-background-service.mjs
       - name: Declare Android foreground-service and notification permissions
         run: node scripts/ensure-android-transfer-permissions.mjs
+      # WorkManager's Room database was instantiated during Application startup
+      # and killed the process before the first frame. See the script for the
+      # crash this came from.
+      - name: Keep AndroidX WorkManager out of the launch path
+        run: node scripts/ensure-android-launch-survives.mjs
       - name: Configure Gradle retries for transient Maven rate limits
         shell: bash
         run: |
@@ -498,17 +503,32 @@ jobs:
           if ! unzip -tq "$APK" > /dev/null 2>&1; then
             fail "$APK is not a readable zip archive."
           fi
+          # Nothing in this step may pipe into `grep -q`.
+          #
+          # `grep -q` exits the instant it finds its match, closing the pipe on
+          # whatever is still writing. That writer dies of SIGPIPE, `pipefail`
+          # promotes the 141 to a failure status, and a flawless APK is refused
+          # for having no dex, no manifest, or icons it plainly ships. It is a
+          # race, so it survives a four-entry mock and then rejects good builds
+          # at random on a real 140 MB package: measured at 17 spurious
+          # rejections in 20 runs, and it moves to whichever writer is upstream
+          # the moment one of them is removed.
+          #
+          # So the entry list is read once, and every match is a herestring.
+          # `<<<` hands grep a temporary file rather than a pipe, so there is no
+          # writer left to kill and no way for this to race.
           ENTRIES=$(unzip -Z1 "$APK" | wc -l | tr -d ' ')
+          LISTING=$(unzip -Z1 "$APK")
           for required in AndroidManifest.xml resources.arsc; do
-            if ! unzip -Z1 "$APK" | grep -qx "$required"; then
+            if ! grep -qx "$required" <<< "$LISTING"; then
               fail "$APK has no $required."
             fi
           done
           # The whole dex family, so a multidex build is not mistaken for an empty one.
-          if ! unzip -Z1 "$APK" | grep -qE '^classes[0-9]*\.dex$'; then
+          DEX=$(printf '%s\n' "$LISTING" | grep -cE '^classes[0-9]*\.dex$' || true)
+          if [ "$DEX" -eq 0 ]; then
             fail "$APK has no dex bytecode."
           fi
-          DEX=$(unzip -Z1 "$APK" | grep -cE '^classes[0-9]*\.dex$' || true)
           {
             echo "| Archive | $ENTRIES entries, $DEX dex file(s), manifest and resources present |"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -528,10 +548,10 @@ jobs:
           #    passed. It is the check that would have caught the crash on a real phone
           #    that the x86_64 emulator reported as a healthy build.
           REPORTED_ABIS=$(printf '%s\n' "$BADGING" | grep "^native-code:" | sed 's/^native-code: *//' | tr '\n' ' ' || true)
-          if ! printf '%s\n' "$BADGING" | grep -qE "native-code:.*arm64-v8a"; then
+          if ! grep -qE "native-code:.*arm64-v8a" <<< "$BADGING"; then
             fail "$APK advertises no arm64-v8a ABI, so it cannot run on a current Android phone. Reported: ${REPORTED_ABIS:-none}"
           fi
-          LIB_DIRS=$(unzip -Z1 "$APK" | sed -n 's#^\(lib/arm64-v8a\)/.*#\1#p' | sort -u | tr '\n' ' ' || true)
+          LIB_DIRS=$(printf '%s\n' "$LISTING" | sed -n 's#^\(lib/arm64-v8a\)/.*#\1#p' | sort -u | tr '\n' ' ' || true)
           if [ -z "$LIB_DIRS" ]; then
             fail "$APK contains no lib/arm64-v8a native libraries, so the app would abort on launch with an UnsatisfiedLinkError."
           fi
@@ -554,7 +574,7 @@ jobs:
             entry="${entry#\'}"
             entry="${entry%\"}"
             entry="${entry#\"}"
-            if ! unzip -Z1 "$APK" | grep -qxF "$entry"; then
+            if ! grep -qxF "$entry" <<< "$LISTING"; then
               MISSING="$MISSING $entry"
             fi
           done <<< "$ICON_ROWS"
@@ -567,13 +587,13 @@ jobs:
 
           # 4. The permissions the app genuinely cannot work without.
           for needed in android.permission.INTERNET android.permission.POST_NOTIFICATIONS; do
-            if ! printf '%s\n' "$BADGING" | grep -q "uses-permission: name='$needed'"; then
+            if ! grep -q "uses-permission: name='$needed'" <<< "$BADGING"; then
               fail "$APK does not request $needed."
             fi
           done
           # Matched by prefix on purpose: Android 14 adds FOREGROUND_SERVICE_DATA_SYNC,
           # which the earlier exact-name check rejected as a missing permission.
-          if ! printf '%s\n' "$BADGING" | grep -qE "uses-permission: name='android\.permission\.FOREGROUND_SERVICE"; then
+          if ! grep -qE "uses-permission: name='android\.permission\.FOREGROUND_SERVICE" <<< "$BADGING"; then
             fail "$APK requests no foreground-service permission, so background transfers cannot survive the app being backgrounded."
           fi
           PERMS=$(printf '%s\n' "$BADGING" | grep "^uses-permission:" | sed 's/^uses-permission: *//' | sort | tr '\n' ' ' || true)

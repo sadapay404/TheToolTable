@@ -999,3 +999,59 @@ The two tests that guarded the old behaviour asserted the bug — "bank before t
 test" and "the smoke test reports instead of vetoing". They now assert the
 opposite, which is the part worth keeping: the defect survived because the tests
 described it as intended.
+
+### Batch 10p - the app no longer dies before it draws a frame
+
+A real phone (Moto, API 35) produced this on every launch, and nothing in the
+repository could have shown it, because it happens before the app's own code runs:
+
+```
+WM-WrkMgrInitializer: Initializing WorkManager with default configuration.
+FATAL EXCEPTION: main
+Process: app.thetooltable.mubashir
+java.lang.RuntimeException: Unable to get provider
+  androidx.startup.InitializationProvider: Failed to create an instance of class
+  androidx.work.impl.WorkDatabase.canonicalName
+    at android.app.ActivityThread.handleBindApplication
+```
+
+AndroidX WorkManager is initialised by `androidx.startup` inside a ContentProvider
+that `ActivityThread` runs before a single line of this app's JavaScript executes.
+It builds a Room database to do it, and R8 had stripped the generated
+`WorkDatabase_Impl` that Room instantiates by name. The exception escapes
+`handleBindApplication` uncaught, so the process is killed: "The Tool Table keeps
+stopping."
+
+ABI, `panic = "abort"`, WebView/ANGLE and the frontend were all ruled out by the
+`nativeloader` lines in the same logcat. `scripts/ensure-android-launch-survives.mjs`
+applies two independent repairs after `tauri android init`, so that neither one
+being insufficient can cost the user their app:
+
+1. R8 keep rules for the Room and WorkManager classes, which is the actual repair.
+2. `tools:node="remove"` detaching `WorkManagerInitializer` from
+   `InitializationProvider`, so a background-download dependency can no longer
+   decide whether the app opens at all.
+
+The script no-ops when the Android project has not been generated, and is
+idempotent.
+
+#### A verifier that could reject a perfect build
+
+Chasing a flake in the new test surfaced a live defect in the shipped
+verification step: it piped into `grep -q`.
+
+`grep -q` exits the instant it matches, closing the pipe on a writer that is still
+going. That writer dies of SIGPIPE, `set -o pipefail` promotes the 141 to a
+failure status, and a flawless APK is refused for having no dex bytecode, no
+manifest, or launcher icons it plainly contains. It is a race, so it survived
+every existing test - the mocks hold five entries - and then rejected good builds
+at random in CI, where a real APK has thousands of entries. Measured: 17 spurious
+rejections in 20 runs against a 300-entry archive.
+
+Rewriting the producer does not help. Moving the pipe from `unzip` to `printf`
+simply finds a new victim, which is exactly what happened here and why the first
+attempt at this fix appeared to work. Nothing in the step may pipe into `grep -q`
+now: the entry list is read once and every match is a herestring, so grep reads a
+temporary file and there is no writer left to kill. `tests/verify-apk-step.sh`
+repeats a 1,205-entry package 30 times to keep this from returning; the old code
+fails that case 30 times out of 30.

@@ -16,11 +16,13 @@ on:
 permissions:
   contents: write
 
-# Two pushes minutes apart would otherwise race to upload into the same tag and
-# clobber each other's assets.
+# Every candidate tag includes its source SHA, so separate commits cannot clobber
+# one another's assets. A newer corrective build should supersede an older
+# in-flight one, though: otherwise a failed Android job leaves a Windows package
+# consuming the only concurrency slot and delays the actual fix for hours.
 concurrency:
   group: native-build-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   prepare:

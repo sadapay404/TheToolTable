@@ -239,6 +239,13 @@ test('the icon generator does not read a file it writes', () => {
 
 /* ------------------------------------------------------------ the workflow */
 
+test('a newer corrective build supersedes a stale native build on the same branch', () => {
+  const workflow = read('.github/workflows/native.yml')
+  assert.match(workflow, /group: native-build-\$\{\{ github\.ref \}\}/)
+  assert.match(workflow, /cancel-in-progress: true/,
+    'a failed Android build must not leave an unrelated Windows package holding the branch build slot')
+})
+
 test('a build runs for every arena branch, not one frozen name', () => {
   const workflow = read('.github/workflows/native.yml')
   assert.match(workflow, /branches: \['arena\/\*\*', 'main', 'master'\]/)

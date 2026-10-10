@@ -325,13 +325,29 @@ test('nothing reaches the release until an arm64 device has run it', () => {
   const bank = device.indexOf('name: Bank the arm64-verified APK')
   assert.ok(smoke > -1 && bank > smoke, 'the app has to run on a device before it is banked')
 
-  /* The artifact is arm64. A test on x86_64 proves nothing about it. */
-  assert.match(device, /arch: arm64-v8a/,
-    'the APK ships as arm64, so the device that tests it has to be arm64')
-  assert.match(device, /runs-on: ubuntu-24\.04-arm/,
-    'an arm64 emulator needs an arm64 host')
-  assert.match(wf, /--target aarch64(?!.*--target armv7)/,
-    'the release is built arm64-only')
+  /* The device job used to boot an arm64 emulator on ubuntu-24.04-arm, and it
+     could never have passed: nested virtualisation is not available on hosted
+     ARM64 runners, so that runner exposes no /dev/kvm and an arm64-v8a system
+     image dies within seconds. It ran for a whole build cycle failing exactly
+     there. The APK now carries an x86_64 library so the *same file that ships*
+     can be installed and driven, and the ARM library is proved separately by
+     reading its ELF e_machine. Both halves of that have to stay true, or the
+     gate silently stops meaning anything. */
+  assert.match(device, /runs-on: ubuntu-latest/,
+    'an emulator needs KVM, which hosted ARM64 runners do not have')
+  assert.match(device, /arch: x86_64/, 'the emulator arch must match the library the APK carries')
+  assert.match(device, /99-kvm4all\.rules/, 'without /dev/kvm access the emulator cannot boot in time')
+  assert.match(wf, /--target aarch64 --target x86_64/,
+    'the package must carry both libraries for a phone and for CI')
+  assert.match(wf, /--target aarch64 --target x86_64(?!.*--target armv7)/,
+    'armv7 must stay out: a 32-bit package installs on one device and dies on another')
+
+  const verify = wf.slice(wf.indexOf('name: Verify the signed APK before it is banked'))
+  assert.match(verify, /native-code:\.\*arm64-v8a/, 'a phone needs the arm64 ABI')
+  assert.match(verify, /native-code:\.\*x86_64/, 'the device job needs the x86_64 ABI')
+  assert.match(verify, /not an AArch64 ELF/,
+    'nothing in an x86_64 emulator loads the ARM library, so its bytes have to be checked directly')
+  assert.match(verify, /expected b7/)
 })
 
 test('the arm64 device test can veto the release, and leaves the crash log behind', () => {

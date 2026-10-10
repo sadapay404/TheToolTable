@@ -352,11 +352,21 @@ jobs:
           # listed first. Every ARM phone this app will run on is 64-bit, and a
           # 32-bit package is exactly the kind of thing that installs on one
           # device and dies on another.
-          run_android_build arm --target aarch64
+          # aarch64 is what every current ARM phone runs. x86_64 is here only so
+          # the exact file that ships can be installed and driven by the device
+          # job: GitHub's hosted runners cannot run an arm64 Android guest at
+          # all (ubuntu-24.04-arm exposes no /dev/kvm, so an arm64-v8a system
+          # image dies in seconds), which made the arm64 emulator a gate that
+          # could never open. A universal package carries both, so the binary
+          # CI installs is the binary the banked release publishes, and a phone
+          # picks the arm64-v8a library out of it. armv7 is still deliberately
+          # absent: a 32-bit package is exactly the sort of thing that installs
+          # on one device and dies on another.
+          run_android_build arm --target aarch64 --target x86_64
 
           # Deterministic selection, and prove it before anything else touches it.
           arm_apk=""
-          for candidate in "$apk_dir"/*arm64-v8a*.apk "$apk_dir"/*arm64*.apk "$apk_dir"/*universal*.apk; do
+          for candidate in "$apk_dir"/*universal*.apk "$apk_dir"/*arm64-v8a*.apk "$apk_dir"/*arm64*.apk; do
             if [ -f "$candidate" ]; then arm_apk="$candidate"; break; fi
           done
           if [ -z "$arm_apk" ]; then
@@ -551,10 +561,38 @@ jobs:
           if ! grep -qE "native-code:.*arm64-v8a" <<< "$BADGING"; then
             fail "$APK advertises no arm64-v8a ABI, so it cannot run on a current Android phone. Reported: ${REPORTED_ABIS:-none}"
           fi
+          # The x86_64 half is what lets the device job install this exact file.
+          # Checking it here means a build that would be untestable in CI is
+          # refused at the point where it can still be fixed, rather than
+          # discovered twenty minutes later when the emulator rejects it.
+          if ! grep -qE "native-code:.*x86_64" <<< "$BADGING"; then
+            fail "$APK advertises no x86_64 ABI, so the device job cannot install the very file this release publishes. Reported: ${REPORTED_ABIS:-none}"
+          fi
           LIB_DIRS=$(printf '%s\n' "$LISTING" | sed -n 's#^\(lib/arm64-v8a\)/.*#\1#p' | sort -u | tr '\n' ' ' || true)
           if [ -z "$LIB_DIRS" ]; then
             fail "$APK contains no lib/arm64-v8a native libraries, so the app would abort on launch with an UnsatisfiedLinkError."
           fi
+          # The directory name is only a label; this is the file. The emulator
+          # in the device job is x86_64, so nothing else in this pipeline ever
+          # loads the ARM library, and a package that merely *calls* itself
+          # arm64 would pass every other check here and still die on a phone.
+          # ELF e_machine 0xB7 is AArch64.
+          arm_lib=$(printf '%s\n' "$LISTING" | sed -n '/^lib\/arm64-v8a\/.*\.so$/{p;q;}')
+          if [ -z "$arm_lib" ]; then
+            fail "$APK has no lib/arm64-v8a/*.so to inspect."
+          fi
+          arm_elf=""
+          if arm_elf=$(unzip -p "$APK" "$arm_lib" 2>/dev/null | dd bs=1 skip=18 count=2 2>/dev/null | od -An -tx1 | tr -d ' \n'); then
+            :
+          else
+            arm_elf="unreadable"
+          fi
+          if [ "$arm_elf" != "b700" ]; then
+            fail "$arm_lib is not an AArch64 ELF (e_machine=$arm_elf, expected b7). A file in lib/arm64-v8a that is not ARM64 aborts on launch."
+          fi
+          {
+            echo "| ARM native library | \\`$arm_lib\\`, e_machine \\`$arm_elf\\` (AArch64) |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
           ICON_ROWS=$(printf '%s\n' "$BADGING" | grep "^application-icon-.*:" || true)
           ICON_COUNT=$(printf '%s\n' "$ICON_ROWS" | grep -c . || true)
@@ -687,7 +725,12 @@ jobs:
   # and the upload to the release happens here, after the device has run it.
   android-device:
     needs: [prepare, android]
-    runs-on: ubuntu-24.04-arm
+    # ubuntu-latest, deliberately. This job ran on ubuntu-24.04-arm, which
+    # exposes no /dev/kvm - nested virtualisation is not available on hosted
+    # ARM64 runners - so the arm64-v8a system image died within seconds and the
+    # gate could never open, however long it was left in place. The APK carries
+    # an x86_64 library precisely so the shipped file can be installed here.
+    runs-on: ubuntu-latest
     permissions:
       contents: write
     env:
@@ -705,6 +748,16 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+      # Without this the runner user cannot open /dev/kvm and the emulator
+      # silently drops to software rendering, which does not boot in time.
+      - name: Enable KVM for the emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm
+
       - name: Download the candidate APK
         env:
           GH_TOKEN: ${{ github.token }}
@@ -719,8 +772,10 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
-          arch: arm64-v8a
+          # x86_64, matching the library the APK carries for exactly this job.
+          arch: x86_64
           profile: pixel_6
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           ram-size: 4096M
           disk-size: 2048M
           emulator-boot-timeout: 1500

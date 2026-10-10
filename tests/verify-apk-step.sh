@@ -29,7 +29,17 @@ build_apk() { # $1 output, $2 good|no-dex|no-icons
   # this the new arm64 gate would (correctly) refuse the mock as unrunnable.
   if [ "$mode" != "no-arm-lib" ]; then
     mkdir -p "$dir/lib/arm64-v8a"
-    printf 'so' > "$dir/lib/arm64-v8a/libthetooltable.so"
+    # A real ELF header, because the step now reads e_machine out of this file
+    # to prove it is genuinely AArch64 and not just a file sitting in a
+    # directory called arm64-v8a. Byte 18-19 is e_machine, little endian:
+    # 0xB7 == 183 == AArch64.
+    if [ "$mode" = "wrong-arch-lib" ]; then
+      printf '\x7fELF\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x03\x00' \
+        > "$dir/lib/arm64-v8a/libthetooltable.so"
+    else
+      printf '\x7fELF\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\xb7\x00' \
+        > "$dir/lib/arm64-v8a/libthetooltable.so"
+    fi
   fi
   if [ "$mode" = "good-big" ]; then
     # A real APK holds thousands of entries; the mock above holds five.
@@ -88,6 +98,7 @@ uses-permission: name='android.permission.POST_NOTIFICATIONS'
 uses-permission: name='android.permission.FOREGROUND_SERVICE_DATA_SYNC'
 application-icon-160:'res/mipmap-mdpi-v4/ic_launcher.png'
 native-code: 'arm64-v8a'
+native-code: 'x86_64'
 EOF
 cat > "$WORK/badging/no-notifications.txt" <<'EOF'
 package: name='app.thetooltable.desktop'
@@ -97,6 +108,7 @@ uses-permission: name='android.permission.INTERNET'
 uses-permission: name='android.permission.FOREGROUND_SERVICE'
 application-icon-160:'res/mipmap-mdpi-v4/ic_launcher.png'
 native-code: 'arm64-v8a'
+native-code: 'x86_64'
 EOF
 cat > "$WORK/badging/no-fgs.txt" <<'EOF'
 package: name='app.thetooltable.desktop'
@@ -106,6 +118,7 @@ uses-permission: name='android.permission.INTERNET'
 uses-permission: name='android.permission.POST_NOTIFICATIONS'
 application-icon-160:'res/mipmap-mdpi-v4/ic_launcher.png'
 native-code: 'arm64-v8a'
+native-code: 'x86_64'
 EOF
 cat > "$WORK/badging/absent-icon.txt" <<'EOF'
 package: name='app.thetooltable.desktop'
@@ -116,6 +129,7 @@ uses-permission: name='android.permission.POST_NOTIFICATIONS'
 uses-permission: name='android.permission.FOREGROUND_SERVICE'
 application-icon-160:'res/mipmap-mdpi-v4/does-not-exist.png'
 native-code: 'arm64-v8a'
+native-code: 'x86_64'
 EOF
 cat > "$WORK/badging/x86-only.txt" <<'EOF'
 package: name='app.thetooltable.mubashir' versionCode='120' versionName='1.2.0' compileSdkVersion='35'
@@ -152,6 +166,7 @@ application-icon-320:'res/mipmap-xhdpi-v4/ic_launcher.png'
 application-icon-480:'res/mipmap-xxhdpi-v4/ic_launcher.png'
 application-icon-640:'res/mipmap-xxxhdpi-v4/ic_launcher.png'
 native-code: 'arm64-v8a'
+native-code: 'x86_64'
 EOF
 
 export ANDROID_HOME="$WORK"
@@ -260,7 +275,7 @@ build_apk "$WORK/no-icons.apk" no-icons
 # this case has to be repeated enough times to fail if the race is back.
 build_apk "$WORK/big.apk" good-big
 run_many 30 0 "$WORK/big.apk" "a package with thousands of entries is not mistaken for a broken one"
-printf 'package: name=%s\nsdkVersion:%s24%s\ntargetSdkVersion:%s35%s\nuses-permission: name=%sandroid.permission.INTERNET%s\nuses-permission: name=%sandroid.permission.POST_NOTIFICATIONS%s\nuses-permission: name=%sandroid.permission.FOREGROUND_SERVICE%s\nnative-code: %sarm64-v8a%s\n' "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" > "$WORK/badging/no-icons.txt"
+printf 'package: name=%s\nsdkVersion:%s24%s\ntargetSdkVersion:%s35%s\nuses-permission: name=%sandroid.permission.INTERNET%s\nuses-permission: name=%sandroid.permission.POST_NOTIFICATIONS%s\nuses-permission: name=%sandroid.permission.FOREGROUND_SERVICE%s\nnative-code: %sarm64-v8a%s\nnative-code: %sx86_64%s\n' "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" > "$WORK/badging/no-icons.txt"
 run 1 "$WORK/no-icons.apk" "a package with no launcher icon is refused" "default Android robot" "$WORK/badging/no-icons.txt"
 
 run 1 "$WORK/good.apk" "an icon aapt2 names but the archive lacks is refused" "not in the archive" "$WORK/badging/absent-icon.txt"
@@ -275,6 +290,15 @@ run 1 "$WORK/good.apk" "an unreadable manifest is refused" "aapt2 could not read
 # The gate that would have caught the crash on a real phone.
 run 1 "$WORK/good.apk" "an APK with no arm64 ABI is refused" "advertises no arm64-v8a" "$WORK/badging/x86-only.txt"
 run 1 "$WORK/good.apk" "an APK that reports no ABI at all is refused" "advertises no arm64-v8a" "$WORK/badging/no-abi.txt"
+# The device job installs this exact file on an x86_64 emulator, so a package
+# without that library could never be tested. It is refused here instead, at the
+# point where it can still be fixed.
+printf "package: name='app.thetooltable.mubashir' versionCode='120' versionName='1.2.0' compileSdkVersion='35'\nsdkVersion:'24'\ntargetSdkVersion:'35'\nuses-permission: name='android.permission.INTERNET'\nuses-permission: name='android.permission.POST_NOTIFICATIONS'\nuses-permission: name='android.permission.FOREGROUND_SERVICE'\napplication-icon-160:'res/mipmap-mdpi-v4/ic_launcher.png'\nnative-code: 'arm64-v8a'\n" > "$WORK/badging/arm-only.txt"
+run 1 "$WORK/good.apk" "an APK the device job could not install is refused" "no x86_64 ABI" "$WORK/badging/arm-only.txt"
+
+build_apk "$WORK/wrong-arch.apk" wrong-arch-lib
+run 1 "$WORK/wrong-arch.apk" "a file that only calls itself arm64 is refused" "not an AArch64 ELF" "$WORK/badging/good.txt"
+
 build_apk "$WORK/no-arm-lib.apk" no-arm-lib
 run 1 "$WORK/no-arm-lib.apk" "an APK with no arm64 native library is refused" "UnsatisfiedLinkError" "$WORK/badging/good.txt"
 

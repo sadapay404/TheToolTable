@@ -1080,3 +1080,37 @@ candidate release that survived deletion was still reported as removed. It now
 reports what actually happened and warns when it leaves a draft behind.
 
 Four orphaned draft candidate releases were deleted from the repository.
+
+#### A gate that could never open
+
+With the handoff repaired, `android-device` reached its emulator step and failed
+in 28 seconds - far too fast to be a boot. The cause is not fixable:
+
+> Nested virtualization is a Linux x86-64 feature on cloud runners, and the
+> `nested-virtualization.enabled=true` label is silently ignored on ARM64,
+> Windows, and macOS. Standard Linux arm64 exposes no `/dev/kvm`.
+
+GitHub's `ubuntu-24.04-arm` runners have no `/dev/kvm`, so an `arm64-v8a` system
+image dies the moment it is started. The job had never been able to pass, and
+every APK was correctly refused by it - so nothing was ever banked.
+
+Rather than delete the gate or let it pass politely, the APK now carries an
+x86_64 library alongside arm64-v8a:
+
+- One universal package, so the binary CI installs is the binary the release
+  publishes. That property - which Part 10o spent its whole budget establishing -
+  survives; it is what makes a device failure worth anything.
+- The device job moves to `ubuntu-latest` with the `/dev/kvm` udev rule, and
+  boots an x86_64 emulator that actually has acceleration.
+- A phone picks the arm64-v8a library out of the package. `armv7` stays out: a
+  32-bit package installs on one device and dies on another.
+
+What the emulator cannot see is the ARM library, because it never loads it. That
+is now checked directly: the verifier reads `e_machine` out of the ELF header in
+`lib/arm64-v8a/*.so` and refuses the package unless it is `b7`, AArch64. Before
+this, a file that merely sat in a directory called `arm64-v8a` would have passed
+every other gate in the pipeline.
+
+Both new refusals are exercised by the harness, and both fail when the check is
+removed: a package with no x86_64 library, and a package whose ARM library is not
+ARM64.

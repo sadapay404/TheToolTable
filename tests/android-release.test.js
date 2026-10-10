@@ -277,11 +277,10 @@ test('the build checks its certificate against the published v1.1.1 APK', () => 
 test('an APK signed with the wrong key never gets the plain release name', () => {
   const workflow = read('.github/workflows/native.yml')
   assert.match(workflow, /APK_NAME=TheToolTable-fallback-signed\.apk/)
-  const upload = workflow.slice(workflow.indexOf('Upload APK to the draft release'))
-  assert.match(upload, /ANDROID_RELEASE_APK/)
-  assert.match(upload, /there is nothing to upload/,
-    'a missing APK must be said out loud, not left to look like an upload that never happened')
-  assert.doesNotMatch(upload, /gh release download[\s\S]{0,400}gh release upload/,
+  const bank = workflow.slice(workflow.indexOf('name: Bank the arm64-verified APK'))
+  assert.match(bank, /android-device-input\.apk/,
+    'only the file the device actually installed may be banked')
+  assert.doesNotMatch(bank, /gh release download[\s\S]{0,400}gh release upload/,
     'the upload must use the APK this run just built, never one fetched back off the tag')
 })
 
@@ -297,25 +296,48 @@ test('the release stays a draft', () => {
   assert.doesNotMatch(workflow, /gh release (publish|edit .*--draft=false)/,
     'nothing here may publish a release')
 })
-/* ------------------------------ the failure that ate a day of Android builds */
+/* ------------------- the failure that shipped an APK no ARM phone could run */
 
-test('a finished APK is banked before the emulator smoke test can veto it', () => {
-  /* The APK used to be uploaded *after* the smoke test. Every Android build was
-     compiled and signed, then discarded because a UI label had been renamed and
-     the emulator waited two minutes for a button that no longer existed — while
-     the run reported itself as a packaging failure. */
+test('nothing reaches the release until an arm64 device has run it', () => {
+  /* This design went wrong twice in opposite directions. First the APK was
+     uploaded *after* the smoke test, so a renamed UI label discarded builds that
+     had already compiled and signed. So it was moved *before* the test, with
+     `continue-on-error` so nothing could veto it. The result was worse than
+     either: the test ran an x86_64 emulator against a different APK than the one
+     that shipped, after the release already had it, and reported success.
+
+     The rule now is one sentence long: the file that is banked is the file that
+     was installed and driven. */
   const wf = read('.github/workflows/native.yml')
-  const upload = wf.indexOf('Upload APK to the draft release')
-  const smoke = wf.indexOf('Smoke-test Android launch')
-  assert.ok(upload > -1 && smoke > -1, 'both steps must exist')
-  assert.ok(upload < smoke, 'the artefact must reach the release before anything can fail')
+  const build = wf.slice(wf.indexOf('\n  android:'), wf.indexOf('\n  android-device:'))
+  const device = wf.slice(wf.indexOf('\n  android-device:'))
+
+  assert.doesNotMatch(build, /gh release upload/,
+    'the build job must not put anything on the release')
+  assert.match(build, /actions\/upload-artifact@v4[\s\S]{0,240}?android-signed-apk/,
+    'it hands the signed APK to the device job instead of banking it')
+
+  const smoke = device.indexOf('id: smoke')
+  const bank = device.indexOf('name: Bank the arm64-verified APK')
+  assert.ok(smoke > -1 && bank > smoke, 'the app has to run on a device before it is banked')
+
+  /* The artifact is arm64. A test on x86_64 proves nothing about it. */
+  assert.match(device, /arch: arm64-v8a/,
+    'the APK ships as arm64, so the device that tests it has to be arm64')
+  assert.match(device, /runs-on: ubuntu-24\.04-arm/,
+    'an arm64 emulator needs an arm64 host')
+  assert.match(wf, /--target aarch64(?!.*--target armv7)/,
+    'the release is built arm64-only')
 })
 
-test('the emulator smoke test reports instead of vetoing', () => {
+test('the arm64 device test can veto the release, and leaves the crash log behind', () => {
   const wf = read('.github/workflows/native.yml')
-  assert.match(wf, /- name: Smoke-test Android launch[\s\S]{0,600}?continue-on-error: true/)
-  assert.match(wf, /name: Record the Android smoke-test verdict\n\s+if: always\(\)/,
-    'the verdict has to be written down either way, not only when it passes')
+  const device = wf.slice(wf.indexOf('\n  android-device:'))
+  assert.doesNotMatch(device, /continue-on-error: true/,
+    'an APK that crashes on a device must not be able to pass by being tested politely')
+  assert.match(device, /adb logcat -d/,
+    'a failure has to leave the crash log behind, or it is a mystery again')
+  assert.match(device, /android-device-input\.apk/, 'it tests the exact file it banks')
 })
 
 test('the smoke test reads its labels from the app instead of hardcoding them', () => {
@@ -344,14 +366,13 @@ test('the Android job verifies the APK before it can be banked', () => {
   const step = wf.indexOf('name: Verify the signed APK before it is banked')
   assert.notEqual(step, -1, 'nothing verifies the APK any more')
 
-  const upload = wf.indexOf('name: Upload APK to the draft release')
-  const smoke = wf.indexOf('name: Smoke-test Android launch')
-  assert.ok(step < upload, 'the APK must be verified before it is uploaded')
-  assert.ok(upload < smoke, 'the APK must be banked before the emulator can throw it away')
+  const handoff = wf.indexOf('name: Hand the signed APK to the device job')
+  assert.notEqual(handoff, -1, 'nothing hands the APK to the device job any more')
+  assert.ok(step < handoff, 'the APK must be verified before it can be handed on')
 
   /* A signed APK is not automatically a working one. These are the ways this
      project's own build can produce a valid package that is still broken. */
-  const body = wf.slice(step, upload)
+  const body = wf.slice(step, handoff)
   for (const check of [
     ['is a readable zip', 'unzip -tq'],
     ['carries its manifest', 'AndroidManifest.xml'],

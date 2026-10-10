@@ -25,6 +25,12 @@ build_apk() { # $1 output, $2 good|no-dex|no-icons
   : > "$dir/AndroidManifest.xml"
   : > "$dir/resources.arsc"
   [ "$mode" = "no-dex" ] || printf 'dex' > "$dir/classes.dex"
+  # Every real Tauri APK carries its Rust library for the target ABI. Without
+  # this the new arm64 gate would (correctly) refuse the mock as unrunnable.
+  if [ "$mode" != "no-arm-lib" ]; then
+    mkdir -p "$dir/lib/arm64-v8a"
+    printf 'so' > "$dir/lib/arm64-v8a/libthetooltable.so"
+  fi
   if [ "$mode" != "no-icons" ]; then
     local d
     for d in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
@@ -75,6 +81,7 @@ uses-permission: name='android.permission.INTERNET'
 uses-permission: name='android.permission.POST_NOTIFICATIONS'
 uses-permission: name='android.permission.FOREGROUND_SERVICE_DATA_SYNC'
 application-icon-160:'res/mipmap-mdpi-v4/ic_launcher.png'
+native-code: 'arm64-v8a'
 EOF
 cat > "$WORK/badging/no-notifications.txt" <<'EOF'
 package: name='app.thetooltable.desktop'
@@ -83,6 +90,7 @@ targetSdkVersion:'35'
 uses-permission: name='android.permission.INTERNET'
 uses-permission: name='android.permission.FOREGROUND_SERVICE'
 application-icon-160:'res/mipmap-mdpi-v4/ic_launcher.png'
+native-code: 'arm64-v8a'
 EOF
 cat > "$WORK/badging/no-fgs.txt" <<'EOF'
 package: name='app.thetooltable.desktop'
@@ -91,6 +99,7 @@ targetSdkVersion:'35'
 uses-permission: name='android.permission.INTERNET'
 uses-permission: name='android.permission.POST_NOTIFICATIONS'
 application-icon-160:'res/mipmap-mdpi-v4/ic_launcher.png'
+native-code: 'arm64-v8a'
 EOF
 cat > "$WORK/badging/absent-icon.txt" <<'EOF'
 package: name='app.thetooltable.desktop'
@@ -100,6 +109,26 @@ uses-permission: name='android.permission.INTERNET'
 uses-permission: name='android.permission.POST_NOTIFICATIONS'
 uses-permission: name='android.permission.FOREGROUND_SERVICE'
 application-icon-160:'res/mipmap-mdpi-v4/does-not-exist.png'
+native-code: 'arm64-v8a'
+EOF
+cat > "$WORK/badging/x86-only.txt" <<'EOF'
+package: name='app.thetooltable.mubashir' versionCode='120' versionName='1.2.0' compileSdkVersion='35'
+sdkVersion:'24'
+targetSdkVersion:'35'
+uses-permission: name='android.permission.INTERNET'
+uses-permission: name='android.permission.POST_NOTIFICATIONS'
+uses-permission: name='android.permission.FOREGROUND_SERVICE'
+application-icon-160:'res/mipmap-mdpi-v4/ic_launcher.png'
+native-code: 'x86_64'
+EOF
+cat > "$WORK/badging/no-abi.txt" <<'EOF'
+package: name='app.thetooltable.mubashir' versionCode='120' versionName='1.2.0' compileSdkVersion='35'
+sdkVersion:'24'
+targetSdkVersion:'35'
+uses-permission: name='android.permission.INTERNET'
+uses-permission: name='android.permission.POST_NOTIFICATIONS'
+uses-permission: name='android.permission.FOREGROUND_SERVICE'
+application-icon-160:'res/mipmap-mdpi-v4/ic_launcher.png'
 EOF
 : > "$WORK/badging/unreadable.txt"
 cat > "$WORK/badging/good.txt" <<'EOF'
@@ -193,7 +222,7 @@ run 1 "$WORK/no-dex.apk" "a package with no dex is refused" "dex bytecode" "" "$
 run 1 "$WORK/good.apk" "a package whose signature fails is refused" "signature does not verify" "$WORK/badging/good.txt" bad
 
 build_apk "$WORK/no-icons.apk" no-icons
-printf 'package: name=%s\nsdkVersion:%s24%s\ntargetSdkVersion:%s35%s\nuses-permission: name=%sandroid.permission.INTERNET%s\nuses-permission: name=%sandroid.permission.POST_NOTIFICATIONS%s\nuses-permission: name=%sandroid.permission.FOREGROUND_SERVICE%s\n' "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" > "$WORK/badging/no-icons.txt"
+printf 'package: name=%s\nsdkVersion:%s24%s\ntargetSdkVersion:%s35%s\nuses-permission: name=%sandroid.permission.INTERNET%s\nuses-permission: name=%sandroid.permission.POST_NOTIFICATIONS%s\nuses-permission: name=%sandroid.permission.FOREGROUND_SERVICE%s\nnative-code: %sarm64-v8a%s\n' "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" "'" > "$WORK/badging/no-icons.txt"
 run 1 "$WORK/no-icons.apk" "a package with no launcher icon is refused" "default Android robot" "$WORK/badging/no-icons.txt"
 
 run 1 "$WORK/good.apk" "an icon aapt2 names but the archive lacks is refused" "not in the archive" "$WORK/badging/absent-icon.txt"
@@ -204,6 +233,12 @@ run 1 "$WORK/good.apk" "a package without notification permission is refused" "P
 run 1 "$WORK/good.apk" "a package with no foreground-service permission is refused" "backgrounded" "$WORK/badging/no-fgs.txt"
 
 run 1 "$WORK/good.apk" "an unreadable manifest is refused" "aapt2 could not read" "$WORK/badging/unreadable.txt"
+
+# The gate that would have caught the crash on a real phone.
+run 1 "$WORK/good.apk" "an APK with no arm64 ABI is refused" "advertises no arm64-v8a" "$WORK/badging/x86-only.txt"
+run 1 "$WORK/good.apk" "an APK that reports no ABI at all is refused" "advertises no arm64-v8a" "$WORK/badging/no-abi.txt"
+build_apk "$WORK/no-arm-lib.apk" no-arm-lib
+run 1 "$WORK/no-arm-lib.apk" "an APK with no arm64 native library is refused" "UnsatisfiedLinkError" "$WORK/badging/good.txt"
 
 echo
 echo "$pass passed, $fail failed"

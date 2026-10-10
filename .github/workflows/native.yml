@@ -627,22 +627,31 @@ jobs:
             echo '::error title=No Android APK::Signing did not finish, so there is nothing for the device job to test.'
             exit 1
           fi
-          # Deliberately a workflow artifact, not a release asset. The whole
-          # point of the device job is that nothing reaches the release until it
-          # has booted on a real arm64 Android and come back with the tool
-          # collection on screen.
           cp "$APK_NAME" android-device-input.apk
           sha256sum android-device-input.apk | tee -a "$GITHUB_STEP_SUMMARY"
           echo "### Android" >> "$GITHUB_STEP_SUMMARY"
           echo "- \`$APK_NAME\` — $(du -h "$APK_NAME" | cut -f1), verified, awaiting an arm64 device test." >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload the signed APK for the arm64 device job
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-signed-apk
-          path: android-device-input.apk
-          retention-days: 3
-          if-no-files-found: error
+      # The candidate travels as a short-lived draft release of its own, not as a
+      # workflow artifact: Actions artifact storage is quota-metered per account
+      # and ran out mid-build ("Artifact storage quota has been hit"), which is
+      # not something a build of this project should be able to fail on. The
+      # temporary release is deleted by the device job whichever way it goes, and
+      # the real draft is still only written to after the app has run on ARM.
+      - name: Hand the candidate APK to the device job
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          CANDIDATE_TAG="candidate-android-${GITHUB_SHA:0:7}"
+          if ! gh release view "$CANDIDATE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$CANDIDATE_TAG" --repo "$GITHUB_REPOSITORY" --draft \
+              --title "Android candidate ${GITHUB_SHA:0:7} (unverified)" \
+              --notes "Build candidate under device test. Deleted by the android-device job; not a release."
+          fi
+          gh release upload "$CANDIDATE_TAG" "android-device-input.apk#candidate.apk" --repo "$GITHUB_REPOSITORY" --clobber
+          echo "CANDIDATE_TAG=$CANDIDATE_TAG" >> "$GITHUB_ENV"
+          echo "Candidate handed to the device job as draft $CANDIDATE_TAG"
 
   # The APK that ships is the APK that gets run.
   #
@@ -657,6 +666,8 @@ jobs:
     runs-on: ubuntu-24.04-arm
     permissions:
       contents: write
+    env:
+      CANDIDATE_TAG: candidate-android-${{ github.sha }}
     steps:
       - name: Check out the app sources the smoke test reads
         uses: actions/checkout@v4
@@ -664,11 +675,14 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Download the signed APK
-        uses: actions/download-artifact@v4
-        with:
-          name: android-signed-apk
-          path: device-input
+      - name: Download the candidate APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p device-input
+          gh release download "$CANDIDATE_TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'candidate.apk' --dir device-input --clobber
 
       - name: Boot an arm64 emulator and run the app
         id: smoke
@@ -709,3 +723,11 @@ jobs:
             echo "- Bootstrapped to the tool collection, opened Tool 04 and Tool 06, exercised system back and in-app back."
             echo "- SHA-256: \`$(sha256sum "$APK" | cut -d" " -f1)\`"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Delete the temporary candidate release
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete "$CANDIDATE_TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
+          echo "Removed the temporary candidate release $CANDIDATE_TAG"

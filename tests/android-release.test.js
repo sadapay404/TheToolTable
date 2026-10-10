@@ -312,10 +312,14 @@ test('nothing reaches the release until an arm64 device has run it', () => {
   const build = wf.slice(wf.indexOf('\n  android:'), wf.indexOf('\n  android-device:'))
   const device = wf.slice(wf.indexOf('\n  android-device:'))
 
-  assert.doesNotMatch(build, /gh release upload/,
-    'the build job must not put anything on the release')
-  assert.match(build, /actions\/upload-artifact@v4[\s\S]{0,240}?android-signed-apk/,
-    'it hands the signed APK to the device job instead of banking it')
+  /* The candidate may travel, but only under a throwaway tag the device job
+     deletes - never onto the release the user downloads from. */
+  assert.doesNotMatch(build, /gh release upload "\$RELEASE_TAG"/,
+    'the build job must not put anything on the user-facing release')
+  assert.match(build, /candidate-android-\$\{GITHUB_SHA:0:7\}/,
+    'the candidate is handed over under a throwaway tag')
+  assert.doesNotMatch(build, /actions\/upload-artifact/,
+    'Actions artifact storage is quota-metered and ran out mid-build; the build cannot depend on it')
 
   const smoke = device.indexOf('id: smoke')
   const bank = device.indexOf('name: Bank the arm64-verified APK')
@@ -338,6 +342,8 @@ test('the arm64 device test can veto the release, and leaves the crash log behin
   assert.match(device, /adb logcat -d/,
     'a failure has to leave the crash log behind, or it is a mystery again')
   assert.match(device, /android-device-input\.apk/, 'it tests the exact file it banks')
+  assert.match(device, /name: Delete the temporary candidate release\n\s+if: always\(\)/,
+    'the throwaway tag must be cleaned up whether the device passed or not')
 })
 
 test('the smoke test reads its labels from the app instead of hardcoding them', () => {

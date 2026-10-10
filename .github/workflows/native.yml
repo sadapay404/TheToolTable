@@ -663,13 +663,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          CANDIDATE_TAG="candidate-android-${GITHUB_SHA:0:7}"
+          CANDIDATE_TAG="candidate-android-${GITHUB_SHA}"
           if ! gh release view "$CANDIDATE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release create "$CANDIDATE_TAG" --repo "$GITHUB_REPOSITORY" --draft \
               --title "Android candidate ${GITHUB_SHA:0:7} (unverified)" \
               --notes "Build candidate under device test. Deleted by the android-device job; not a release."
           fi
-          gh release upload "$CANDIDATE_TAG" "android-device-input.apk#candidate.apk" --repo "$GITHUB_REPOSITORY" --clobber
+          # Uploaded under its own name. The `file#label` form sets a *display
+          # label*, not the asset name, so the `#candidate.apk` this step used to
+          # carry left the asset called android-device-input.apk while the device
+          # job went looking for candidate.apk and found nothing.
+          gh release upload "$CANDIDATE_TAG" "android-device-input.apk" --repo "$GITHUB_REPOSITORY" --clobber
           echo "CANDIDATE_TAG=$CANDIDATE_TAG" >> "$GITHUB_ENV"
           echo "Candidate handed to the device job as draft $CANDIDATE_TAG"
 
@@ -687,6 +691,12 @@ jobs:
     permissions:
       contents: write
     env:
+      # Must match the tag the android job creates, character for character.
+      # These two had drifted apart - the upload truncated the SHA to seven
+      # characters while this looked up the full forty - so the device job went
+      # for a release that was never created and the emulator never booted.
+      # The full SHA is used on both sides precisely because it needs no
+      # truncation for an expression to reproduce.
       CANDIDATE_TAG: candidate-android-${{ github.sha }}
     steps:
       - name: Check out the app sources the smoke test reads
@@ -702,7 +712,7 @@ jobs:
           set -euo pipefail
           mkdir -p device-input
           gh release download "$CANDIDATE_TAG" --repo "$GITHUB_REPOSITORY" \
-            --pattern 'candidate.apk' --dir device-input --clobber
+            --pattern 'android-device-input.apk' --dir device-input --clobber
 
       - name: Boot an arm64 emulator and run the app
         id: smoke
@@ -749,5 +759,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete "$CANDIDATE_TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
-          echo "Removed the temporary candidate release $CANDIDATE_TAG"
+          # Reported honestly. This used to end in `|| true` followed by an
+          # unconditional "Removed...", so when the delete quietly did nothing
+          # the log still claimed it had happened, and a draft release was left
+          # sitting on the repository advertising itself as a build candidate.
+          if gh release delete "$CANDIDATE_TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag; then
+            echo "Removed the temporary candidate release $CANDIDATE_TAG"
+          elif ! gh release view "$CANDIDATE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "No candidate release to remove."
+          else
+            echo "::warning title=Candidate release left behind::Could not delete $CANDIDATE_TAG. It is a draft and is not a release, but it should be deleted by hand."
+          fi

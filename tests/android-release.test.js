@@ -316,7 +316,7 @@ test('nothing reaches the release until an arm64 device has run it', () => {
      deletes - never onto the release the user downloads from. */
   assert.doesNotMatch(build, /gh release upload "\$RELEASE_TAG"/,
     'the build job must not put anything on the user-facing release')
-  assert.match(build, /candidate-android-\$\{GITHUB_SHA:0:7\}/,
+  assert.match(build, /candidate-android-\$\{GITHUB_SHA\}/,
     'the candidate is handed over under a throwaway tag')
   assert.doesNotMatch(build, /actions\/upload-artifact/,
     'Actions artifact storage is quota-metered and ran out mid-build; the build cannot depend on it')
@@ -444,6 +444,40 @@ test('the APK verification step itself accepts a good build and refuses every br
   assert.equal(failed, 0, `the APK verification step misbehaved:\n${out.stdout}`)
   assert.ok(passed >= 10, `only ${passed} cases covered - the harness has stopped testing enough`)
   assert.match(out.stdout, /ok {4}well-formed, signed, fully-iconed APK is accepted/)
+})
+
+test('the two jobs agree on the candidate release they hand the APK over in', () => {
+  /* The android-device job failed to find its input twice over, and neither
+     failure was visible: the upload wrote the tag from a 7-character SHA while
+     the reader looked up the full 40-character one, and the upload renamed the
+     asset with `file#label` - which sets a display label, not the name - so the
+     APK arrived as android-device-input.apk while the download searched for
+     candidate.apk. Neither could be seen without reading both jobs together. */
+  const wf = read('.github/workflows/native.yml')
+
+  const uploaded = wf.match(/CANDIDATE_TAG="([^"]+)"/)
+  assert.ok(uploaded, 'the android job never names the candidate release')
+  assert.match(uploaded[1], /^candidate-android-\$\{GITHUB_SHA\}$/,
+    'the tag must be the full SHA, so an expression can reproduce it exactly')
+
+  const consumed = wf.match(/CANDIDATE_TAG: (candidate-android-\$\{\{[^}]+\}\})/)
+  assert.ok(consumed, 'the device job never names the release it downloads from')
+  assert.equal(consumed[1], 'candidate-android-${{ github.sha }}',
+    'the reader and the writer must build the same tag')
+  assert.ok(!wf.includes('candidate-android-${{ github.sha }}:${'),
+    'one side truncates the SHA and the other does not, so they can never agree')
+
+  const asset = wf.match(/gh release upload "\$CANDIDATE_TAG" "([^"]+)"/)
+  assert.ok(asset, 'nothing uploads the candidate APK')
+  assert.ok(!asset[1].includes('#'),
+    'the `file#label` form sets a display label, not the asset name, so the download pattern cannot match it')
+  const downloaded = wf.match(/--pattern '([^']+)' --dir device-input/)
+  assert.ok(downloaded, 'nothing downloads the candidate APK')
+  assert.equal(asset[1], downloaded[1],
+    'the uploaded asset name and the downloaded pattern must be the same string')
+  assert.ok(wf.includes('`device-input/android-device-input.apk`') ||
+    wf.includes('device-input/android-device-input.apk'),
+    'the smoke test reads the file under its real name')
 })
 
 test('the verification step cannot race itself into rejecting a good APK', () => {

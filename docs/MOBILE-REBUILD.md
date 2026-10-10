@@ -1055,3 +1055,28 @@ now: the entry list is read once and every match is a herestring, so grep reads 
 temporary file and there is no writer left to kill. `tests/verify-apk-step.sh`
 repeats a 1,205-entry package 30 times to keep this from returning; the old code
 fails that case 30 times out of 30.
+
+#### The device job could never have run
+
+With the crash fixed, the `android-device` job was the thing standing between a
+build and a banked APK, and it turned out it had never once been given its input.
+Two mismatches, neither visible from the workflow alone, and the first one hiding
+the second:
+
+- The `android` job wrote the candidate release as `candidate-android-${GITHUB_SHA:0:7}`
+  while `android-device` looked up `candidate-android-${{ github.sha }}` - the full
+  forty characters. The reader went for a release that was never created.
+- The upload renamed its asset with `android-device-input.apk#candidate.apk`. In
+  `gh release upload` that form sets a *display label*, not the asset name, so the
+  file arrived under its own name and `--pattern 'candidate.apk'` matched nothing.
+
+Both sides now use the full SHA, because an expression can reproduce it without a
+truncation for the two to drift apart over, and the asset keeps its real name. A
+test reads both jobs and asserts they build the same tag and the same filename,
+and fails if either is reintroduced.
+
+The cleanup step also claimed success unconditionally behind `|| true`, so a
+candidate release that survived deletion was still reported as removed. It now
+reports what actually happened and warns when it leaves a draft behind.
+
+Four orphaned draft candidate releases were deleted from the repository.

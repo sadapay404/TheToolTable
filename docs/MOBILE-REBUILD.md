@@ -955,3 +955,47 @@ so the next person to edit the step finds out immediately.
 It also caught a mistake made *while fixing the step*: an edit dropped the YAML
 indentation of two lines, silently truncating the run block. The harness now
 re-parses the workflow and refuses to run a truncated step.
+
+### Batch 10o — the APK that crashed on every ARM phone
+
+Part 10n shipped a verified APK. It installed and then died on launch on a real
+phone, with Android's "The Tool Table keeps stopping". CI called the build green.
+
+Laying the pipeline out side by side explains it:
+
+| | what it did |
+| --- | --- |
+| built | `--target aarch64 --target armv7`, then a separate `--target x86_64` |
+| shipped | whichever APK `find … -print -quit` listed first |
+| tested | `TheToolTable-smoke.apk` — the **x86_64** one |
+| banked | *before* the test ran, with `continue-on-error` so nothing could stop it |
+
+Four separate defects, and the first one alone is enough:
+
+1. **The binary under test was not the binary shipped.** Every ARM phone runs
+   the aarch64 build; CI was driving the x86_64 build. Nothing had ever run the
+   ARM artifact on ARM.
+2. **The shipped APK was chosen by filesystem ordering.** Two targets put
+   several APKs in one directory and `find -print -quit` returned whichever came
+   first. That is not a decision anyone made, and it could pick the 32-bit-only
+   package.
+3. **`continue-on-error` on the smoke test, after the upload.** A crashing APK
+   could not have been stopped even if the test had been testing the right file.
+4. **The verifier reported ABIs and never gated on them.** It wrote the package's
+   `native-code` line into the job summary for months and refused nothing on it,
+   so a package with no usable ARM library passed cleanly.
+
+The fix inverts the order. Build arm64 only, so there is exactly one candidate.
+Gate the verifier on `arm64-v8a` in the manifest *and* at least one
+`lib/arm64-v8a` library in the archive — a missing one is an
+`UnsatisfiedLinkError` on launch, which is the textbook shape of a signed APK
+that installs and dies. Hand the signed APK to a new `android-device` job on
+`ubuntu-24.04-arm`, boot an **arm64-v8a** emulator there (an ARM image needs an
+ARM host; on x86_64 it does not boot), install *that exact file*, drive it, and
+only then upload. A failed device test publishes nothing and leaves the logcat in
+the job summary.
+
+The two tests that guarded the old behaviour asserted the bug — "bank before the
+test" and "the smoke test reports instead of vetoing". They now assert the
+opposite, which is the part worth keeping: the defect survived because the tests
+described it as intended.

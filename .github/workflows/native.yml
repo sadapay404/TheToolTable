@@ -926,6 +926,31 @@ jobs:
             --repo "$GITHUB_REPOSITORY" --clobber
           echo "Banked device-tested $FINAL_APK_NAME to $RELEASE_TAG: $(du -h "$FINAL_APK_NAME" | cut -f1), sha256 $(sha256sum "$FINAL_APK_NAME" | cut -d' ' -f1)"
 
+      # GitHub-hosted job logs are short-lived and are not reachable from every
+      # support environment. Preserve the actual smoke output and logcat on the
+      # already-private draft when this gate fails, without ever uploading an APK.
+      - name: Save Android failure diagnostics to the draft
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          DIAGNOSTIC=android-device-failure.txt
+          {
+            echo "Android device gate failed for ${GITHUB_SHA}."
+            echo ""
+            echo "--- smoke output ---"
+            if [ -f /tmp/smoke.out ]; then cat /tmp/smoke.out; else echo "(smoke command did not produce output)"; fi
+            echo ""
+            echo "--- logcat ---"
+            if [ -f android-device-logcat.txt ]; then cat android-device-logcat.txt; else echo "(logcat was not captured)"; fi
+          } > "$DIAGNOSTIC"
+          if gh release upload "$RELEASE_TAG" "$DIAGNOSTIC" --repo "$GITHUB_REPOSITORY" --clobber; then
+            echo "Saved Android failure diagnostics to draft $RELEASE_TAG."
+          else
+            echo "::warning title=Android diagnostics unavailable::Could not upload $DIAGNOSTIC to draft $RELEASE_TAG."
+          fi
+
       - name: Report what the device test made of that exact APK
         if: always()
         run: |

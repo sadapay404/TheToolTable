@@ -1311,7 +1311,10 @@ fails on a Rust abort, `PluginInitialization("download", ...)`, lost foreground,
 or failed navigation. Only after that normal (non-demoted) smoke step passes does
 `Bank the device-tested APK` upload the same checked bytes to the intended draft
 release. A failed device job reaches its logcat report and candidate cleanup, but
-cannot reach the banking step.
+cannot reach the banking step. Its smoke output and captured logcat are retained
+as `android-device-failure.txt` on the already-private real draft, so a failure
+can be diagnosed even where GitHub's ephemeral Actions log endpoint is not
+reachable.
 
 The transport filename is deliberately generic, so the workflow also carries a
 small reviewed release-name record. This prevents a fallback-key test APK from

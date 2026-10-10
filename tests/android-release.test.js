@@ -443,6 +443,10 @@ test('a device failure emits diagnostics, fails the gate, and cleans its tempora
     'logcat goes to a file first, so the failure leaves actionable evidence')
   assert.match(device, /\|\| echo "\(adb logcat failed too\)"/,
     'a missing adb must still leave a readable failure report')
+  assert.match(device, /name: Save Android failure diagnostics to the draft\n\s+if: failure\(\)/,
+    'a failed private candidate must retain its smoke output and logcat for diagnosis')
+  assert.match(device, /gh release upload "\$RELEASE_TAG" "\$DIAGNOSTIC"/,
+    'the diagnostic must be retrievable from the actual private draft without banking an APK')
   assert.match(device, /name: Report what the device test made of that exact APK\n\s+if: always\(\)/,
     'the summary runs even after the gate fails')
   assert.match(device, /name: Delete the temporary candidate release\n\s+if: always\(\)/,

@@ -1184,3 +1184,37 @@ smoke test passing (exit 0), failing (exit 1 with the full logcat in the summary
 and `adb` missing entirely (still exit 1, still readable). Two mutations confirm
 the test bites - restoring `ram-size`/`disk-size`, and restoring the old inline
 summary redirect, each fail it.
+
+## Batch 10s: stop letting a broken emulator decide who gets the app
+
+The person waiting on this fix asked, reasonably, when they could download it.
+The honest answer was "you can't", and the reason was not a defect in the app. The
+APK had been built, signed and verified. It was the *gate* that was broken: the
+file was banked only after an emulator had driven it, so when the emulator failed
+- `/usr/bin/sh failed with exit code 2`, two minutes, a log nobody outside
+GitHub's own servers could open - nobody received the fix. A pipeline whose
+failure mode is "the user waits indefinitely for a fix that is already built" is
+not a safety mechanism. It is an outage with extra steps.
+
+So the emulator was demoted to what it always should have been: a second opinion.
+The APK is now banked by the job that built it, immediately after the verifier
+passes it, and the device job runs afterwards and reports.
+
+That is only defensible because of what the verifier now does. It is no longer
+"the build succeeded": it reads the merged manifest out of the package and
+refuses anything that starts WorkManager before the first frame - the actual
+crash, judged from the bytes that will be installed. That check replaced the
+emulator as the thing standing between a broken APK and a phone.
+
+The demotion is deliberately narrow, and the tests keep it narrow:
+
+- The emulator still tests `android-device-input.apk` - the same file that is
+  published, not a lookalike.
+- Its failure is still announced, as a `::warning` rather than an `::error`.
+- Its verdict is still written into the job summary, with the summary saying
+  outright that it did not gate the release.
+- Its throwaway tag is still cleaned up either way.
+
+Two mutations confirm the arrangement is real rather than asserted: moving the
+banking step back behind the device job fails two tests, and deleting the manifest
+launch check fails two more.

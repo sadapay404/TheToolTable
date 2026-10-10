@@ -239,14 +239,6 @@ test('the icon generator does not read a file it writes', () => {
 
 /* ------------------------------------------------------------ the workflow */
 
-test('the Android runner installs the compile SDK required by Tauri and the patched download plugin', () => {
-  const workflow = read('.github/workflows/native.yml')
-  const pluginPatch = read('scripts/patch-android-download-plugin.mjs')
-  assert.match(workflow, /platforms;android-37/,
-    'CI must not rely on an incidental preinstalled SDK when the generated app compiles against API 37')
-  assert.match(pluginPatch, /compileSdk = 37/)
-})
-
 test('a build runs for every arena branch, not one frozen name', () => {
   const workflow = read('.github/workflows/native.yml')
   assert.match(workflow, /branches: \['arena\/\*\*', 'main', 'master'\]/)

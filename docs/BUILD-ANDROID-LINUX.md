@@ -16,7 +16,7 @@ You need, on the machine:
 | Node.js | 20 or newer | the app's build tooling |
 | Rust | stable, via rustup | the native side of the app |
 | JDK | **17** (Temurin recommended) | Android's build requires exactly this |
-| Android SDK | platform 37, build-tools 35.0.0, NDK, platform-tools | Tauri 2.12 and the patched download plugin compile against API 37; native code uses the NDK |
+| Android SDK | platform 35, build-tools 35.0.0, NDK, platform-tools | Tauri compiles native code against the NDK |
 | git, curl, build-essential | any | ordinary build prerequisites |
 
 Roughly **15 GB of free disk**. No GPU is needed.
@@ -65,7 +65,7 @@ Install Android Studio, open it once, and let it install the SDK. Then, using
 `sdkmanager` (found under `Android Studio > Settings > Languages & Frameworks >
 Android SDK > SDK Tools`), install:
 
-- `platforms;android-37`
+- `platforms;android-35`
 - `build-tools;35.0.0`
 - `ndk;27.2.12479018`
 - `platform-tools`

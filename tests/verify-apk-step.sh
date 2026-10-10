@@ -127,7 +127,7 @@ mkdir -p "$WORK/badging"
 cat > "$WORK/badging/typed-fgs.txt" <<'EOF'
 package: name='app.thetooltable.desktop'
 sdkVersion:'24'
-targetSdkVersion:'37'
+targetSdkVersion:'35'
 uses-permission: name='android.permission.INTERNET'
 uses-permission: name='android.permission.POST_NOTIFICATIONS'
 uses-permission: name='android.permission.FOREGROUND_SERVICE_DATA_SYNC'
@@ -138,7 +138,7 @@ EOF
 cat > "$WORK/badging/no-notifications.txt" <<'EOF'
 package: name='app.thetooltable.desktop'
 sdkVersion:'24'
-targetSdkVersion:'37'
+targetSdkVersion:'35'
 uses-permission: name='android.permission.INTERNET'
 uses-permission: name='android.permission.FOREGROUND_SERVICE'
 application-icon-160:'res/mipmap-mdpi-v4/ic_launcher.png'
@@ -148,7 +148,7 @@ EOF
 cat > "$WORK/badging/no-fgs.txt" <<'EOF'
 package: name='app.thetooltable.desktop'
 sdkVersion:'24'
-targetSdkVersion:'37'
+targetSdkVersion:'35'
 uses-permission: name='android.permission.INTERNET'
 uses-permission: name='android.permission.POST_NOTIFICATIONS'
 application-icon-160:'res/mipmap-mdpi-v4/ic_launcher.png'
@@ -158,7 +158,7 @@ EOF
 cat > "$WORK/badging/absent-icon.txt" <<'EOF'
 package: name='app.thetooltable.desktop'
 sdkVersion:'24'
-targetSdkVersion:'37'
+targetSdkVersion:'35'
 uses-permission: name='android.permission.INTERNET'
 uses-permission: name='android.permission.POST_NOTIFICATIONS'
 uses-permission: name='android.permission.FOREGROUND_SERVICE'
@@ -167,9 +167,9 @@ native-code: 'arm64-v8a'
 native-code: 'x86_64'
 EOF
 cat > "$WORK/badging/x86-only.txt" <<'EOF'
-package: name='app.thetooltable.mubashir' versionCode='120' versionName='1.2.2' compileSdkVersion='37'
+package: name='app.thetooltable.mubashir' versionCode='120' versionName='1.2.2' compileSdkVersion='35'
 sdkVersion:'24'
-targetSdkVersion:'37'
+targetSdkVersion:'35'
 uses-permission: name='android.permission.INTERNET'
 uses-permission: name='android.permission.POST_NOTIFICATIONS'
 uses-permission: name='android.permission.FOREGROUND_SERVICE'
@@ -177,9 +177,9 @@ application-icon-160:'res/mipmap-mdpi-v4/ic_launcher.png'
 native-code: 'x86_64'
 EOF
 cat > "$WORK/badging/no-abi.txt" <<'EOF'
-package: name='app.thetooltable.mubashir' versionCode='120' versionName='1.2.2' compileSdkVersion='37'
+package: name='app.thetooltable.mubashir' versionCode='120' versionName='1.2.2' compileSdkVersion='35'
 sdkVersion:'24'
-targetSdkVersion:'37'
+targetSdkVersion:'35'
 uses-permission: name='android.permission.INTERNET'
 uses-permission: name='android.permission.POST_NOTIFICATIONS'
 uses-permission: name='android.permission.FOREGROUND_SERVICE'
@@ -187,9 +187,9 @@ application-icon-160:'res/mipmap-mdpi-v4/ic_launcher.png'
 EOF
 : > "$WORK/badging/unreadable.txt"
 cat > "$WORK/badging/good.txt" <<'EOF'
-package: name='app.thetooltable.desktop' versionCode='120' versionName='1.2.2' compileSdkVersion='37'
+package: name='app.thetooltable.desktop' versionCode='120' versionName='1.2.2' compileSdkVersion='35'
 sdkVersion:'24'
-targetSdkVersion:'37'
+targetSdkVersion:'35'
 uses-permission: name='android.permission.INTERNET'
 uses-permission: name='android.permission.POST_NOTIFICATIONS'
 uses-permission: name='android.permission.FOREGROUND_SERVICE'
@@ -328,7 +328,7 @@ run 1 "$WORK/good.apk" "an APK that reports no ABI at all is refused" "advertise
 # The device job installs this exact file on an x86_64 emulator, so a package
 # without that library could never be tested. It is refused here instead, at the
 # point where it can still be fixed.
-printf "package: name='app.thetooltable.mubashir' versionCode='120' versionName='1.2.2' compileSdkVersion='37'\nsdkVersion:'24'\ntargetSdkVersion:'37'\nuses-permission: name='android.permission.INTERNET'\nuses-permission: name='android.permission.POST_NOTIFICATIONS'\nuses-permission: name='android.permission.FOREGROUND_SERVICE'\napplication-icon-160:'res/mipmap-mdpi-v4/ic_launcher.png'\nnative-code: 'arm64-v8a'\n" > "$WORK/badging/arm-only.txt"
+printf "package: name='app.thetooltable.mubashir' versionCode='120' versionName='1.2.2' compileSdkVersion='35'\nsdkVersion:'24'\ntargetSdkVersion:'35'\nuses-permission: name='android.permission.INTERNET'\nuses-permission: name='android.permission.POST_NOTIFICATIONS'\nuses-permission: name='android.permission.FOREGROUND_SERVICE'\napplication-icon-160:'res/mipmap-mdpi-v4/ic_launcher.png'\nnative-code: 'arm64-v8a'\n" > "$WORK/badging/arm-only.txt"
 run 1 "$WORK/good.apk" "an APK the device job could not install is refused" "no x86_64 ABI" "$WORK/badging/arm-only.txt"
 
 build_apk "$WORK/wrong-arch.apk" wrong-arch-lib

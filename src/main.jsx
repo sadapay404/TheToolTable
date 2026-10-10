@@ -25,25 +25,6 @@ if (isAndroid) root.classList.add('android-native')
    publishes the measured, per-device values as `--safe-*`. */
 initSafeArea({ isAndroidNative: isAndroid })
 
-/* Material 3 hides the 1px header divider until the page actually scrolls. */
-if (typeof window !== 'undefined') {
-  const header = document.querySelector('.app-header')
-  if (header) {
-    let ticking = false
-    const sync = () => {
-      ticking = false
-      header.dataset.scrolled = window.scrollY > 4 ? 'true' : 'false'
-    }
-    const onScroll = () => {
-      if (ticking) return
-      ticking = true
-      requestAnimationFrame(sync)
-    }
-    window.addEventListener('scroll', onScroll, { passive: true })
-    sync()
-  }
-}
-
 applyTheme(savedTheme())
 ReactDOM.createRoot(document.getElementById('root')).render(<App />)
 

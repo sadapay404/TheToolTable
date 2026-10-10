@@ -335,6 +335,7 @@ export default function App() {
   const controlsOpen = overlay === 'personalize'
   const searchOpen = overlay === 'search'
   const routeHistoryRef = useRef(resetToolHistory())
+  const headerRef = useRef(null)
   const themeRef = useRef(theme)
   themeRef.current = theme
 
@@ -402,6 +403,31 @@ export default function App() {
     window.addEventListener('resize', onResize)
     window.addEventListener('orientationchange', onResize)
     return () => { window.removeEventListener('resize', onResize); window.removeEventListener('orientationchange', onResize) }
+  }, [])
+
+  /* This must attach after React creates the header. The former bootstrap query
+     ran before render, found no `.app-header`, and silently left the divider in
+     its initial state for the lifetime of the page. Keep the scroll path DOM-only
+     so high-frequency events never re-render the full app shell. */
+  useEffect(() => {
+    const header = headerRef.current
+    if (!header) return undefined
+    let frame = null
+    const sync = () => {
+      frame = null
+      const next = window.scrollY > 4 ? 'true' : 'false'
+      if (header.dataset.scrolled !== next) header.dataset.scrolled = next
+    }
+    const onScroll = () => {
+      if (frame !== null) return
+      frame = requestAnimationFrame(sync)
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    sync()
+    return () => {
+      window.removeEventListener('scroll', onScroll)
+      if (frame !== null) cancelAnimationFrame(frame)
+    }
   }, [])
 
   useEffect(() => {
@@ -513,7 +539,7 @@ export default function App() {
       <AmbientField drift={ambient.enabled ? drift : null} ambient={ambient} />
 
       {/* Top bar */}
-      <header className="app-header sticky top-0 z-40 border-b border-line" style={{ background: 'color-mix(in srgb, var(--bg) 92%, transparent)' }}>
+      <header ref={headerRef} className="app-header sticky top-0 z-40 border-b border-line" style={{ background: 'color-mix(in srgb, var(--bg) 92%, transparent)' }}>
         <div className="app-header-inner max-w-6xl mx-auto px-3 sm:px-6 min-h-16 py-2 flex items-center gap-2 sm:gap-5">
           <motion.button type="button" aria-label={active ? 'Go back' : 'TheToolTable home'} className="app-brand flex items-center gap-2 sm:gap-3.5 shrink-0" whileTap={{ scale: 0.97 }} onClick={() => (active ? navigateBack(false) : goHome())}>
             <Logo className="w-8 h-8 sm:w-9 sm:h-9 rounded-[10px]" shadow />

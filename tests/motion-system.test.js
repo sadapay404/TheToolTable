@@ -8,7 +8,7 @@ import {
   EASE, DURATION, CSS_MS, SPRING, CARD_SPRING, t, instant, stagger, staggerChildren,
   fadeIn, riseIn, riseInX, maskLine, scaleIn, pressable, containerTransform, sharedAxis,
   drawRule, shineSweep, floatingLoop, spinLoop, breatheLoop, shouldAnimate,
-  useAmbient, useCountUp, useMagnetic, usePointerDrift, useReveal, useStaggeredDelay,
+  AMBIENT_STATIC, ambientProfile, useCountUp, useMagnetic, usePointerDrift, useReveal, useStaggeredDelay,
 } from '../src/lib/motion.js'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -146,19 +146,29 @@ test('shouldAnimate is false under prefers-reduced-motion and true otherwise', (
   }
 })
 
-test('every hook in the motion system is exported for callers', () => {
-  for (const hook of [useAmbient, useCountUp, useMagnetic, usePointerDrift, useReveal, useStaggeredDelay]) {
+test('every shared motion helper is exported for callers', () => {
+  for (const hook of [useCountUp, useMagnetic, usePointerDrift, useReveal, useStaggeredDelay]) {
     assert.equal(typeof hook, 'function')
   }
+  assert.equal(typeof ambientProfile, 'function')
 })
 
-/* ------------------------------------------- never redact existing motion -- */
+/* ------------------------------------------ shell-owned ambient policy -- */
+test('the ambient profile is pure, polls nowhere, and makes Lite static', () => {
+  assert.deepEqual(AMBIENT_STATIC, { enabled: true, level: 'full', count: 5, scale: 1 })
+  assert.deepEqual(ambientProfile('full'), { enabled: true, level: 'full', count: 5, scale: 1 })
+  assert.deepEqual(ambientProfile('balanced'), { enabled: true, level: 'balanced', count: 4, scale: 0.8 })
+  assert.deepEqual(ambientProfile('lite'), { enabled: false, level: 'lite', count: 0, scale: 0 })
+  assert.deepEqual(ambientProfile('full', true), { enabled: false, level: 'full', count: 0, scale: 1 })
+  assert.doesNotMatch(motionSource, /setInterval|getPerf\(\)/, 'ambient consumers must not poll the performance store')
 
-test('the lite profile thins ambient motion but never switches it off', () => {
-  const block = motionSource.slice(motionSource.indexOf('export function useAmbient'))
-  assert.match(block, /count: reduced \? 0 : level === 'lite' \? ([3-9])/, 'lite must keep at least 3 ambient elements')
-  assert.match(block, /level === 'balanced' \? [4-9]/, 'balanced must keep at least 4 ambient elements')
-  assert.match(css, /\.ambient-grid \{[\s\S]*?display: none/, 'lite may hide the grid layer, but only there')
+  assert.match(appSource, /const ambient = useMemo\(\(\) => ambientProfile\(perfNow\.level, !!reduceMotion\)/,
+    'App must derive the shared profile from its existing reactive performance state')
+  assert.match(appSource, /<AmbientField drift=\{ambient\.enabled \? drift : null\} ambient=\{ambient\} \/>/)
+  assert.match(ambientSource, /function AmbientField\(\{ drift = null, ambient = AMBIENT_STATIC \}\)/)
+  assert.match(ambientSource, /if \(!ambient\.enabled\) return null/)
+  assert.match(css, /html\[data-perf="lite"\][\s\S]*?\.mfoot-ticker-track[\s\S]*?animation: none !important/,
+    'the CSS fallback must also stop decorative loops in Lite')
 })
 
 test('part 1-3 animation is still present after the part 4 rewrite', () => {

@@ -8,12 +8,11 @@
  *   • Only `transform` and `opacity` are animated on scroll paths — animating
  *     layout properties is what makes a page feel heavy.
  *   • Nothing loops when the OS asks for reduced motion.
- *   • Ambient loops thin out on the `lite` performance profile but never vanish,
- *     because a silent app feels broken.
+ *   • Decorative ambient work is selected once by the application shell. Lite
+ *     mode is intentionally static so it can protect battery and frame time.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useInView, useMotionValue, useMotionValueEvent, useReducedMotion, useSpring, useTransform } from 'framer-motion'
-import { getPerf } from './perf.js'
 
 /* M3 easing curves */
 export const EASE = {
@@ -123,7 +122,7 @@ export const shineSweep = {
   hover: { x: '120%', opacity: 1, transition: { duration: DURATION.extraLong2, ease: EASE.emphasized } },
 }
 
-/** Endless ambient float. Distance shrinks on weaker devices rather than stopping. */
+/** Endless ambient float. Call only when the shell's ambient profile is enabled. */
 export function floatingLoop(duration = 6, distance = 6) {
   return {
     animate: { y: [0, -distance, 0] },
@@ -159,25 +158,23 @@ export function useTransition(transition) {
 }
 
 /**
- * Should ambient (never-ending) motion run right now?
- * Reduced motion always wins. The `lite` profile keeps motion but at a lower
- * count, because a still screen reads as a broken screen.
+ * A pure, shell-owned policy for decorative perpetual motion.
+ *
+ * `usePerf()` already gives the app a reactive performance snapshot. Keeping this
+ * policy pure lets the shell derive it once and pass it to permanent consumers,
+ * rather than making each visual layer poll independently. Lite deliberately
+ * mounts no decorative loops; interaction feedback and progress remain separate.
  */
-export function useAmbient() {
-  const reduced = !!useReducedMotion()
-  const [level, setLevel] = useState(() => getPerf().level)
-  useEffect(() => {
-    const id = setInterval(() => setLevel(getPerf().level), 1500)
-    return () => clearInterval(id)
-  }, [])
+export const AMBIENT_STATIC = Object.freeze({ enabled: true, level: 'full', count: 5, scale: 1 })
+
+export function ambientProfile(level = 'full', reduced = false) {
+  const normalized = level === 'lite' || level === 'balanced' || level === 'full' ? level : 'full'
+  const enabled = !reduced && normalized !== 'lite'
   return {
-    enabled: !reduced,
-    level,
-    /** How many ambient elements to mount. Even `lite` keeps a full set —
-        a thinner background, never a still one. */
-    count: reduced ? 0 : level === 'lite' ? 3 : level === 'balanced' ? 4 : 5,
-    /** Distance multiplier for loops. */
-    scale: level === 'lite' ? 0.55 : level === 'balanced' ? 0.8 : 1,
+    enabled,
+    level: normalized,
+    count: enabled ? (normalized === 'balanced' ? 4 : 5) : 0,
+    scale: normalized === 'balanced' ? 0.8 : normalized === 'lite' ? 0 : 1,
   }
 }
 

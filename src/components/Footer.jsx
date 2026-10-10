@@ -4,6 +4,7 @@ import { TOOLS } from '../toolsRegistry.jsx'
 import { Logo } from './Logo.jsx'
 import MobileFooter from './MobileFooter.jsx'
 import { useScroll, useTransform } from 'framer-motion'
+import { AMBIENT_STATIC } from '../lib/motion.js'
 
 const SPRING = { type: 'spring', stiffness: 300, damping: 25 }
 const EASE = [0.22, 1, 0.36, 1]
@@ -25,13 +26,48 @@ function Glyph({ c, i }) {
   )
 }
 
-/** Wide footer, mounted only for the desktop/tablet shell. */
-function DesktopFooter() {
-  const word = [...'TOOL'], word2 = [...'TABLE']
-  /* The lockup drifts a little as the footer arrives — depth, not decoration. */
+const LOCKUP_STYLE = {
+  fontFamily: 'Roboto, "Noto Sans", Arial, sans-serif',
+  fontWeight: 800,
+  fontSize: '15.3cqw',
+  letterSpacing: '-0.045em',
+  color: 'var(--ink)',
+  lineHeight: 0.8,
+  fontFeatureSettings: '"kern"',
+}
+
+function FooterLockupFrame({ children, style }) {
+  return (
+    <motion.div
+      className="flex items-end justify-between select-none"
+      initial="hidden"
+      whileInView="show"
+      viewport={{ once: true, amount: 0.3 }}
+      style={{ ...LOCKUP_STYLE, ...style }}
+    >
+      {children}
+    </motion.div>
+  )
+}
+
+/* Keep the extra scroll subscription out of Lite altogether, rather than only
+   hiding its result with CSS. */
+function AnimatedFooterLockup({ children }) {
   const { scrollY } = useScroll()
   const lockupY = useTransform(scrollY, [0, 6000], [0, -46])
   const lockupScale = useTransform(scrollY, [0, 6000], [1, 1.015])
+  return <FooterLockupFrame style={{ y: lockupY, scale: lockupScale }}>{children}</FooterLockupFrame>
+}
+
+function FooterLockup({ ambient, children }) {
+  return ambient.enabled
+    ? <AnimatedFooterLockup>{children}</AnimatedFooterLockup>
+    : <FooterLockupFrame>{children}</FooterLockupFrame>
+}
+
+/** Wide footer, mounted only for the desktop/tablet shell. */
+function DesktopFooter({ ambient = AMBIENT_STATIC }) {
+  const word = [...'TOOL'], word2 = [...'TABLE']
 
   return (
     <>
@@ -45,15 +81,15 @@ function DesktopFooter() {
         <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(60% 80% at 85% 110%, var(--glow), transparent 70%)' }} />
         <div className="relative max-w-6xl mx-auto px-6 pt-14 pb-8">
           <div role="img" aria-label="the TOOLTABLE by Mubashir" style={{ containerType: 'inline-size' }}>
-            <motion.div className="flex items-end justify-between select-none" initial="hidden" whileInView="show" viewport={{ once: true, amount: 0.3 }} style={{ y: lockupY, scale: lockupScale, fontFamily: 'Roboto, "Noto Sans", Arial, sans-serif', fontWeight: 800, fontSize: '15.3cqw', letterSpacing: '-0.045em', color: 'var(--ink)', lineHeight: 0.8, fontFeatureSettings: '"kern"' }}>
+            <FooterLockup ambient={ambient}>
               <motion.span className="block shrink-0" initial={{ opacity: 0, x: -14 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ ...SPRING, delay: 0.05 }} style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', fontSize: '0.3em', letterSpacing: '-0.01em', lineHeight: 1, paddingBlock: '0.04em', marginRight: '0.06em' }}>the</motion.span>
               <span className="flex">{word.map((c, i) => <Glyph key={'a' + i} c={c} i={i} />)}</span>
               <span className="shrink-0" style={{ width: '0.2em' }} />
               <span className="flex">{word2.map((c, i) => <Glyph key={'b' + i} c={c} i={i + 4} />)}</span>
               <motion.span className="block shrink-0 relative" initial={{ scale: 0, rotate: -90 }} whileInView={{ scale: 1, rotate: 0 }} viewport={{ once: true }} transition={{ ...SPRING, delay: 0.6 }} style={{ width: '0.16em', height: '0.16em', background: 'var(--accent)', marginLeft: '0.05em', marginBottom: '0.02em' }}>
-                <motion.span className="absolute inset-0" style={{ background: 'var(--accent)' }} animate={{ scale: [1, 2.4], opacity: [0.5, 0] }} transition={{ duration: 2.6, repeat: Infinity, ease: 'easeOut', repeatDelay: 1.4 }} />
+                <motion.span className="absolute inset-0" style={{ background: 'var(--accent)' }} animate={ambient.enabled ? { scale: [1, 2.4], opacity: [0.5, 0] } : { scale: 1, opacity: 0.5 }} transition={ambient.enabled ? { duration: 2.6, repeat: Infinity, ease: 'easeOut', repeatDelay: 1.4 } : { duration: 0 }} />
               </motion.span>
-            </motion.div>
+            </FooterLockup>
           </div>
           <motion.div className="h-px mt-9 origin-left" style={{ background: 'var(--ink)', opacity: 0.85 }} initial={{ scaleX: 0 }} whileInView={{ scaleX: 1 }} viewport={{ once: true }} transition={{ duration: 1, ease: EASE, delay: 0.3 }} />
           <div className="mt-6 flex flex-wrap items-start justify-between gap-x-10 gap-y-6">
@@ -81,10 +117,10 @@ function DesktopFooter() {
  * hooks, timers and Framer Motion work alive, so the shell selects its actual
  * footer variant before it enters the tree.
  */
-export default function Footer({ isPhone = false }) {
+export default function Footer({ isPhone = false, ambient = AMBIENT_STATIC }) {
   return (
     <footer className="relative mt-4 border-t border-line overflow-hidden" style={{ background: 'var(--surface2)' }} aria-label="TheToolTable credits">
-      {isPhone ? <MobileFooter /> : <DesktopFooter />}
+      {isPhone ? <MobileFooter ambient={ambient} /> : <DesktopFooter ambient={ambient} />}
     </footer>
   )
 }

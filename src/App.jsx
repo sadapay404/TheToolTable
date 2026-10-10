@@ -10,7 +10,7 @@ import { pushToolHistory, resetToolHistory, resolveBack, installHistorySentinel 
 import CommandPalette from './components/CommandPalette.jsx'
 import MobileNavBar from './components/MobileNavBar.jsx'
 import MobileSearch from './components/MobileSearch.jsx'
-import { EASE, DURATION, t, sharedAxis, useCountUp, usePointerDrift, useMotionValueEvent } from './lib/motion.js'
+import { ambientProfile, EASE, DURATION, t, sharedAxis, useCountUp, usePointerDrift, useMotionValueEvent } from './lib/motion.js'
 import AmbientField from './components/AmbientField.jsx'
 import { AmbientSpinner } from './components/AmbientField.jsx'
 import { RevealLine, RevealBlock, RevealRule } from './components/Reveal.jsx'
@@ -169,7 +169,7 @@ function ThemePicker({ theme, setTheme }) {
 
 const PERF_OPTS = [
   ['auto', 'Auto', 'Picks the best profile for this device'],
-  ['lite', 'Lite', 'Low-end laptops & phones: no blur or grain, lighter previews'],
+  ['lite', 'Lite', 'Battery-first: no decorative motion, blur or grain'],
   ['balanced', 'Balanced', 'Mid-range phones & laptops'],
   ['full', 'Full', 'High-end machines: every effect at full resolution'],
 ]
@@ -457,6 +457,9 @@ export default function App() {
 
   const perfNow = usePerf()
   const reduceMotion = useReducedMotion()
+  /* One reactive performance snapshot controls all permanent decorative layers.
+     Keeping this here prevents each child from starting its own polling loop. */
+  const ambient = useMemo(() => ambientProfile(perfNow.level, !!reduceMotion), [perfNow.level, reduceMotion])
   const { scrollY, scrollYProgress } = useScroll()
   /* Springing the progress bar removes the stepped feel of a raw scroll value on
      Windows trackpads while staying tight enough to feel immediate. */
@@ -468,11 +471,9 @@ export default function App() {
   const heroScale = useTransform(scrollY, [0, 520], [1, 0.98])
   /* Depth parallax: the orbit sits closer to the reader than the copy, so it
      travels further in the opposite direction as the hero leaves. */
-  /* Parallax is three scroll transforms on three elements. It costs nothing
-     measurable, and dropping it on a low-tier phone is the difference between
-     an app that has depth and one that looks broken — so only the user's own
-     reduced-motion setting turns it off. */
-  const heroParallax = reduceMotion ? 0 : 1
+  /* Parallax is decorative. Lite keeps the same content and progress feedback,
+     but leaves this scroll-linked depth static to save battery and frame time. */
+  const heroParallax = ambient.enabled ? 1 : 0
   const heroOrbitY = useTransform(scrollY, [0, 420], [0, 30 * heroParallax])
   const heroCopyY = useTransform(scrollY, [0, 420], [0, -14 * heroParallax])
   const heroHaloY = useTransform(scrollY, [0, 420], [0, 44 * heroParallax])
@@ -504,11 +505,11 @@ export default function App() {
     <ShellBoundary>
     <div
       className="min-h-screen relative overflow-x-clip"
-      onPointerMove={isPhone ? undefined : drift.onPointerMove}
+      onPointerMove={isPhone || !ambient.enabled ? undefined : drift.onPointerMove}
     >
-      <motion.div className="scroll-progress" style={{ scaleX: reduceMotion ? scrollYProgress : scrollProgressSmooth }} aria-hidden="true" />
+      <motion.div className="scroll-progress" style={{ scaleX: reduceMotion || !ambient.enabled ? scrollYProgress : scrollProgressSmooth }} aria-hidden="true" />
       <div className="hero-tint" />
-      <AmbientField drift={drift} />
+      <AmbientField drift={ambient.enabled ? drift : null} ambient={ambient} />
 
       {/* Top bar */}
       <header className="app-header sticky top-0 z-40 border-b border-line" style={{ background: 'color-mix(in srgb, var(--bg) 92%, transparent)' }}>
@@ -552,7 +553,7 @@ export default function App() {
             <motion.div key="home" className="home-screen" {...sharedAxis(1)}>
               <motion.section
                 className="home-hero pt-12 pb-10 sm:pt-20 sm:pb-16 text-center relative"
-                style={{ y: reduceMotion ? 0 : heroY, opacity: reduceMotion ? 1 : heroOpacity, scale: reduceMotion ? 1 : heroScale }}
+                style={{ y: ambient.enabled ? heroY : 0, opacity: ambient.enabled ? heroOpacity : 1, scale: ambient.enabled ? heroScale : 1 }}
               >
                 <div className="desktop-home-hero hidden sm:block">
                   <motion.div
@@ -579,15 +580,15 @@ export default function App() {
 
                 <div className="mobile-home-hero sm:hidden">
                   <motion.div className="mobile-hero-orbit" aria-hidden="true" style={{ y: heroOrbitY }}>
-                    <motion.span className="mobile-orbit-ring mobile-orbit-ring-a" animate={reduceMotion ? undefined : { rotate: 360 }} transition={{ duration: 28, repeat: Infinity, ease: 'linear' }} />
-                    <motion.span className="mobile-orbit-ring mobile-orbit-ring-b" animate={reduceMotion ? undefined : { rotate: -360 }} transition={{ duration: 38, repeat: Infinity, ease: 'linear' }} />
-                    <motion.span className="mobile-orbit-dot" animate={reduceMotion ? undefined : { y: [0, -7, 0], opacity: [0.55, 1, 0.55] }} transition={{ duration: 2.7, repeat: Infinity, ease: 'easeInOut' }} />
+                    <motion.span className="mobile-orbit-ring mobile-orbit-ring-a" animate={ambient.enabled ? { rotate: 360 } : { rotate: 0 }} transition={ambient.enabled ? { duration: 28, repeat: Infinity, ease: 'linear' } : { duration: 0 }} />
+                    <motion.span className="mobile-orbit-ring mobile-orbit-ring-b" animate={ambient.enabled ? { rotate: -360 } : { rotate: 0 }} transition={ambient.enabled ? { duration: 38, repeat: Infinity, ease: 'linear' } : { duration: 0 }} />
+                    <motion.span className="mobile-orbit-dot" animate={ambient.enabled ? { y: [0, -7, 0], opacity: [0.55, 1, 0.55] } : { y: 0, opacity: 0.55 }} transition={ambient.enabled ? { duration: 2.7, repeat: Infinity, ease: 'easeInOut' } : { duration: 0 }} />
                   </motion.div>
                   {/* Parallax wrapper sits outside the animated row so the scroll
                       offset never competes with its spring entrance. */}
                   <motion.div className="block" style={{ y: heroCopyY }} aria-hidden={false}>
                   <motion.div className="mobile-hero-brand" initial={reduceMotion ? false : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={reduceMotion ? { duration: 0 } : { ...SPRING, delay: 0.04 }}>
-                    <motion.span className="mobile-hero-logo" animate={reduceMotion ? undefined : { y: [0, -3, 0], rotate: [0, 2, 0] }} transition={{ duration: 4.2, repeat: Infinity, ease: 'easeInOut' }}><Logo className="w-12 h-12 rounded-2xl" shadow /></motion.span>
+                    <motion.span className="mobile-hero-logo" animate={ambient.enabled ? { y: [0, -3, 0], rotate: [0, 2, 0] } : { y: 0, rotate: 0 }} transition={ambient.enabled ? { duration: 4.2, repeat: Infinity, ease: 'easeInOut' } : { duration: 0 }}><Logo className="w-12 h-12 rounded-2xl" shadow /></motion.span>
                     <span className="text-left"><span className="eyebrow block">By Mubashir</span><span className="display block text-[13px] font-semibold mt-1">The all-in-one workbench</span></span>
                   </motion.div>
                   </motion.div>
@@ -718,7 +719,7 @@ export default function App() {
         onSearch={() => setOverlay('search')}
         onPersonalize={() => setOverlay('personalize')}
       />
-      <Footer isPhone={isPhone} />
+      <Footer isPhone={isPhone} ambient={ambient} />
 
       {!isPhone && (
         <CommandPalette

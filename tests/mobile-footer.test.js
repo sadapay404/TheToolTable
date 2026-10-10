@@ -16,16 +16,20 @@ const css = read('src/styles.css')
 /* ------------------------------------------------------------ structure --- */
 
 test('the shell mounts exactly one footer variant for the current breakpoint', () => {
-  assert.ok(mobile.includes("export default function MobileFooter()"))
+  assert.ok(mobile.includes('export default function MobileFooter({ ambient = AMBIENT_STATIC })'))
   assert.match(footer, /import MobileFooter from '\.\/MobileFooter\.jsx'/)
-  assert.match(footer, /export default function Footer\(\{ isPhone = false \}\)/)
-  assert.match(footer, /\{isPhone \? <MobileFooter \/> : <DesktopFooter \/>\}/, 'the inactive footer must not mount behind a CSS visibility class')
-  assert.match(app, /<Footer isPhone=\{isPhone\} \/>/, 'the shell must provide its existing responsive state')
+  assert.match(footer, /export default function Footer\(\{ isPhone = false, ambient = AMBIENT_STATIC \}\)/)
+  assert.match(footer, /\{isPhone \? <MobileFooter ambient=\{ambient\} \/> : <DesktopFooter ambient=\{ambient\} \/>\}/, 'the inactive footer must not mount behind a CSS visibility class')
+  assert.match(app, /<Footer isPhone=\{isPhone\} ambient=\{ambient\} \/>/, 'the shell must provide its existing responsive state and shared ambient profile')
   assert.doesNotMatch(footer, /sm:hidden|hidden sm:block/, 'responsive CSS must not keep an inactive footer tree mounted')
 
   const desktop = footer.slice(footer.indexOf('function DesktopFooter'), footer.indexOf('export default function Footer'))
   assert.match(desktop, /className="desktop-footer-aura"/, 'the desktop aura belongs only to the desktop branch')
-  assert.match(desktop, /useScroll\(\)/, 'desktop scroll work belongs only to the desktop branch')
+  assert.match(desktop, /<FooterLockup ambient=\{ambient\}>/, 'the desktop lockup must receive the shared profile')
+  assert.doesNotMatch(desktop, /useScroll\(\)/, 'Lite must not mount desktop scroll work just to render a static lockup')
+  assert.match(footer, /function AnimatedFooterLockup[\s\S]*?useScroll\(\)/, 'scroll work must live behind the animated profile branch')
+  assert.match(footer, /ambient\.enabled\s*\? <AnimatedFooterLockup/, 'only the animated profile may mount that branch')
+  assert.match(desktop, /ambient\.enabled/, 'the desktop perpetual pulse must obey the shared profile')
 })
 
 test('the old shrunk desktop footer markup is gone', () => {
@@ -33,7 +37,7 @@ test('the old shrunk desktop footer markup is gone', () => {
   assert.doesNotMatch(css, /\.mobile-footer-wordmark/, 'and no legacy styles either')
 })
 
-/* ---------------------------------------------------------- always moving -- */
+/* -------------------------------------------------------------- content -- */
 
 test('the footer keeps its concept: brand, wordmark, credits, ticker, back to top', () => {
   for (const [needle, label] of [
@@ -50,10 +54,14 @@ test('the footer keeps its concept: brand, wordmark, credits, ticker, back to to
   }
 })
 
-test('every ambient loop in the footer repeats forever', () => {
+test('the footer gates decorative loops on the shared ambient profile', () => {
   const loops = [...mobile.matchAll(/repeat:\s*Infinity/g)]
-  assert.ok(loops.length >= 4, `expected the footer's loops to run forever, found ${loops.length}`)
-  // and the CSS ones
+  assert.ok(loops.length >= 4, `expected the full profile's footer loops, found ${loops.length}`)
+  assert.match(mobile, /if \(!ambient\.enabled\) return null/, 'Lite must omit the aurora rather than leaving it active')
+  assert.match(mobile, /ambient\.enabled \? \{ duration: 14, repeat: Infinity/, 'the wordmark loop must be profile-gated')
+  assert.match(mobile, /animationPlayState: !ambient\.enabled \|\| reduceMotion \? 'paused' : 'running'/, 'the ticker must pause in Lite')
+  assert.doesNotMatch(mobile, /useAmbient|setInterval/, 'footer children must not poll for performance state')
+  // Full-profile CSS loops still exist; Lite overrides them below.
   const names = [...css.matchAll(/animation-iteration-count:\s*infinite/g)]
   assert.ok(names.length >= 3)
 })
@@ -126,12 +134,19 @@ test('the constellation shows the whole collection, from the registry', () => {
 
 /* --------------------------------------------------------------- safety --- */
 
-test('reduced motion switches the footer off at the stylesheet, in one place', () => {
+test('reduced motion and Lite each stop footer decoration without hiding its content', () => {
   const block = css.slice(css.indexOf('@media (prefers-reduced-motion: reduce) {', css.indexOf('.mfoot-aurora-scan')))
   for (const cls of ['.mfoot-aurora-blob', '.mfoot-aurora-scan', '.mfoot-mark-sweep', '.mfoot-ticker-track']) {
     assert.ok(block.includes(cls), `${cls} must be covered by the reduced-motion rule`)
   }
+  const lite = css.slice(css.indexOf('/* Lite is battery-first:'), css.indexOf('html[data-perf="balanced"]'))
+  for (const cls of ['.mfoot-aurora-blob', '.mfoot-aurora-scan', '.mfoot-mark-sweep', '.mfoot-ticker-track', '.mfoot-credits-sweep']) {
+    assert.ok(lite.includes(cls), `${cls} must be covered by the Lite rule`)
+  }
   assert.ok(mobile.includes('useReducedMotion()'), 'and the entrance animations must respect it too')
+  for (const label of ['TheToolTable', 'the TOOL TABLE', 'Idea by', 'Designed by', 'Created by']) {
+    assert.ok(mobile.includes(label), `Lite must not remove footer content: ${label}`)
+  }
 })
 
 test('the footer clears the phone safe area and never overflows sideways', () => {

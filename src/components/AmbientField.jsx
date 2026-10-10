@@ -1,15 +1,13 @@
 import React from 'react'
-import { motion } from 'framer-motion'
-import { useAmbient, EASE, DURATION, t, spinLoop, breatheLoop } from '../lib/motion.js'
+import { motion, useReducedMotion } from 'framer-motion'
+import { AMBIENT_STATIC, EASE, DURATION, t, spinLoop, breatheLoop } from '../lib/motion.js'
 
 /**
- * Always-on ambient background.
+ * Shell-owned ambient background.
  *
- * The brief was "as many animations as possible", but an ambient layer is the one
- * place where careless motion costs frames on every screen. So it is built to be
- * cheap: CSS keyframes on `transform` only, GPU-composited, no layout or paint per
- * frame, and it thins out on the `lite` profile instead of switching off (a still
- * screen reads as a broken one). Pointer-driven drift is desktop-only.
+ * Decorative layers receive one profile from App, which already subscribes to
+ * the performance store. That avoids a polling hook per permanent layer. Lite
+ * returns no ambient DOM at all; loading/progress feedback is handled separately.
  */
 
 const BLOBS = [
@@ -21,8 +19,7 @@ const BLOBS = [
   { size: 42, x: '80%', y: '76%', from: 'var(--tertiary)', to: 'var(--secondary)', dur: 34, delay: -18, opacity: 0.18 },
 ]
 
-export default function AmbientField({ drift = null }) {
-  const ambient = useAmbient()
+export default function AmbientField({ drift = null, ambient = AMBIENT_STATIC }) {
   if (!ambient.enabled) return null
 
   const blobs = BLOBS.slice(0, ambient.count)
@@ -68,26 +65,28 @@ export default function AmbientField({ drift = null }) {
   )
 }
 
-/** Small always-on halo used behind hero marks and section headers. */
-export function AmbientHalo({ className = '', duration = 4.4, min = 0.35, max = 0.85 }) {
-  const ambient = useAmbient()
+/** Small shell-controlled halo used behind hero marks and section headers. */
+export function AmbientHalo({ className = '', duration = 4.4, min = 0.35, max = 0.85, ambient = AMBIENT_STATIC }) {
   if (!ambient.enabled) return null
   return <motion.span className={`ambient-halo ${className}`} aria-hidden="true" {...breatheLoop(duration, min, max)} />
 }
 
-/** Slow spinner for the tool loading state — a bare 0.8s rotate reads as jank. */
+/**
+ * Loading is meaningful progress feedback, not decorative ambient work, so it
+ * keeps its existing reduced-motion behavior even while Lite is static.
+ */
 export function AmbientSpinner({ size = 40 }) {
-  const ambient = useAmbient()
+  const reduced = useReducedMotion()
   return (
     <div className="ambient-spinner" style={{ width: size, height: size }} role="status" aria-label="Loading tool">
       <motion.span
         className="ambient-spinner-track"
-        animate={ambient.enabled ? { rotate: 360 } : { rotate: 0 }}
+        animate={!reduced ? { rotate: 360 } : { rotate: 0 }}
         transition={t(DURATION.extraLong3, 'linear')}
       />
       <motion.span
         className="ambient-spinner-arc"
-        animate={ambient.enabled ? { rotate: -360 } : { rotate: 0 }}
+        animate={!reduced ? { rotate: -360 } : { rotate: 0 }}
         transition={t(DURATION.long4, EASE.emphasized, 0.2)}
       />
     </div>

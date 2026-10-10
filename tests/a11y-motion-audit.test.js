@@ -206,17 +206,10 @@ test('motion is still allowed when the user did not ask for less of it', () => {
   assert.ok(users.length >= 15, `only ${users.length} components animate; the app has gone still`)
 })
 
-test('motion is never switched off by the performance tier', () => {
-  /*
-   * The standing rule, written down as a test so it cannot quietly change.
-   *
-   * `reducedMotion="always"` tells the animation library to stop animating
-   * altogether. It was set for the 'lite' performance tier, which a two-core
-   * phone reaches automatically — so on exactly the devices least able to run a
-   * heavier app, every tool was rendered motionless. That is the previous
-   * failure repeating under a new name: the animation is still in the source,
-   * and the app still looks dead.
-   */
+test('Lite pauses decorative motion through one shell profile while preserving interaction and progress', () => {
+  /* The operating-system preference remains the only global MotionConfig escape
+     hatch. Lite selectively changes decoration instead of blanketing the app
+     with reducedMotion="always", which would remove useful feedback too. */
   const offenders = []
   for (const file of JSX) {
     const source = read(file)
@@ -225,39 +218,34 @@ test('motion is never switched off by the performance tier', () => {
       if (/"always"|'always'/.test(line)) offenders.push(`${file}:${i + 1} ${line.trim().slice(0, 90)}`)
     })
   }
-  assert.deepEqual(offenders, [], `motion switched off by something other than the user:\n${offenders.join('\n')}`)
+  assert.deepEqual(offenders, [], `motion switched off globally by a performance policy:\n${offenders.join('\n')}`)
 
-  /*
-   * Scaling intensity by tier is legitimate — a 4° card tilt still tilts, and a
-   * lower ceiling is what keeps the frame budget. Removing the movement is not.
-   * So the rule is precise: the lite branch may never resolve to "no motion".
-   */
-  const gated = []
-  const still = /^(?:0|0\.0|''|""|false|null|undefined|\[\])$/
-  for (const file of JSX) {
-    read(file).split('\n').forEach((line, i) => {
-      const tier = /level\s*===\s*'lite'\s*\?\s*([^:]+?)\s*:/.exec(line)
-      if (!tier) return
-      const value = tier[1].trim()
-      /* A chained ternary chooses again further along; only judge a final value. */
-      if (/\?/.test(value)) return
-      if (still.test(value)) gated.push(`${file}:${i + 1} the lite tier resolves to ${value}`)
-    })
-  }
-  assert.deepEqual(gated, [], `motion gated on the performance tier:\n${gated.join('\n')}`)
+  const motion = read('src/lib/motion.js')
+  const app = read('src/App.jsx')
+  const footer = read('src/components/Footer.jsx')
+  const mobileFooter = read('src/components/MobileFooter.jsx')
+  assert.match(motion, /export function ambientProfile\(level = 'full', reduced = false\)/)
+  assert.match(motion, /normalized !== 'lite'/, 'Lite must suppress decorative ambient loops')
+  assert.doesNotMatch(motion, /setInterval|getPerf\(\)/, 'ambient consumers must not poll independently')
+  assert.match(app, /const ambient = useMemo\(\(\) => ambientProfile\(perfNow\.level, !!reduceMotion\)/,
+    'the existing usePerf state must be the sole permanent-shell source')
+  assert.match(app, /<AmbientField drift=\{ambient\.enabled \? drift : null\} ambient=\{ambient\} \/>/)
+  assert.match(app, /<Footer isPhone=\{isPhone\} ambient=\{ambient\} \/>/)
+  assert.match(footer, /<MobileFooter ambient=\{ambient\} \/>/)
+  assert.doesNotMatch(mobileFooter, /useAmbient|setInterval/, 'nested footer layers must use the passed profile')
 
-  /* And intensity really does scale, so the tiers are not all identical. */
+  /* Essential information and interaction feedback remain in Lite. */
   const card = read('src/components/ToolCard.jsx')
   assert.match(card, /level === 'lite' \? 4 : level === 'balanced' \? 7 : 11/,
-    'the card tilt no longer scales with the performance tier')
-
-  /* And the escape hatch must still be wired to the operating system. */
-  assert.match(all, /prefers-reduced-motion/, 'reduced motion is never checked for')
+    'the card tilt still scales rather than disappearing')
+  assert.match(card, /whileTap="tap"/, 'card press feedback must remain')
+  assert.match(app, /className="scroll-progress"/, 'scroll progress must remain visible')
+  assert.match(mobileFooter, /function BackToTop/, 'the back-to-top control must remain')
+  assert.match(all, /prefers-reduced-motion/, 'the operating-system accessibility setting remains wired')
 })
 
 test('nothing is hidden behind a media query the app never sets', () => {
-  /* A "lite mode" that silently drops motion, or a perf level that removes
-     content, would be the previous failure repeating. */
+  /* Lite may remove decorative layers, never user-facing content. */
   const lite = /level === 'lite'|LEVEL_NAME\.lite/.test(all)
   assert.ok(lite, 'the performance levels are gone')
   for (const file of CSS) {

@@ -3,20 +3,17 @@ import { motion, useReducedMotion, useScroll, useTransform } from 'framer-motion
 import { TOOLS } from '../toolsRegistry.jsx'
 import { Logo } from './Logo.jsx'
 import { ToolIcon } from './ToolIcon.jsx'
-import { useAmbient } from '../lib/motion.js'
+import { AMBIENT_STATIC, EASE, DURATION, SPRING, t } from '../lib/motion.js'
 import { useRipple } from '../lib/ripple.js'
-import { EASE, DURATION, SPRING, t } from '../lib/motion.js'
 
 /**
  * The phone footer.
  *
  * The old one was the desktop footer, shrunk. This is built for a thumb: the
- * wordmark is the centrepiece and it never stops moving, the ticker runs both
- * ways, the credits are real list rows you can press, and every tool in the
- * collection is on screen as a constellation.
- *
- * "Always animated" is taken literally — except under reduced motion, and
- * except on the `lite` profile, where loops keep running but travel less far.
+ * wordmark is the centrepiece, the ticker runs both ways, the credits are real
+ * list rows you can press, and every tool in the collection is on screen as a
+ * constellation. Decorative loops receive the shell profile rather than each
+ * starting its own performance polling hook. Lite keeps this content static.
  */
 
 const ROLES = [
@@ -64,9 +61,8 @@ function Glyph({ char, index, tone = '' }) {
 
 /* ------------------------------------------------------------------ bands -- */
 
-function Aurora() {
-  const ambient = useAmbient()
-  if (!ambient.enabled) return <span className="mfoot-aurora" aria-hidden="true" />
+function Aurora({ ambient = AMBIENT_STATIC }) {
+  if (!ambient.enabled) return null
   const blobs = [
     ['mfoot-aurora-blob--a', 30],
     ['mfoot-aurora-blob--b', 37],
@@ -88,8 +84,7 @@ function Aurora() {
 }
 
 /** The wordmark. Big, stacked, and lit by a bar that keeps sweeping. */
-function Wordmark() {
-  const ambient = useAmbient()
+function Wordmark({ ambient = AMBIENT_STATIC }) {
   const reduceMotion = useReducedMotion()
   const tool = [...'TOOL']
   const table = [...'TABLE']
@@ -123,32 +118,30 @@ function Wordmark() {
               className="mfoot-mark-dot"
               aria-hidden="true"
               animate={ambient.enabled ? { rotate: 360 } : { rotate: 0 }}
-              transition={{ duration: 14, repeat: Infinity, ease: 'linear' }}
+              transition={ambient.enabled ? { duration: 14, repeat: Infinity, ease: 'linear' } : { duration: 0 }}
             >
               <motion.span
                 className="mfoot-mark-dot-halo"
                 animate={ambient.enabled ? { scale: [1, 2.6], opacity: [0.45, 0] } : { scale: 1, opacity: 0.45 }}
-                transition={{ duration: 2.8, repeat: Infinity, ease: 'easeOut', repeatDelay: 1.1 }}
+                transition={ambient.enabled ? { duration: 2.8, repeat: Infinity, ease: 'easeOut', repeatDelay: 1.1 } : { duration: 0 }}
               />
             </motion.span>
           </span>
         </div>
       </div>
 
-      {/* The light bar. This is what makes the mark feel alive rather than
-          printed. Always rendered — the stylesheet is what stops it under
-          reduced motion, so there is one rule for that and not two. */}
-      <span className="mfoot-mark-sweep" aria-hidden="true" />
+      {/* Decorative sweep is omitted in Lite; the wordmark and its text remain. */}
+      {ambient.enabled && <span className="mfoot-mark-sweep" aria-hidden="true" />}
     </motion.div>
   )
 }
 
 /** Two tickers running in opposite directions, with a lit leading edge. */
-function Ticker({ words, reverse = false, duration = 26 }) {
+function Ticker({ words, reverse = false, duration = 26, ambient = AMBIENT_STATIC }) {
   const reduceMotion = useReducedMotion()
   return (
     <div className="mfoot-ticker" data-reverse={reverse ? 'true' : 'false'} aria-hidden="true">
-      <div className="mfoot-ticker-track" style={{ animationDuration: `${duration}s`, animationPlayState: reduceMotion ? 'paused' : 'running' }}>
+      <div className="mfoot-ticker-track" style={{ animationDuration: `${duration}s`, animationPlayState: !ambient.enabled || reduceMotion ? 'paused' : 'running' }}>
         {[0, 1, 2].map((copy) => (
           <span className="mfoot-ticker-copy" key={copy}>
             {words.map((word, i) => (
@@ -165,7 +158,7 @@ function Ticker({ words, reverse = false, duration = 26 }) {
 }
 
 /** A credit row you can press. The index chip pulses on a loop. */
-function CreditRow({ role, number, note, index, ambient }) {
+function CreditRow({ role, number, note, index, ambient = AMBIENT_STATIC }) {
   const [open, setOpen] = useState(false)
   const reduceMotion = useReducedMotion()
   const ripple = useRipple()
@@ -191,7 +184,7 @@ function CreditRow({ role, number, note, index, ambient }) {
         className="mfoot-credit-index"
         aria-hidden="true"
         animate={ambient.enabled && !open ? { scale: [1, 1.12, 1] } : { scale: 1 }}
-        transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut', delay: index * 0.7 }}
+        transition={ambient.enabled && !open ? { duration: 2.6, repeat: Infinity, ease: 'easeInOut', delay: index * 0.7 } : { duration: 0 }}
       >
         {number}
       </motion.span>
@@ -223,9 +216,8 @@ function CreditRow({ role, number, note, index, ambient }) {
 }
 
 /** Every tool in the collection, as a grid of pulsing marks. */
-function Constellation() {
+function Constellation({ ambient = AMBIENT_STATIC }) {
   const reduceMotion = useReducedMotion()
-  const ambient = useAmbient()
   return (
     <motion.div
       className="mfoot-constellation"
@@ -292,14 +284,13 @@ function BackToTop() {
  * The phone footer. Purpose-built for a narrow, thumb-reachable surface and
  * continuous motion; the wide lockup lives in `Footer.jsx`.
  */
-export default function MobileFooter() {
-  const ambient = useAmbient()
+export default function MobileFooter({ ambient = AMBIENT_STATIC }) {
   const reduceMotion = useReducedMotion()
   const year = useMemo(() => new Date().getFullYear(), [])
 
   return (
     <div className="mfoot" aria-label="TheToolTable credits">
-      <Aurora />
+      <Aurora ambient={ambient} />
 
       <div className="mfoot-inner">
         <motion.div
@@ -317,11 +308,11 @@ export default function MobileFooter() {
           <BackToTop />
         </motion.div>
 
-        <Wordmark />
+        <Wordmark ambient={ambient} />
 
         <div className="mfoot-tickers">
-          <Ticker words={TICKER_A} duration={24} />
-          <Ticker words={TICKER_B} reverse duration={32} />
+          <Ticker words={TICKER_A} duration={24} ambient={ambient} />
+          <Ticker words={TICKER_B} reverse duration={32} ambient={ambient} />
         </div>
 
         <motion.div
@@ -337,7 +328,7 @@ export default function MobileFooter() {
           {ambient.enabled && <span className="mfoot-credits-sweep" aria-hidden="true" />}
         </motion.div>
 
-        <Constellation />
+        <Constellation ambient={ambient} />
 
         <div className="mfoot-base">
           <span>© {year} TheToolTable</span>

@@ -304,8 +304,46 @@ html[data-perf="lite"] body::after { display: none; }
 html[data-perf="lite"] * { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
 html[data-perf="lite"] header.sticky { background: var(--bg) !important; }
 html[data-perf="lite"] .hero-tint { display: none; }
-html[data-perf="lite"] .shimmer, html[data-perf="lite"] .ex-ticker, html[data-perf="lite"] .btn-sheen::after,
-html[data-perf="lite"] .dropzone[data-hot="true"] { animation: none !important; }
+/* Lite is battery-first: content, controls and meaningful progress remain, but
+   decorative loops do not keep a low-end phone's compositor awake. */
+html[data-perf="lite"] .shimmer,
+html[data-perf="lite"] .ex-ticker,
+html[data-perf="lite"] .ex-live-dot,
+html[data-perf="lite"] .btn-sheen::after,
+html[data-perf="lite"] .dropzone[data-hot="true"],
+html[data-perf="lite"] .home-tool-count i,
+html[data-perf="lite"] .mobile-home-hero,
+html[data-perf="lite"] .mobile-orbit-ring-a,
+html[data-perf="lite"] .mobile-hero-logo,
+html[data-perf="lite"] .mobile-hero-title em,
+html[data-perf="lite"] .mobile-hero-stat,
+html[data-perf="lite"] .home-filter-chip[aria-pressed="true"]::after,
+html[data-perf="lite"] .card3d:hover .card-arrow,
+html[data-perf="lite"] .card3d:focus-visible .card-arrow,
+html[data-perf="lite"] .home-empty-state > span,
+html[data-perf="lite"] .ambient-grid,
+html[data-perf="lite"] .ambient-blob,
+html[data-perf="lite"] .reveal-gradient-text,
+html[data-perf="lite"] .hero-mark-swap,
+html[data-perf="lite"] .hero-mark-halo,
+html[data-perf="lite"] .card-shine--ambient,
+html[data-perf="lite"] .palette-scan,
+html[data-perf="lite"] .footer-aura-blob,
+html[data-perf="lite"] .footer-aura-scan,
+html[data-perf="lite"] .footer-top-link::after,
+html[data-perf="lite"] .tool-intro-glow,
+html[data-perf="lite"] .mfoot-aurora-blob,
+html[data-perf="lite"] .mfoot-aurora-scan,
+html[data-perf="lite"] .mfoot-mark-sweep,
+html[data-perf="lite"] .mfoot-ticker-track,
+html[data-perf="lite"] .mfoot-credits-sweep { animation: none !important; }
+html[data-perf="lite"] .home-collection-head h2::after { transform: scaleX(1); animation: none !important; }
+html[data-perf="lite"] .mobile-hero-logo,
+html[data-perf="lite"] .hero-mark-halo,
+html[data-perf="lite"] .ambient-blob,
+html[data-perf="lite"] .ambient-halo,
+html[data-perf="lite"] .footer-aura-blob,
+html[data-perf="lite"] .tool-intro-glow { filter: none !important; }
 html[data-perf="lite"] .card3d { transition-duration: .2s; }
 html[data-perf="lite"] .card3d .inner { transform: translateZ(20px); }
 html[data-perf="balanced"] .hero-tint { display: none; }
@@ -1312,8 +1350,9 @@ input[type="search"]::-webkit-search-results-button { -webkit-appearance: none; 
   .ambient-halo { display: none; }
 }
 
-/* Lite profile keeps motion but sheds the expensive parts. */
-html[data-perf="lite"] .ambient-blob { filter: blur(36px); }
+/* App does not mount ambient layers in Lite. These fallbacks keep a future
+   standalone use static too, without hiding any user-facing content. */
+html[data-perf="lite"] .ambient-blob { filter: none; }
 html[data-perf="lite"] .ambient-grid { display: none; }
 html[data-perf="lite"] .ambient-wash { filter: none; }
 

@@ -39,10 +39,16 @@ function ResultRow({ item, index, onPick }) {
   )
 }
 
-export default function MobileSearch({ open, onClose, onTool, onTheme }) {
+/**
+ * The scroll observer belongs to the visible panel, not its permanently mounted
+ * shell. That keeps a closed search overlay off the page's scroll hot path and
+ * makes the title react to the results scroller rather than the page behind it.
+ */
+function MobileSearchPanel({ onClose, onTool, onTheme }) {
   const [q, setQ] = useState('')
   const inputRef = useRef(null)
-  const { scrollY } = useScroll()
+  const bodyRef = useRef(null)
+  const { scrollY } = useScroll({ container: bodyRef })
   const titleScale = useTransform(scrollY, [0, 90], [1, 0.82])
   const titleOpacity = useTransform(scrollY, [0, 110], [1, 0])
 
@@ -64,70 +70,72 @@ export default function MobileSearch({ open, onClose, onTool, onTheme }) {
   }, [q, onTool, onTheme, onClose])
 
   useEffect(() => {
-    if (!open) return
-    setQ('')
     // Let the sheet animate in before stealing focus, so the keyboard does not
     // fight the entrance transition on slower phones.
     const id = setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 220)
     return () => clearTimeout(id)
-  }, [open])
+  }, [])
 
   const pick = (item) => { item?.run(); onClose() }
 
   return (
-    <AnimatePresence>
-      {open && (
-        <motion.div
-          className="md3-search-view"
-          initial={{ opacity: 0, y: -18 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -14, transition: t(DURATION.short4, EASE.emphasizedAccelerate) }}
-          transition={t(DURATION.long2, EASE.emphasizedDecelerate)}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Search tools"
-        >
-          <header className="md3-search-header" style={{ paddingTop: 'calc(var(--safe-top) + 8px)' }}>
-            <div className="md3-search-title-row">
-              <motion.h2 style={{ scale: titleScale, opacity: titleOpacity, transformOrigin: 'left center' }}>Search</motion.h2>
-              <button type="button" className="md3-icon-button" onClick={onClose} aria-label="Close search">✕</button>
-            </div>
-            <div className="md3-search-field">
-              <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="var(--on-surface-variant)" strokeWidth={2} strokeLinecap="round" aria-hidden="true">
-                <circle cx="11" cy="11" r="6.5" /><path d="m20 20-3.6-3.6" />
-              </svg>
-              <input
-                ref={inputRef}
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Escape') onClose() }}
-                placeholder="Tools, themes, actions…"
-                aria-label="Search the tool table"
-                enterKeyHint="search"
-                autoComplete="off"
-                autoCorrect="off"
-                spellCheck={false}
-                type="search"
-              />
-              {q && <button type="button" className="md3-search-clear" onClick={() => setQ('')} aria-label="Clear search">✕</button>}
-            </div>
-          </header>
+    <motion.div
+      className="md3-search-view"
+      initial={{ opacity: 0, y: -18 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -14, transition: t(DURATION.short4, EASE.emphasizedAccelerate) }}
+      transition={t(DURATION.long2, EASE.emphasizedDecelerate)}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Search tools"
+    >
+      <header className="md3-search-header" style={{ paddingTop: 'calc(var(--safe-top) + 8px)' }}>
+        <div className="md3-search-title-row">
+          <motion.h2 style={{ scale: titleScale, opacity: titleOpacity, transformOrigin: 'left center' }}>Search</motion.h2>
+          <button type="button" className="md3-icon-button" onClick={onClose} aria-label="Close search">✕</button>
+        </div>
+        <div className="md3-search-field">
+          <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="var(--on-surface-variant)" strokeWidth={2} strokeLinecap="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="6.5" /><path d="m20 20-3.6-3.6" />
+          </svg>
+          <input
+            ref={inputRef}
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Escape') onClose() }}
+            placeholder="Tools, themes, actions…"
+            aria-label="Search the tool table"
+            enterKeyHint="search"
+            autoComplete="off"
+            autoCorrect="off"
+            spellCheck={false}
+            type="search"
+          />
+          {q && <button type="button" className="md3-search-clear" onClick={() => setQ('')} aria-label="Clear search">✕</button>}
+        </div>
+      </header>
 
-          <div className="md3-search-body">
-            {items.length ? (
-              <ul className="md3-search-list">
-                {items.slice(0, 40).map((item, i) => <ResultRow key={`${item.kind}-${item.label}`} item={item} index={i} onPick={pick} />)}
-              </ul>
-            ) : (
-              <div className="md3-search-empty">
-                <span className="md3-search-empty-mark" aria-hidden="true">⌕</span>
-                <strong>Nothing found</strong>
-                <small>Try a different word — {TOOLS.length} tools and {THEMES.length ? THEME_CHOICES.length : 0} themes are searchable.</small>
-              </div>
-            )}
+      <div ref={bodyRef} className="md3-search-body">
+        {items.length ? (
+          <ul className="md3-search-list">
+            {items.slice(0, 40).map((item, i) => <ResultRow key={`${item.kind}-${item.label}`} item={item} index={i} onPick={pick} />)}
+          </ul>
+        ) : (
+          <div className="md3-search-empty">
+            <span className="md3-search-empty-mark" aria-hidden="true">⌕</span>
+            <strong>Nothing found</strong>
+            <small>Try a different word — {TOOLS.length} tools and {THEMES.length ? THEME_CHOICES.length : 0} themes are searchable.</small>
           </div>
-        </motion.div>
-      )}
+        )}
+      </div>
+    </motion.div>
+  )
+}
+
+export default function MobileSearch({ open, onClose, onTool, onTheme }) {
+  return (
+    <AnimatePresence>
+      {open && <MobileSearchPanel key="mobile-search" onClose={onClose} onTool={onTool} onTheme={onTheme} />}
     </AnimatePresence>
   )
 }

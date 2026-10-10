@@ -34,10 +34,13 @@ The requested 20-tool repair is tracked in ten parts, two consecutively numbered
 - The release workflow now creates one distinct draft tag per exact app version
   and source commit (`v<version>-build-<short-sha>`); it does not overwrite an
   unrelated candidate with `--clobber`.
-- v1.2.1 is the repair release. It adds spreadsheet parser containment, the
-  duplicate-theme-listener fix, and the dependency maintenance described in
-  [the release notes](RELEASE-NOTES.md). Its exact source candidate must
-  complete the same artefact and emulator checks before promotion.
+- **v1.2.1 is published** from `5e93a08` as
+  [TheToolTable v1.2.1](https://github.com/sadapay404/TheToolTable/releases/tag/v1.2.1-build-5e93a08).
+  Its exact-source [CI run 38032876221](https://github.com/sadapay404/TheToolTable/actions/runs/38032876221)
+  passed Windows packaging, Android artefact verification, and Android emulator
+  smoke before promotion. It adds spreadsheet parser containment, the
+  duplicate-theme-listener fix, and dependency maintenance described in
+  [the release notes](RELEASE-NOTES.md).
 - Release assets are a signed Android APK plus Windows NSIS and MSI installers.
   The Windows installers include yt-dlp/FFmpeg/FFprobe sidecars. Android's
   Downloader instead uses a network-reachable HTTPS companion engine; the APK

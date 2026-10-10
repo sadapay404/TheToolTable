@@ -26,7 +26,7 @@ A ground-up mobile pass driven by seven Android defects reported against v1.2.0.
 | 7 | Background transfers + notification progress | **Complete** |
 | 8 | Android icon, signing, CI de-risking | **Complete** |
 | 9 | Functional sweep + regression tests | **Complete** |
-| 10 | Native builds + draft GitHub release | v1.2.0 repair candidate passed Android/Windows packaging and emulator smoke; v1.2.1 needs the same exact-commit gate before promotion. |
+| 10 | Native builds + GitHub release | **Complete.** v1.2.1 exact-source build passed Android/Windows packaging and Android emulator smoke, then was published. |
 
 ---
 

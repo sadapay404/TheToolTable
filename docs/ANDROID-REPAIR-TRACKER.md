@@ -10,7 +10,7 @@ corresponding Android checks pass.
 
 | Part | Tool screens | Status |
 |---|---|---|
-| 1 | 04 Media Clipper & Downloader; 06 AI Background Remover | **Launch/shell smoke passed** for the v1.2.0 repair candidate; rerun is required for each promoted source revision. |
+| 1 | 04 Media Clipper & Downloader; 06 AI Background Remover | **Launch/shell smoke passed** for the published v1.2.1 repair release; repeat the gate for every future source revision. |
 | 2 | 01 Metadata Extractor; 02 Any-to-Any Converter | Not started |
 | 3 | 03 Target-Size Compressor; 05 ImagePlayer Studio | Not started |
 | 4 | 07 Frame Extractor & Clipper; 08 Audio Visualizer Video | Not started |
@@ -45,26 +45,27 @@ corresponding Android checks pass.
 
 ## Latest Android emulator run
 
-- [Run 38030486832](https://github.com/sadapay404/TheToolTable/actions/runs/38030486832)
-  completed successfully on 2026-10-10 for the `fef23ba` repair candidate:
-  `prepare`, `windows`, `android`, and `android-device` all passed.
+- [Run 38032876221](https://github.com/sadapay404/TheToolTable/actions/runs/38032876221)
+  completed successfully on 2026-10-10 for the published v1.2.1 source
+  `5e93a08`: `prepare`, `windows`, `android`, and `android-device` all passed.
 - The Android job verified the signed universal APK before banking it, including
   both `arm64-v8a` and `x86_64` libraries and the absence of
   `WorkManagerInitializer` from the merged manifest. The `android-device` job
   then booted an x86_64 emulator and smoke-tested the exact release artefact.
 - This resolves the former “instant close before the first frame” launch gate
-  for that candidate. It does **not** turn an older APK into a valid download:
-  every new source candidate, including v1.2.1, must pass the same verifier and
-  device job before release promotion.
+  for the published release. It does **not** turn an older APK into a valid
+  download: every future source candidate must pass the same verifier and device
+  job before release promotion.
 
 ## Acceptance checklist
 
-- [x] Candidate app stays open after a fresh install and renders the collection
-  in the passed Android emulator smoke run.
-- [x] Candidate system Back and tool Back navigate through app/tool history in
-  the Android smoke path.
-- [x] Tool 04 and Tool 06 are covered by the Android smoke/navigation path.
-- [x] Launcher package verification checks the expected branded Android icon.
+- [x] v1.2.1 stays open after a fresh install and renders the collection in the
+  passed Android emulator smoke run.
+- [x] v1.2.1 system Back and tool Back navigate through app/tool history in the
+  Android smoke path.
+- [x] Tool 04 and Tool 06 are covered by the v1.2.1 Android smoke/navigation
+  path.
+- [x] v1.2.1 package verification checks the expected branded Android icon.
 - [ ] Status-bar/camera safe area and every header/sheet control are visually
   reviewed on a physical cutout device.
 - [ ] Model downloads and Beam/file transfers continue in the background with

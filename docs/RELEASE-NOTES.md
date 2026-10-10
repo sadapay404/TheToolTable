@@ -1,10 +1,14 @@
 # TheToolTable v1.2.1 — Android launch repair and safer spreadsheet conversion
 
-> **Release process:** GitHub Actions creates a private draft candidate for the
-> exact commit it builds. It is promoted only after its signed APK passes the
-> archive/manifest checks and boots in the Android emulator. Download the
-> current promoted assets from the repository's
+> **Published 2026-10-10.** v1.2.1 was built from commit `5e93a08` and
+> [GitHub Actions run 38032876221](https://github.com/sadapay404/TheToolTable/actions/runs/38032876221)
+> passed prepare, Windows packaging, Android artefact verification, and Android
+> emulator smoke. Download the promoted assets from the repository's
 > [latest release](https://github.com/sadapay404/TheToolTable/releases/latest).
+>
+> Future builds use the same process: GitHub Actions creates a private draft
+> candidate for the exact commit it builds and promotes it only after its signed
+> APK passes the archive/manifest and Android emulator checks.
 
 ## The instant Android crash is fixed
 

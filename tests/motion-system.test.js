@@ -158,17 +158,25 @@ test('the ambient profile is pure, polls nowhere, and makes Lite static', () => 
   assert.deepEqual(AMBIENT_STATIC, { enabled: true, level: 'full', count: 5, scale: 1 })
   assert.deepEqual(ambientProfile('full'), { enabled: true, level: 'full', count: 5, scale: 1 })
   assert.deepEqual(ambientProfile('balanced'), { enabled: true, level: 'balanced', count: 4, scale: 0.8 })
+  assert.deepEqual(ambientProfile('balanced', false, true), { enabled: false, level: 'balanced', count: 0, scale: 0.8 },
+    'the automatic handset-balanced policy must not run perpetual chrome')
   assert.deepEqual(ambientProfile('lite'), { enabled: false, level: 'lite', count: 0, scale: 0 })
   assert.deepEqual(ambientProfile('full', true), { enabled: false, level: 'full', count: 0, scale: 1 })
   assert.doesNotMatch(motionSource, /setInterval|getPerf\(\)/, 'ambient consumers must not poll the performance store')
 
-  assert.match(appSource, /const ambient = useMemo\(\(\) => ambientProfile\(perfNow\.level, !!reduceMotion\)/,
+  assert.match(appSource, /const ambient = useMemo\(\(\) => ambientProfile\(perfNow\.level, !!reduceMotion, perfNow\.hw\.phone\)/,
     'App must derive the shared profile from its existing reactive performance state')
+  assert.match(appSource, /data-ambient=\{ambient\.enabled \? 'enabled' : 'static'\}/,
+    'CSS decorations must receive the same ambient policy as Framer Motion')
   assert.match(appSource, /<AmbientField drift=\{ambient\.enabled \? drift : null\} ambient=\{ambient\} \/>/)
   assert.match(ambientSource, /function AmbientField\(\{ drift = null, ambient = AMBIENT_STATIC \}\)/)
   assert.match(ambientSource, /if \(!ambient\.enabled\) return null/)
   assert.match(css, /html\[data-perf="lite"\][\s\S]*?\.mfoot-ticker-track[\s\S]*?animation: none !important/,
     'the CSS fallback must also stop decorative loops in Lite')
+  assert.match(css, /html\[data-phone="true"\]\[data-perf="balanced"\][\s\S]*?backdrop-filter: none !important/,
+    'Balanced handsets must not pay for full-screen backdrop compositing')
+  assert.match(css, /\.app-shell\[data-ambient="static"\][\s\S]*?\.mfoot-ticker-track[\s\S]*?animation: none !important/,
+    'phone-balanced CSS loops must follow the shared ambient gate')
 })
 
 test('part 1-3 animation is still present after the part 4 rewrite', () => {

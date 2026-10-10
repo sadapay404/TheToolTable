@@ -37,7 +37,11 @@ export function tierOf(hw = hardware(), ms = benchMs) {
   let s = 0
   if (hw.cores <= 2) s += 3; else if (hw.cores <= 4) s += 2; else if (hw.cores <= 6) s += 1
   if (hw.mem) { if (hw.mem <= 2) s += 3; else if (hw.mem <= 4) s += 2 }
-  if (hw.phone) s += 1
+  /* Android/WebView reports a capable phone's core count, not its sustained
+     thermal budget. A Snapdragon handset with eight threads used to look like
+     a desktop workstation and boot straight into Full. Start touch phones at
+     the balanced tier; Full remains an explicit user choice. */
+  if (hw.phone) s += 2
   if (hw.saveData) s += 2
   if (ms) { if (ms > 70) s += 2; else if (ms > 35) s += 1 }
   return s >= 4 ? 'low' : s >= 2 ? 'mid' : 'high'
@@ -48,9 +52,16 @@ function compute() {
   const level = mode === 'auto' ? TIER_LEVEL[tier] : mode
   return { mode, level, tier, hw, bench: benchMs }
 }
+function publishProfile() {
+  if (typeof document === 'undefined') return
+  const root = document.documentElement
+  root.dataset.perf = snap.level
+  if (snap.hw.phone) root.dataset.phone = 'true'
+  else delete root.dataset.phone
+}
 function emit() {
   snap = compute()
-  if (typeof document !== 'undefined') document.documentElement.dataset.perf = snap.level
+  publishProfile()
   subs.forEach((f) => f())
 }
 snap = compute()
@@ -78,9 +89,15 @@ export const perf = {
   parallel: () => pick(snap.level, 1, 2, 3),
 }
 
+/** A startup benchmark is useful on desktops, but it is needless UI-thread work
+ * on a phone: the adaptive handset policy already starts there at Balanced. */
+export function shouldBenchmark(hw = hardware()) {
+  return !hw.phone && !hw.saveData && !hw.reduced
+}
+
 /** tiny canvas+JS workload; the result only nudges the auto tier, never overrides an explicit choice */
 export function runBenchmark(force = false) {
-  if (typeof document === 'undefined' || (benchMs && !force)) return
+  if (typeof document === 'undefined' || (benchMs && !force) || (!force && !shouldBenchmark())) return
   const go = () => {
     try {
       const c = document.createElement('canvas'); c.width = c.height = 384
@@ -95,4 +112,4 @@ export function runBenchmark(force = false) {
   ;(window.requestIdleCallback || ((f) => setTimeout(f, 1800)))(go, { timeout: 4000 })
 }
 
-if (typeof document !== 'undefined') document.documentElement.dataset.perf = snap.level
+publishProfile()

@@ -167,9 +167,12 @@ export function useTransition(transition) {
  */
 export const AMBIENT_STATIC = Object.freeze({ enabled: true, level: 'full', count: 5, scale: 1 })
 
-export function ambientProfile(level = 'full', reduced = false) {
+export function ambientProfile(level = 'full', reduced = false, phone = false) {
   const normalized = level === 'lite' || level === 'balanced' || level === 'full' ? level : 'full'
-  const enabled = !reduced && normalized !== 'lite'
+  /* Balanced is the automatic handset tier. Keep its controls, progress and
+     one-shot transitions, but do not keep decorative compositor loops alive
+     beneath a phone's screen while it is sitting idle. Full is still opt-in. */
+  const enabled = !reduced && normalized !== 'lite' && !(phone && normalized === 'balanced')
   return {
     enabled,
     level: normalized,

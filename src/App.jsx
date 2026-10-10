@@ -459,7 +459,7 @@ export default function App() {
   const reduceMotion = useReducedMotion()
   /* One reactive performance snapshot controls all permanent decorative layers.
      Keeping this here prevents each child from starting its own polling loop. */
-  const ambient = useMemo(() => ambientProfile(perfNow.level, !!reduceMotion), [perfNow.level, reduceMotion])
+  const ambient = useMemo(() => ambientProfile(perfNow.level, !!reduceMotion, perfNow.hw.phone), [perfNow.level, perfNow.hw.phone, reduceMotion])
   const { scrollY, scrollYProgress } = useScroll()
   /* Springing the progress bar removes the stepped feel of a raw scroll value on
      Windows trackpads while staying tight enough to feel immediate. */
@@ -504,7 +504,8 @@ export default function App() {
     <MotionConfig reducedMotion="user">
     <ShellBoundary>
     <div
-      className="min-h-screen relative overflow-x-clip"
+      className="app-shell min-h-screen relative overflow-x-clip"
+      data-ambient={ambient.enabled ? 'enabled' : 'static'}
       onPointerMove={isPhone || !ambient.enabled ? undefined : drift.onPointerMove}
     >
       <motion.div className="scroll-progress" style={{ scaleX: reduceMotion || !ambient.enabled ? scrollYProgress : scrollProgressSmooth }} aria-hidden="true" />

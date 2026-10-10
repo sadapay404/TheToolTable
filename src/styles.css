@@ -356,6 +356,56 @@ html[data-perf="lite"] .footer-aura-blob,
 html[data-perf="lite"] .tool-intro-glow { filter: none !important; }
 html[data-perf="lite"] .card3d { transition-duration: .2s; }
 html[data-perf="lite"] .card3d .inner { transform: translateZ(20px); }
+
+/* Android WebView can expose eight Snapdragon threads while still having a
+   phone-sized thermal and GPU budget. Auto uses Balanced there: retain the
+   responsive controls, but skip the full-screen blur/grain compositing path. */
+html[data-phone="true"][data-perf="balanced"] {
+  --shadow: 0 1px 4px rgba(0,0,0,.09) !important;
+  --shadow-lg: 0 8px 20px -8px rgba(0,0,0,.2) !important;
+}
+html[data-phone="true"][data-perf="balanced"] body::after { display: none; }
+html[data-phone="true"][data-perf="balanced"] * {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* `ambient.enabled` is also false for the automatic Balanced phone policy.
+   CSS decorations need the same gate as Framer loops; otherwise a hidden
+   animation can keep the WebView compositor awake after JS made it static. */
+.app-shell[data-ambient="static"] .home-tool-count i,
+.app-shell[data-ambient="static"] .mobile-home-hero,
+.app-shell[data-ambient="static"] .mobile-orbit-ring-a,
+.app-shell[data-ambient="static"] .mobile-hero-logo,
+.app-shell[data-ambient="static"] .mobile-hero-title em,
+.app-shell[data-ambient="static"] .mobile-hero-stat,
+.app-shell[data-ambient="static"] .home-filter-chip[aria-pressed="true"]::after,
+.app-shell[data-ambient="static"] .card3d:hover .card-arrow,
+.app-shell[data-ambient="static"] .card3d:focus-visible .card-arrow,
+.app-shell[data-ambient="static"] .home-empty-state > span,
+.app-shell[data-ambient="static"] .ambient-grid,
+.app-shell[data-ambient="static"] .ambient-blob,
+.app-shell[data-ambient="static"] .reveal-gradient-text,
+.app-shell[data-ambient="static"] .hero-mark-swap,
+.app-shell[data-ambient="static"] .hero-mark-halo,
+.app-shell[data-ambient="static"] .card-shine--ambient,
+.app-shell[data-ambient="static"] .palette-scan,
+.app-shell[data-ambient="static"] .footer-aura-blob,
+.app-shell[data-ambient="static"] .footer-aura-scan,
+.app-shell[data-ambient="static"] .footer-top-link::after,
+.app-shell[data-ambient="static"] .tool-intro-glow,
+.app-shell[data-ambient="static"] .mfoot-aurora-blob,
+.app-shell[data-ambient="static"] .mfoot-aurora-scan,
+.app-shell[data-ambient="static"] .mfoot-mark-sweep,
+.app-shell[data-ambient="static"] .mfoot-ticker-track,
+.app-shell[data-ambient="static"] .mfoot-credits-sweep { animation: none !important; }
+.app-shell[data-ambient="static"] .mobile-hero-logo,
+.app-shell[data-ambient="static"] .hero-mark-halo,
+.app-shell[data-ambient="static"] .ambient-blob,
+.app-shell[data-ambient="static"] .ambient-halo,
+.app-shell[data-ambient="static"] .footer-aura-blob,
+.app-shell[data-ambient="static"] .tool-intro-glow { filter: none !important; }
+
 html[data-perf="balanced"] .hero-tint { display: none; }
 
 /* Material 3 typography, shape and mobile comfort. */

@@ -224,10 +224,11 @@ test('Lite pauses decorative motion through one shell profile while preserving i
   const app = read('src/App.jsx')
   const footer = read('src/components/Footer.jsx')
   const mobileFooter = read('src/components/MobileFooter.jsx')
-  assert.match(motion, /export function ambientProfile\(level = 'full', reduced = false\)/)
+  assert.match(motion, /export function ambientProfile\(level = 'full', reduced = false, phone = false\)/)
   assert.match(motion, /normalized !== 'lite'/, 'Lite must suppress decorative ambient loops')
+  assert.match(motion, /phone && normalized === 'balanced'/, 'the automatic handset tier must also protect idle thermals')
   assert.doesNotMatch(motion, /setInterval|getPerf\(\)/, 'ambient consumers must not poll independently')
-  assert.match(app, /const ambient = useMemo\(\(\) => ambientProfile\(perfNow\.level, !!reduceMotion\)/,
+  assert.match(app, /const ambient = useMemo\(\(\) => ambientProfile\(perfNow\.level, !!reduceMotion, perfNow\.hw\.phone\)/,
     'the existing usePerf state must be the sole permanent-shell source')
   assert.match(app, /<AmbientField drift=\{ambient\.enabled \? drift : null\} ambient=\{ambient\} \/>/)
   assert.match(app, /<Footer isPhone=\{isPhone\} ambient=\{ambient\} \/>/)

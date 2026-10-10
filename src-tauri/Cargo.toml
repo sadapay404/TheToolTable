@@ -1,6 +1,6 @@
 [package]
 name = "thetooltable"
-version = "1.2.0"
+version = "1.2.1"
 description = "TheToolTable — local-first tools by Mubashir"
 authors = ["Mubashir"]
 edition = "2021"

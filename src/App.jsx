@@ -444,9 +444,6 @@ export default function App() {
 
   useEffect(() => { window.scrollTo(0, 0) }, [active])
 
-  // `auto` should repaint the moment the OS flips light/dark while the app is open.
-  useEffect(() => watchSystemTheme(() => { if (themeRef.current === SYSTEM_THEME) applyTheme(SYSTEM_THEME) }), [])
-
   const visibleTools = useMemo(() => {
     const group = HOME_FILTERS.find((filter) => filter.id === homeFilter) || HOME_FILTERS[0]
     const query = homeQuery.trim().toLowerCase()

@@ -1,145 +1,86 @@
-# TheToolTable — v1.2.0 build candidate
+# TheToolTable v1.2.1 — Android launch repair and safer spreadsheet conversion
 
-> **Draft.** These notes describe a build candidate. Nothing here has been
-> published; the release exists so the artefacts can be installed and tried
-> before anyone is told to trust them.
+> **Release process:** GitHub Actions creates a private draft candidate for the
+> exact commit it builds. It is promoted only after its signed APK passes the
+> archive/manifest checks and boots in the Android emulator. Download the
+> current promoted assets from the repository's
+> [latest release](https://github.com/sadapay404/TheToolTable/releases/latest).
 
-Everything in this app runs on the device it is installed on. No file, photo,
-document or scan leaves the phone. There is no account, no telemetry and no
-server — the app works in aeroplane mode, which is the point of it.
+## The instant Android crash is fixed
 
----
+The former launch failure happened before the frontend or WebView could render:
 
-## What changed since v1.1.1
+1. AndroidX Startup invoked `WorkManagerInitializer` during
+   `ActivityThread.handleBindApplication`.
+2. WorkManager constructed its Room `WorkDatabase`.
+3. Room failed during that process, so Android terminated the app before its
+   first frame.
 
-### The mobile experience was rebuilt, not adjusted
+The Android build now applies `scripts/ensure-android-launch-survives.mjs`
+*after* Tauri generates the Android project. The repair removes WorkManager's
+startup initializer from the merged manifest and preserves the generated
+WorkManager/Room classes needed when WorkManager is started later. The release
+workflow then opens the signed APK itself and fails the build if
+`WorkManagerInitializer` is still present in its merged manifest.
 
-The old app was a desktop layout squeezed onto a phone: the header ran under
-the punch-hole camera, the theme picker was unreachable, and the footer was a
-desktop footer at a smaller size. All of it was replaced.
+This is deliberately an artefact-level check: passing JavaScript tests is not
+proof that a generated Android manifest contains the repair.
 
-- **A phone-shaped layout** for the collection and for every one of the twenty
-  tools, built to Material 3 Expressive with violet as the primary colour
-  (`#5B4BD6` light, `#C6BFFF` dark).
-- **A new phone-specific footer.** Always animated, built for a thumb rather
-  than shrunk from the desktop one.
-- **Every app opens with an intro band**, so twenty tools feel like twenty
-  products rather than twenty screens in one.
-- **Safe areas are respected on every edge** — the notch, the gesture bar, and
-  the iOS home indicator.
+## Spreadsheet conversion is isolated and bounded
 
-### Back now works
+SheetJS (`xlsx`) remains necessary for local spreadsheet support, but it has
+upstream advisories with no npm-published fix available. This release contains
+it rather than treating that dependency as safe:
 
-The Android back gesture used to close the app from anywhere, and the in-app
-back button sometimes left a black screen with nothing but the header. Both were
-the same bug: navigation was riding the WebView's own history, which has no
-opinion about what a tool screen is.
+- SheetJS loads only inside a new module Worker per conversion, never in the
+  app/UI realm.
+- The page rejects files over **32 MiB** and text-to-workbook input over
+  **4 MiB** before they are copied to the Worker.
+- A job has a **25-second** wall-clock limit. The Worker is terminated on every
+  success, failure, and timeout, discarding parser-created state.
+- XLSX/ODS ZIP metadata is checked before decompression: at most 4,096 entries,
+  32 MiB per expanded entry, and 64 MiB total expansion. ZIP64, multi-disk, and
+  encrypted containers are refused.
+- Parsed workbooks are constrained to 64 sheets, 100,000 rows/sheet, 512
+  columns/sheet, 1,000,000 cells/sheet, and 2,000,000 cells/workbook. Text and
+  binary output are bounded too.
 
-Navigation is now an explicit stack the app owns. Android back unwinds it — an
-overlay first, then one tool, then the collection — and only exits on the root
-screen. A spare history entry sits behind the app so a stray gesture has
-somewhere harmless to go. This is pure, unit-tested logic rather than
-device-only behaviour.
+These controls reduce exposure and protect the rest of the app from a malformed
+workbook; they are **containment**, not a claim that the upstream `xlsx`
+package has no remaining vulnerabilities.
 
-### It keeps working when you switch apps
+## Other maintenance fixes
 
-Downloading a model or a large file used to stop dead the moment you left the
-app. Transfers now run in the Android foreground service, survive the app being
-backgrounded, and report live progress in a notification. The same is true of
-the on-device background removal model.
+- Removed a duplicate system-theme watcher so one OS light/dark change triggers
+  one repaint rather than duplicate work.
+- Pin the transitive `image-size` dependency used by PptxGenJS to `2.0.4` using
+  the root npm override. This removes the separately fixable production audit
+  findings; the SheetJS advisory above remains and is handled with containment.
+- Release metadata is now version-aligned across `package.json`, Cargo, and the
+  Tauri bundle configuration. The candidate tag is derived from the same
+  `package.json` version and source commit that CI builds:
+  `v<version>-build-<short-sha>`.
 
-### The launcher icon is TheToolTable's
+## Android installation and updates
 
-Not the default Android robot, and not a placeholder. The app's own mark, at
-every density, installed at build time.
+Download `TheToolTable.apk` from the current release only. Old links to the
+v1.1.1 APK point to a build from before the launch repair.
 
----
+Android accepts an update only when both APKs use the same signing certificate.
+If Android reports an incompatible existing package, back up any local work,
+uninstall the old app, then install the current release APK. The build workflow
+shows the signing-certificate comparison in its job summary and gives
+fallback-signed test packages a distinct filename so they cannot be mistaken
+for an in-place update.
 
-## Verified before this build was banked
+## If a device ever still crashes at launch
 
-### 407 automated checks, all passing
+On Windows with Android Platform Tools installed, capture the startup log and
+share the output:
 
-These are property tests: they assert that a rule holds for *any* input rather
-than checking a list of expected values. The distinction matters — "1 km is
-1000 m" catches nothing, while "converting A→B and back returns the original"
-catches every conversion bug that will ever be written.
+```bat
+adb logcat -c && adb shell am force-stop app.thetooltable.mubashir && adb shell monkey -p app.thetooltable.mubashir 1 && timeout /t 8 >nul && adb logcat -d -v time | findstr /I /C:"app.thetooltable.mubashir" /C:"FATAL EXCEPTION" /C:"AndroidRuntime" /C:"WorkManager" /C:"Room" /C:"Caused by"
+```
 
-| Area | What was checked |
-|---|---|
-| Navigation | Back unwinds every stack, never exits from inside a tool, never strands the user |
-| Unit conversion | Every conversion in every category round-trips exactly |
-| Time zones | Over 120,000 conversions across all 250 zones, every month-end of three years, every clock-change hour — not one wrong |
-| Money | Loans amortise to zero at every rate and term; tax tables behave; currency rates round-trip |
-| Decision tools | Fair to within 3% of even over 20,000 tosses; a shuffle is always a permutation |
-| Images | EXIF, GPS and comments stripped from real JPEG and PNG; pixels preserved; 600 random byte strings refused without hanging |
-| QR codes | Geometry verified — finder patterns, timing patterns, alignment, mandatory dark module — across four error-correction levels |
-| Parsers | CSV quoting, delimiter detection and caps; invoice library; corrupt saves fall back instead of throwing |
-| Accessibility | Every control named, every field labelled |
-| The artefact | The built `dist/` itself: every tool ships as its own chunk, no development React, no source maps, every manifest icon present at the size it claims |
-
-### Seventeen bugs found and fixed
-
-The ones that would have reached a phone:
-
-- A timecode past ~1.4×10¹⁴ seconds rendered the literal text `-Infinity`.
-- A transfer under one byte read as `512.0 undefined`.
-- Seven of the thirty-three QR templates **could not scan**. They were
-  beautiful and useless: "Ocean" was bright cyan on near-white at 1.90:1, and a
-  phone camera needs better than 3:1. Rather than flatten the palettes and lose
-  what made them worth picking, the module colours are now walked away from the
-  background until they clear 4.5:1, keeping their hue. All thirty-three now
-  scan; the worst is exactly 4.50:1.
-- An invoice with a 100% discount on a large subtotal showed a negative tax
-  line, from a rounding error of two ten-thousandths of a rupee.
-- A receipt you had already paid in full reported the full amount outstanding.
-- The audio visualiser could be driven to a blank canvas by a NaN clock, and
-  nothing but a reload brought it back.
-- Forty-six fields across thirty files were named only by their placeholder.
-- The transfer cancel button was a 28-pixel target on a phone.
-
-### The artefact is checked, not assumed
-
-A signed APK is not automatically a working one. If the icon path ever stops
-resolving, the build still produces a perfectly valid package that installs
-with the default Android robot on the home screen. The build now verifies the
-archive, the dex, the launcher icons at every density, the permissions the app
-actually depends on, and the signature — and refuses to bank anything that
-fails.
-
----
-
-## Known limitations
-
-- **The APK is signed with a fallback key.** The project's own keystore was not
-  available to the build, so a new certificate was generated. It is stable from
-  now on, but it is *not* the key v1.1.1 was signed with, so an existing
-  installation cannot be upgraded in place — uninstall and reinstall. Data
-  stored locally by the app does not carry across.
-- **Background transfers need notification permission.** Without it Android will
-  not run the foreground service, and a download stops when the app is
-  backgrounded. The app asks, and explains why.
-- **The fallback signing key is for testing only.** A public release must be
-  signed with a key you hold.
-- **Exchange rates are a snapshot.** The app fetches live rates where it can and
-  falls back to the snapshot when it cannot; check the date shown before acting
-  on a figure.
-- **Some tools depend on WebAssembly** (background removal, OCR, barcode
-  scanning). The models are bundled, which is why the APK is large.
-
----
-
-## Assets
-
-| File | Platform | Notes |
-|---|---|---|
-| `TheToolTable-fallback-signed.apk` | Android, arm64 | Fallback-signed; uninstall v1.1.1 first |
-| `TheToolTable_1.2.0_x64-setup.exe` | Windows | Installer, x64 |
-| `TheToolTable_1.2.0_x64_en-US.msi` | Windows | MSI, x64 |
-
-The web build is self-hosted from `dist/` — it is a static bundle and needs no
-server of its own.
-
----
-
-Built by Mubashir. The source is the repository this release was cut from; the
-commit is in the release name.
+The command clears unrelated history, starts one clean app session, waits eight
+seconds, and prints the crash chain relevant to this repair.

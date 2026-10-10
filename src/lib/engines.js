@@ -205,12 +205,11 @@ async function writeText(text, title, target, onProg) {
     return { blob: new Blob([zip], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }), ext: 'docx' }
   }
   if (target === 'xlsx' || target === 'ods') {
-    const XLSX = await import('xlsx')
-    const ws = XLSX.utils.aoa_to_sheet(lines.map((l) => [l]))
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Content')
-    const out = XLSX.write(wb, { bookType: target, type: 'array' })
-    return { blob: new Blob([out]), ext: target }
+    // Spreadsheets are parsed and written in a disposable Worker. A malformed
+    // workbook must never be able to freeze or alter the page that hosts the
+    // rest of the tools.
+    const { writeTextSpreadsheet } = await import('./spreadsheet.js')
+    return writeTextSpreadsheet(text, target, onProg)
   }
   if (target === 'epub') {
     const { zipSync, strToU8 } = await import('fflate')
@@ -233,30 +232,24 @@ async function writeText(text, title, target, onProg) {
       s.addText(title, { fontSize: 24, bold: true, color: '2A211C', y: 0.4 })
       s.addText(lines.slice(i, i + 6).map((l) => ({ text: l, options: { bullet: true, breakLine: true } })), { x: 0.6, y: 1.4, fontSize: 16, color: '46403A' })
     }
-    const blob = await p.writeFile({ outputType: 'blob' })
+    // `writeFile()` triggers a browser download and returns its filename; the
+    // converter needs the actual bytes so the shared download path can name and
+    // save them consistently. `write()` returns a Blob in browsers (and Node's
+    // Blob implementation in the regression test).
+    const blob = await p.write({ outputType: 'blob' })
+    if (!(blob instanceof Blob)) throw new Error('Presentation writer returned an invalid file')
     return { blob, ext: 'pptx' }
   }
   throw new Error('No writer for ' + target)
 }
 
 async function sheetPath(file, target, onProg) {
-  const XLSX = await import('xlsx')
-  const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' })
-  onProg?.(60)
-  const first = wb.SheetNames[0]
-  if (target === 'json') {
-    const data = Object.fromEntries(wb.SheetNames.map((n) => [n, XLSX.utils.sheet_to_json(wb.Sheets[n])]))
-    return { blob: new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), ext: 'json' }
-  }
-  if (target === 'txt') return { blob: new Blob([wb.SheetNames.map((n) => XLSX.utils.sheet_to_csv(wb.Sheets[n])).join('\n\n')], { type: 'text/plain' }), ext: 'txt' }
-  if (target === 'csv') return { blob: new Blob([XLSX.utils.sheet_to_csv(wb.Sheets[first])], { type: 'text/csv' }), ext: 'csv' }
-  if (target === 'tsv') {
-    const csv = XLSX.utils.sheet_to_csv(wb.Sheets[first], { FS: '\t' })
-    return { blob: new Blob([csv], { type: 'text/tab-separated-values' }), ext: 'tsv' }
-  }
-  const out = XLSX.write(wb, { bookType: target, type: 'array' })
-  onProg?.(100)
-  return { blob: new Blob([out]), ext: target }
+  // Keep SheetJS and user-supplied workbooks out of the application's Realm.
+  // The Worker has hard file, cell, output and wall-clock limits, then is
+  // terminated, so a hostile workbook cannot leave the converter (or Android's
+  // first UI thread) wedged after an error.
+  const { convertSpreadsheet } = await import('./spreadsheet.js')
+  return convertSpreadsheet(file, target, onProg)
 }
 
 async function zipWrap(file) {

@@ -2,14 +2,21 @@
 
 A personal multi-tool studio with 20 browser-first utilities. Most file processing stays in the browser; the Downloader can use a local or separately hosted yt-dlp companion engine, and the Metadata Extractor contacts OpenStreetMap only when you explicitly request a place lookup or map. Files are not uploaded by default. No re-encoding unless a tool explicitly offers it (notably Tool 03 and selected Converter outputs).
 
-## Download v1.1.1
+## Download the current release
 
-- [Android APK](https://github.com/sadapay404/TheToolTable/releases/download/v1.1.1/TheToolTable.apk)
-- [Windows installer (EXE)](https://github.com/sadapay404/TheToolTable/releases/download/v1.1.1/TheToolTable_1.1.1_x64-setup.exe)
-- [Windows installer (MSI)](https://github.com/sadapay404/TheToolTable/releases/download/v1.1.1/TheToolTable_1.1.1_x64_en-US.msi)
-- [Release details and notes](https://github.com/sadapay404/TheToolTable/releases/tag/v1.1.1)
+- [**Android APK — latest release**](https://github.com/sadapay404/TheToolTable/releases/latest/download/TheToolTable.apk)
+- [**All current installers and release notes**](https://github.com/sadapay404/TheToolTable/releases/latest)
 
-The repository is private, so downloads require an account with access. On Android, Downloader needs a network-reachable HTTPS companion engine; Windows includes yt-dlp and FFmpeg.
+> **Important:** do not install the old v1.1.1 APK linked by earlier copies of
+> this README. Its Android startup path can crash before the first frame. The
+> current release removes that WorkManager startup initializer and is verified
+> against the merged manifest before it is uploaded.
+
+The repository is private, so downloads require an account with access. If
+Android reports that the APK conflicts with an older installation, back up any
+local work, uninstall the old app, and then install the current APK. On Android,
+Downloader needs a network-reachable HTTPS companion engine; Windows includes
+yt-dlp and FFmpeg.
 
 ## Branding
 
@@ -70,7 +77,7 @@ npm run build                  # production build → dist/
 ## Phase 2 (roadmap)
 
 - **Windows**: Tauri wrapper — reuse `public/logo.png` as `.ico`/`.png` app icon.
-- **Android**: Capacitor/TWA wrapping the same PWA (manifest already ships).
+- **Android**: Tauri 2 wrapper around the same local-first frontend; release APKs are built and verified in GitHub Actions.
 
 ## Tool 04 — yt-dlp download engine
 

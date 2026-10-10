@@ -1,4 +1,4 @@
-# Build native v1.2.0 candidates in GitHub Actions and store installers on a private draft release.
+# Build native candidates in GitHub Actions and store installers on a private draft release.
 # Draft candidates are not public releases; verify device behavior and Android signing continuity before publishing.
 name: Build apps
 on:
@@ -27,7 +27,11 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       release_tag: ${{ steps.candidate.outputs.release_tag }}
+      release_version: ${{ steps.candidate.outputs.release_version }}
     steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
       - name: Create the private draft release for this exact commit
         id: candidate
         env:
@@ -35,25 +39,31 @@ jobs:
           GH_REPO: ${{ github.repository }}
         shell: bash
         run: |
-          # The tag names the commit the assets are built from. It used to be a
-          # hardcoded v1.2.0-build-9acfe2f with a note claiming the app source
-          # was unchanged, while uploads used --clobber: every build silently
-          # overwrote that candidate's assets, so the tag, the notes and the
-          # binaries all disagreed about which source they were.
+          set -euo pipefail
+          # The tag names both the commit and the version declared by the app.
+          # A hardcoded version previously allowed the source metadata, title,
+          # tag and uploaded binaries to disagree after a version bump.
+          app_version="$(node -p "require('./package.json').version")"
+          if ! [[ "$app_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error title=Invalid app version::package.json has an invalid version: $app_version"
+            exit 1
+          fi
           short="${GITHUB_SHA:0:7}"
-          tag="v1.2.0-build-${short}"
+          tag="v${app_version}-build-${short}"
           if gh release view "$tag" --repo "$GH_REPO" >/dev/null 2>&1; then
             gh release edit "$tag" --repo "$GH_REPO" --draft \
-              --title "TheToolTable v1.2.0 build candidate (app source $short)" >/dev/null
+              --title "TheToolTable v${app_version} build candidate (app source $short)" >/dev/null
             echo "Reusing the draft candidate for this commit." >> "$GITHUB_STEP_SUMMARY"
           else
             gh release create "$tag" --repo "$GH_REPO" --draft --prerelease \
               --target "$GITHUB_SHA" \
-              --title "TheToolTable v1.2.0 build candidate (app source $short)" \
-              --notes "Automated native build candidate built from app source commit \`$short\`. This is a private draft, not a stable release. Test Android and Windows behavior, and compare the Android signing certificate with the published v1.1.1 APK before publishing."
+              --title "TheToolTable v${app_version} build candidate (app source $short)" \
+              --notes "Automated native build candidate built from app source commit \`$short\`. This is a private draft, not a stable release. Test Android and Windows behavior, and compare the Android signing certificate with the previously published APK before publishing."
             echo "Created a fresh private draft for this commit." >> "$GITHUB_STEP_SUMMARY"
           fi
           echo "release_tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "release_version=$app_version" >> "$GITHUB_OUTPUT"
+          echo "App version: $app_version" >> "$GITHUB_STEP_SUMMARY"
           echo "App source commit: $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
           echo "Draft release: https://github.com/$GH_REPO/releases/tag/$tag" >> "$GITHUB_STEP_SUMMARY"
 

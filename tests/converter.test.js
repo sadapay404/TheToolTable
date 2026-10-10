@@ -36,6 +36,15 @@ test('text-to-JSON conversion is parseable and reports source content', async ()
   assert.deepEqual(json.content, ['first', 'second'])
 })
 
+test('text-to-PPTX returns a downloadable ZIP Blob instead of a writer filename', async () => {
+  const result = await convertFile(file('notes.txt', 'first\nsecond'), 'text', 'pptx')
+  assert.equal(result.ext, 'pptx')
+  assert.ok(result.blob instanceof Blob)
+  assert.ok(result.blob.size > 1_000)
+  const bytes = new Uint8Array(await result.blob.arrayBuffer())
+  assert.deepEqual([...bytes.slice(0, 4)], [0x50, 0x4b, 0x03, 0x04])
+})
+
 test('archive conversion lists files through the bounded ZIP reader', async () => {
   const { zipSync, strToU8 } = await import('fflate')
   const archive = zipSync({ 'notes/readme.txt': strToU8('hello'), 'image.bin': new Uint8Array([1, 2, 3]) })

@@ -37,10 +37,13 @@ applications first.
 ```bash
 git clone https://github.com/sadapay404/TheToolTable.git
 cd TheToolTable
-git checkout arena/e8b1f673-thetooltable
+# For the repaired app, use the current promoted release tag (or the exact
+# source commit named by its release candidate).
+git checkout <release-tag-or-commit>
 ```
 
-You must check out that branch. It carries the Android launch fix.
+Do not build the old v1.1.1 source for Android: it predates the launch repair.
+The repaired source carries the Android launch fix described below.
 
 ## 2. Install the toolchain
 
@@ -174,4 +177,13 @@ re-downloads what it needs.
 
 **The build succeeds but the app still crashes on launch**
 Run the verification command in the section above. A non-zero result means the
-launch patch did not survive the build, and that specific APK will crash.
+launch patch did not survive the build, and that specific APK will crash. If it
+reports `0`, capture a clean startup log on Windows and share it with the
+maintainer:
+
+```bat
+adb logcat -c && adb shell am force-stop app.thetooltable.mubashir && adb shell monkey -p app.thetooltable.mubashir 1 && timeout /t 8 >nul && adb logcat -d -v time | findstr /I /C:"app.thetooltable.mubashir" /C:"FATAL EXCEPTION" /C:"AndroidRuntime" /C:"WorkManager" /C:"Room" /C:"Caused by"
+```
+
+This starts one clean app session and filters the resulting log to the launch
+crash chain.

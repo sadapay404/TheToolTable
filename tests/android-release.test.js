@@ -9,6 +9,7 @@ import { spawnSync } from 'node:child_process'
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const read = (p) => readFileSync(path.join(ROOT, p), 'utf8')
 const exists = (p) => existsSync(path.join(ROOT, p))
+const packageJson = JSON.parse(read('package.json'))
 
 const ICON_DIR = 'src-tauri/icons/android'
 const DENSITIES = { mdpi: 48, hdpi: 72, xhdpi: 96, xxhdpi: 144, xxxhdpi: 192 }
@@ -245,12 +246,44 @@ test('a build runs for every arena branch, not one frozen name', () => {
     'a single-branch trigger means no build ever runs for later work')
 })
 
-test('the draft release tag names the commit its assets came from', () => {
+test('the draft release tag names the app version and the commit its assets came from', () => {
   const workflow = read('.github/workflows/native.yml')
+  assert.match(workflow, /uses: actions\/checkout@v4/,
+    'the release job must read version metadata from the same source it builds')
+  assert.ok(workflow.includes('app_version="$(node -p "require(\'./package.json\').version")"'),
+    'the candidate version must come from package.json, not a stale workflow literal')
   assert.match(workflow, /short="\$\{GITHUB_SHA:0:7\}"/)
-  assert.match(workflow, /tag="v1\.2\.0-build-\$\{short\}"/)
-  assert.doesNotMatch(workflow, /tag="v1\.2\.0-build-9acfe2f"/,
-    'a pinned tag plus --clobber lets every build silently overwrite the same candidate')
+  assert.match(workflow, /tag="v\$\{app_version\}-build-\$\{short\}"/)
+  assert.match(workflow, /release_version=\$app_version/)
+  assert.ok(!/tag="v\d+\.\d+\.\d+-build-/.test(workflow),
+    'a pinned tag plus --clobber lets every build silently overwrite the wrong candidate')
+  assert.match(packageJson.version, /^\d+\.\d+\.\d+$/)
+})
+
+test('the workflow shell accepts the version declared by the app', () => {
+  const workflow = read('.github/workflows/native.yml')
+  const validation = workflow.match(/          app_version=.*?\n          if ! .*?\n            echo .*?\n            exit 1\n          fi/m)?.[0]
+  assert.ok(validation, 'the workflow must retain its version-validation shell block')
+  const result = spawnSync('bash', ['-c', `set -euo pipefail\n${validation}\nprintf '%s\\n' "$app_version"`], {
+    cwd: ROOT,
+    encoding: 'utf8',
+  })
+  assert.equal(result.status, 0, result.stderr)
+  assert.equal(result.stdout.trim(), packageJson.version)
+})
+
+test('the web package, native package and Tauri bundle share one release version', () => {
+  const cargo = read('src-tauri/Cargo.toml')
+  const tauri = JSON.parse(read('src-tauri/tauri.conf.json'))
+  assert.match(cargo, new RegExp(`^version = "${packageJson.version.replace(/\./g, '\\.')}"$`, 'm'))
+  assert.equal(tauri.version, packageJson.version)
+})
+
+test('README sends Android users to the current APK instead of the known-bad v1.1.1 asset', () => {
+  const readme = read('README.md')
+  assert.match(readme, /releases\/latest\/download\/TheToolTable\.apk/)
+  assert.doesNotMatch(readme, /releases\/download\/v1\.1\.1\/TheToolTable\.apk/)
+  assert.match(readme, /WorkManager startup initializer/)
 })
 
 test('a missing signing key is discovered before the build, not after it', () => {

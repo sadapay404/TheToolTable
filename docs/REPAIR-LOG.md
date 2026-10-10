@@ -24,9 +24,23 @@ The requested 20-tool repair is tracked in ten parts, two consecutively numbered
 
 ## Releases
 
-- Stable **v1.1.0** was published on [GitHub Releases](https://github.com/sadapay404/TheToolTable/releases/tag/v1.1.0).
-- Stable **v1.1.1** is now the latest release: [GitHub Releases](https://github.com/sadapay404/TheToolTable/releases/tag/v1.1.1). It includes the restored interactive 3D tool-card tilt, additional hover and scroll motion, and the Android Gradle dependency retry/cache hardening.
-- The v1.1.1 release workflow completed successfully in GitHub Actions run [37395413929](https://github.com/sadapay404/TheToolTable/actions/runs/37395413929): Android APK build and signing, Windows NSIS/MSI builds, and release publication all passed.
-- Release assets: signed Android APK, Windows NSIS installer, and Windows MSI. The Windows installers require and include yt-dlp/FFmpeg/FFprobe sidecars.
-- Android’s Downloader uses a network-reachable HTTPS companion engine; the APK does not bundle yt-dlp. This limitation is stated on the release page and in the Android UI.
-- The repository is private; release downloads are restricted to accounts with repository access. The older `v1.1.0-rc1` remains a prerelease; use stable `v1.1.1`.
+- **Do not install the historical v1.1.1 Android APK.** It predates the
+  WorkManager/Room launch repair and can terminate before the first frame.
+- The launch-repair candidate built from `fef23ba` passed all four jobs —
+  prepare, Windows packaging, Android artefact verification, and Android
+  emulator smoke — in [GitHub Actions run 38030486832](https://github.com/sadapay404/TheToolTable/actions/runs/38030486832).
+  Its artefacts remain a draft candidate rather than a silently published
+  release.
+- The release workflow now creates one distinct draft tag per exact app version
+  and source commit (`v<version>-build-<short-sha>`); it does not overwrite an
+  unrelated candidate with `--clobber`.
+- v1.2.1 is the repair release. It adds spreadsheet parser containment, the
+  duplicate-theme-listener fix, and the dependency maintenance described in
+  [the release notes](RELEASE-NOTES.md). Its exact source candidate must
+  complete the same artefact and emulator checks before promotion.
+- Release assets are a signed Android APK plus Windows NSIS and MSI installers.
+  The Windows installers include yt-dlp/FFmpeg/FFprobe sidecars. Android's
+  Downloader instead uses a network-reachable HTTPS companion engine; the APK
+  does not bundle yt-dlp.
+- The repository is private, so downloads require an account with repository
+  access.

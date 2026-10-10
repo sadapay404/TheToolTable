@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { computeInsets, estimateInsets, MIN_TOP, MAX_TOP, MAX_BOTTOM } from '../src/lib/safe-area.js'
 import {
   THEMES, THEME_ORDER, THEME_CHOICES, DEFAULT_THEME, SYSTEM_THEME,
@@ -149,4 +150,11 @@ test('auto is offered alongside every real theme', () => {
 test('a corrupt saved preference resolves to the Material default', () => {
   assert.equal(resolveThemeId('nope-not-a-theme'), DEFAULT_THEME)
   assert.equal(themeLabel('nope-not-a-theme'), THEMES[DEFAULT_THEME].name)
+})
+
+test('the shell installs one system-theme listener, not duplicate repaint work', () => {
+  const app = readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf8')
+  const listeners = app.match(/useEffect\(\(\) => watchSystemTheme\(/g) || []
+  assert.equal(listeners.length, 1,
+    'each OS color-scheme change should repaint once; duplicate listeners waste work on Android')
 })

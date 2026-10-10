@@ -1,12 +1,16 @@
 # Android repair tracker
 
-This is a ten-part Android-only repair cadence: two tool screens checked per part. Windows is out of scope. A passing APK build alone does not close a part; Android launch, visible content, and back navigation must be exercised on the emulator/device. Do not mark the app requirements complete until the corresponding Android checks pass.
+This is a ten-part Android-only repair cadence: two tool screens checked per
+part. Windows is out of scope. A passing APK build alone does not close a part;
+Android launch, visible content, and back navigation must be exercised on an
+emulator/device. Do not mark the app requirements complete until the
+corresponding Android checks pass.
 
 ## Part status
 
 | Part | Tool screens | Status |
 |---|---|---|
-| 1 | 04 Media Clipper & Downloader; 06 AI Background Remover | Code changes prepared; GitHub Android-emulator smoke test pending. |
+| 1 | 04 Media Clipper & Downloader; 06 AI Background Remover | **Launch/shell smoke passed** for the v1.2.0 repair candidate; rerun is required for each promoted source revision. |
 | 2 | 01 Metadata Extractor; 02 Any-to-Any Converter | Not started |
 | 3 | 03 Target-Size Compressor; 05 ImagePlayer Studio | Not started |
 | 4 | 07 Frame Extractor & Clipper; 08 Audio Visualizer Video | Not started |
@@ -19,27 +23,52 @@ This is a ten-part Android-only repair cadence: two tool screens checked per par
 
 ## Part 1 implementation notes
 
-- Android-only safe-area fallbacks were added for the sticky header, mobile controls sheet, bottom navigation, toast, and footer. The camera/status-bar area remains reserved even when the WebView reports a zero inset.
-- Native Android Back now uses an explicit tool-screen stack rather than trusting unrelated WebView history. The smoke test exercises system Back from Tool 04 and the tool's own Back control from Tool 06, and requires the live home collection to return.
-- Eleven additional lightweight discovery animations were added without removing the 3-D card interaction. Reduced-motion preferences disable the added animations; the footer ticker retains its reduced-motion accommodation.
-- Android launcher assets were regenerated from `public/icons/icon-512.png`; the Android header Logo selects that same square brand asset. Desktop/Windows icon assets were not changed.
-- Tool 06 (`BgRemover`) now shares one exported 8192-pixel edge limit between its output-size estimate and renderer, tests the 4-pixel fitted-output allowance, uses a bounded `MAX_UNDO_STROKES` helper instead of a numeric literal, and updates `itemsRef` synchronously on patch/removal.
-- Model downloads already use the native download manager/WorkManager path. Android Media Clipper/Downloader still selects its HTTP companion engine (`/api/ytdlp`) when no native runner is installed. This remains a known functional limitation; do not describe it as a bundled or verified Android yt-dlp downloader.
-- A build-time compatibility patch allows the foreground-service lifecycle to start without the optional headless JNI library. The patch and Android UI smoke test still need to pass on GitHub Actions before this part is marked complete.
+- Android-only safe-area fallbacks reserve the status/camera area for the
+  sticky header, mobile controls sheet, bottom navigation, toast, and footer
+  even when a WebView reports zero insets.
+- Native Android Back uses an explicit tool-screen stack rather than unrelated
+  WebView history. The smoke test exercises system Back from Tool 04 and the
+  tool's own Back control from Tool 06, and requires the home collection to
+  return.
+- Launcher assets are generated from `public/icons/icon-512.png`; the Android
+  header uses the same square brand asset.
+- Tool 06 (`BgRemover`) shares one bounded 8192-pixel edge limit between its
+  output-size estimate and renderer.
+- Android Media Clipper/Downloader selects an HTTPS companion engine
+  (`/api/ytdlp`) when no native runner is installed. This remains a known
+  functional limitation; do not describe it as a bundled Android yt-dlp
+  downloader.
+- `scripts/ensure-android-launch-survives.mjs` removes WorkManager's AndroidX
+  Startup initializer after Tauri generates the project and preserves the
+  required generated WorkManager/Room classes. This is the repair for the
+  pre-first-frame crash, not a cosmetic manifest change.
 
 ## Latest Android emulator run
 
-- Run `37725028745` built and signed both ARM release and x86_64 smoke APKs after reclaiming runner disk space. The 2 GB userdata AVD was created and booted successfully; this resolves the earlier userdata-partition setup failure.
-- Run `37763406519` again built and signed both APKs and booted the emulator on its default two-core profile. The smoke test still stopped before the collection appeared: UIAutomator found repeated Android system dialogs saying `Quickstep isn't responding`, including one within seconds of choosing Wait. Neither run establishes whether the app itself crashed, and neither reached Tool 04/06 or back-navigation checks. Both used a fresh-install-only fallback signing key, and neither uploaded an APK.
-- Returning from four requested cores to the default two did not resolve the launcher ANR. Run `37767140644` built and signed both APKs and booted with a 4 GB AVD, but the new package-only `am start` test command returned Android result `-91` before UI inspection; this is a harness launch-resolution failure, not evidence of an app crash and not a result for the Quickstep hypothesis. The next attempt starts Tauri's explicit `.MainActivity` component, keeps strict visible-screen assertions plus one recorded recovery for an initial system ANR, and now preserves ADB stdout/stderr when a command fails.
+- [Run 38030486832](https://github.com/sadapay404/TheToolTable/actions/runs/38030486832)
+  completed successfully on 2026-10-10 for the `fef23ba` repair candidate:
+  `prepare`, `windows`, `android`, and `android-device` all passed.
+- The Android job verified the signed universal APK before banking it, including
+  both `arm64-v8a` and `x86_64` libraries and the absence of
+  `WorkManagerInitializer` from the merged manifest. The `android-device` job
+  then booted an x86_64 emulator and smoke-tested the exact release artefact.
+- This resolves the former “instant close before the first frame” launch gate
+  for that candidate. It does **not** turn an older APK into a valid download:
+  every new source candidate, including v1.2.1, must pass the same verifier and
+  device job before release promotion.
 
 ## Acceptance checklist
 
-- [ ] App stays open on Android after a fresh install and renders the collection (not a header-only/black screen).
-- [ ] System Back and tool Back navigate through app/tool history; root Back is the only point that exits.
-- [ ] Tool 04 and Tool 06 open and return without black screens on Android.
-- [ ] Status-bar/camera safe area and all header/sheet controls are visible on a cutout-sized viewport.
-- [ ] Android APK launcher uses the same TheToolTable brand asset as the Android header.
-- [ ] Model downloads and Beam/file transfers continue in the background with visible progress notifications on Android.
-- [ ] Media Downloader has a selected, legally compatible native Android engine and a passing end-to-end Android test.
+- [x] Candidate app stays open after a fresh install and renders the collection
+  in the passed Android emulator smoke run.
+- [x] Candidate system Back and tool Back navigate through app/tool history in
+  the Android smoke path.
+- [x] Tool 04 and Tool 06 are covered by the Android smoke/navigation path.
+- [x] Launcher package verification checks the expected branded Android icon.
+- [ ] Status-bar/camera safe area and every header/sheet control are visually
+  reviewed on a physical cutout device.
+- [ ] Model downloads and Beam/file transfers continue in the background with
+  visible progress notifications on Android.
+- [ ] Media Downloader has a selected, legally compatible native Android engine
+  and a passing end-to-end Android test.
 - [ ] All ten tool-pair parts have their own Android screen checks.

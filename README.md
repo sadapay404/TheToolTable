@@ -2,21 +2,23 @@
 
 A personal multi-tool studio with 20 browser-first utilities. Most file processing stays in the browser; the Downloader can use a local or separately hosted yt-dlp companion engine, and the Metadata Extractor contacts OpenStreetMap only when you explicitly request a place lookup or map. Files are not uploaded by default. No re-encoding unless a tool explicitly offers it (notably Tool 03 and selected Converter outputs).
 
-## Download the current release
+## Android release status
 
-- [**Android APK — latest release**](https://github.com/sadapay404/TheToolTable/releases/latest/download/TheToolTable.apk)
-- [**All current installers and release notes**](https://github.com/sadapay404/TheToolTable/releases/latest)
+> **Android APK distribution is temporarily paused.** Every older Android
+> release was withdrawn after a real-device crash was found during native
+> WorkManager/download-plugin startup. Do **not** install an APK from an old
+> release, and do not treat GitHub's former `latest` URL as a safe download.
+>
+> The corrective **v1.2.2** candidate is intentionally not published yet. It
+> will be listed on the [Releases page](https://github.com/sadapay404/TheToolTable/releases)
+> only after its signed APK passes the strengthened artefact checks and an
+> install/run validation that remains alive after plugin initialization.
 
-> **Important:** do not install the old v1.1.1 APK linked by earlier copies of
-> this README. Its Android startup path can crash before the first frame. The
-> current release removes that WorkManager startup initializer and is verified
-> against the merged manifest before it is uploaded.
-
-The repository is private, so downloads require an account with access. If
-Android reports that the APK conflicts with an older installation, back up any
-local work, uninstall the old app, and then install the current APK. On Android,
-Downloader needs a network-reachable HTTPS companion engine; Windows includes
-yt-dlp and FFmpeg.
+The repository is private, so future downloads require an account with access.
+When a corrected Android release is published, if it conflicts with an older
+installation, back up any local work, uninstall the old app, and then install
+that verified release. On Android, Downloader needs a network-reachable HTTPS
+companion engine; Windows includes yt-dlp and FFmpeg.
 
 ## Branding
 

@@ -205,7 +205,10 @@ jobs:
           if [ "$license_status" -ne 0 ]; then
             echo "::warning::sdkmanager --licenses returned $license_status; continuing to package installation."
           fi
-          packages=("ndk;27.2.12479018" "platforms;android-35" "build-tools;35.0.0")
+          # Tauri 2.12 and the patched download plugin both compile against API
+          # 37. Installing only API 35 lets a runner's incidental preinstalled
+          # SDK decide whether the build works; install the platform explicitly.
+          packages=("ndk;27.2.12479018" "platforms;android-37" "build-tools;35.0.0")
           install_status=1
           for attempt in 1 2 3; do
             log="android-sdk-install-${attempt}.log"
@@ -604,25 +607,42 @@ jobs:
             echo "| ARM native library | \\`$arm_lib\\`, e_machine \\`$arm_elf\\` (AArch64) |"
           } >> "$GITHUB_STEP_SUMMARY"
 
-          # 3b. The shipped manifest must not start WorkManager during
-          # handleBindApplication.
+          # 3b. The shipped manifest must defer WorkManager out of AndroidX
+          # Startup *and* name the Application Configuration.Provider that the
+          # download plugin needs when it calls WorkManager.getInstance later.
           #
-          # This is the one defect that shipped an APK which installed, showed an
-          # icon, verified its signature, and then died before drawing a frame on
-          # every real phone - while passing every other check in this step. Nothing
-          # here could see it, because badging does not describe providers. The
-          # manifest does, so read the *merged* manifest out of the built package
-          # rather than the source manifest the patch edits: only the merged result
-          # proves the tools:node="remove" directive actually took effect.
+          # Removing WorkManagerInitializer alone makes the process abort during
+          # plugin setup with "WorkManager is not initialized properly". The
+          # merged manifest is the artefact-level proof of both halves; source
+          # files and badging cannot prove a manifest merge survived.
           MANIFEST_TREE="$("$BT/aapt2" dump xmltree --file AndroidManifest.xml "$APK" 2>/dev/null || true)"
           if [ -z "$MANIFEST_TREE" ]; then
             fail "aapt2 could not read the merged AndroidManifest.xml out of $APK."
           fi
           if grep -q "WorkManagerInitializer" <<< "$MANIFEST_TREE"; then
-            fail "$APK still initialises WorkManager from androidx.startup during Application startup. That builds a Room database before the first frame and kills the process - 'The Tool Table keeps stopping'. The launch patch (scripts/ensure-android-launch-survives.mjs) did not survive the build."
+            fail "$APK still initialises WorkManager from androidx.startup during Application startup. That builds a Room database before the first frame and can kill the process before the app draws."
           fi
+          WORK_MANAGER_APPLICATION="app.thetooltable.mubashir.TheToolTableApplication"
+          if ! grep -qF "$WORK_MANAGER_APPLICATION" <<< "$MANIFEST_TREE"; then
+            fail "$APK removes WorkManagerInitializer but does not declare $WORK_MANAGER_APPLICATION. The download plugin then aborts with 'WorkManager is not initialized properly'."
+          fi
+          # A declaration alone can still point to a class omitted from the app
+          # module's sources or removed by shrinking. Verify the class descriptor
+          # is present in one of the APK's DEX files. This deliberately uses a
+          # temporary file, never `unzip | grep -q`, so pipefail cannot turn a
+          # healthy large APK into a SIGPIPE false failure.
+          WORK_MANAGER_APPLICATION_DESCRIPTOR="L${WORK_MANAGER_APPLICATION//./\/};"
+          APP_CLASS_DEX="$(mktemp)"
+          for dex in $(grep -E '^classes[0-9]*\.dex$' <<< "$LISTING"); do
+            unzip -p "$APK" "$dex" >> "$APP_CLASS_DEX"
+          done
+          if ! grep -aFq "$WORK_MANAGER_APPLICATION_DESCRIPTOR" "$APP_CLASS_DEX"; then
+            rm -f "$APP_CLASS_DEX"
+            fail "$APK declares $WORK_MANAGER_APPLICATION but its compiled Application class is missing from DEX."
+          fi
+          rm -f "$APP_CLASS_DEX"
           {
-            echo "| Launch path | no WorkManagerInitializer in the merged manifest |"
+            echo "| WorkManager launch path | startup initializer removed; $WORK_MANAGER_APPLICATION declared and compiled |"
           } >> "$GITHUB_STEP_SUMMARY"
 
           ICON_ROWS=$(printf '%s\n' "$BADGING" | grep "^application-icon-.*:" || true)

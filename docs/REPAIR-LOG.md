@@ -15,35 +15,35 @@ The requested 20-tool repair is tracked in ten parts, two consecutively numbered
 | 9 | 17 Beam; 18 App Icon & Asset Forge | **Complete.** Hardened Beam signaling/transfer validation and Icon Forge input, pack, export-concurrency, upload-race, and accessibility safeguards. Regression coverage included; the production build passes. |
 | 10 | 19 Pakistan Money Kit; 20 Text & Writing Lab | **Complete.** Added calculation/input regression coverage; verified the 2026–27 salary-tax table against [FBR’s official 2027 withholding rate card](https://download1.fbr.gov.pk/Docs/202681113864992WithholdingTaxRatesCard2027.pdf), updated through June 30, 2026; clarified the savings-profit withholding estimate; and reviewed the mobile tab layout. |
 
-## Verification at the end of Part 9
+## Current source validation — v1.2.2 candidate
 
-- `npm test`: 92/92 passing.
+- `npm test`: **436/436 passing**.
 - `npm run build`: passing.
 - `git diff --check`: clean.
-- The Vite preview remains available on port 5173.
+- Android launch-repair fixtures exercise a pristine generated project,
+  idempotence, the direct WorkManager compile dependency, and safe refusal to
+  overwrite a custom Application. The APK-verifier harness accepts a sound mock
+  artifact and refuses missing WorkManager startup/provider/DEX conditions.
 
 ## Releases
 
-- **Do not install the historical v1.1.1 Android APK.** It predates the
-  WorkManager/Room launch repair and can terminate before the first frame.
-- The launch-repair candidate built from `fef23ba` passed all four jobs —
-  prepare, Windows packaging, Android artefact verification, and Android
-  emulator smoke — in [GitHub Actions run 38030486832](https://github.com/sadapay404/TheToolTable/actions/runs/38030486832).
-  Its artefacts remain a draft candidate rather than a silently published
-  release.
-- The release workflow now creates one distinct draft tag per exact app version
-  and source commit (`v<version>-build-<short-sha>`); it does not overwrite an
-  unrelated candidate with `--clobber`.
-- **v1.2.1 is published** from `5e93a08` as
-  [TheToolTable v1.2.1](https://github.com/sadapay404/TheToolTable/releases/tag/v1.2.1-build-5e93a08).
-  Its exact-source [CI run 38032876221](https://github.com/sadapay404/TheToolTable/actions/runs/38032876221)
-  passed Windows packaging, Android artefact verification, and Android emulator
-  smoke before promotion. It adds spreadsheet parser containment, the
-  duplicate-theme-listener fix, and dependency maintenance described in
-  [the release notes](RELEASE-NOTES.md).
-- Release assets are a signed Android APK plus Windows NSIS and MSI installers.
-  The Windows installers include yt-dlp/FFmpeg/FFprobe sidecars. Android's
-  Downloader instead uses a network-reachable HTTPS companion engine; the APK
-  does not bundle yt-dlp.
-- The repository is private, so downloads require an account with repository
-  access.
+- **No Android APK is currently endorsed.** All formerly public Android
+  releases, including v1.2.1, were withdrawn into drafts after a real device
+  showed that v1.2.1 still aborts during native download-plugin/WorkManager
+  initialization. Passing an older first-frame emulator smoke did not prove the
+  process remained alive after that initialization.
+- The pending **v1.2.2** repair generates a manifest-declared Application that
+  implements WorkManager `Configuration.Provider`, in addition to removing the
+  eager `WorkManagerInitializer`. Its APK gate checks both conditions in the
+  merged manifest; its device smoke waits past launch and fails on native abort
+  records or `PluginInitialization("download", …)` failures.
+- The release workflow creates one distinct draft tag per exact app version and
+  source commit (`v<version>-build-<short-sha>`); it does not overwrite an
+  unrelated candidate with `--clobber`. A candidate must remain a draft until
+  the strengthened CI and physical/device validation are complete.
+- A future release asset will include a signed Android APK plus Windows NSIS and
+  MSI installers. The Windows installers include yt-dlp/FFmpeg/FFprobe
+  sidecars. Android's Downloader instead uses a network-reachable HTTPS
+  companion engine; the APK does not bundle yt-dlp.
+- The repository is private, so future downloads require an account with
+  repository access.

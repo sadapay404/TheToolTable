@@ -24,7 +24,16 @@ build_apk() { # $1 output, $2 good|no-dex|no-icons
   rm -rf "$dir"; mkdir -p "$dir"
   : > "$dir/AndroidManifest.xml"
   : > "$dir/resources.arsc"
-  [ "$mode" = "no-dex" ] || printf 'dex' > "$dir/classes.dex"
+  if [ "$mode" != "no-dex" ]; then
+    # The verifier reads the descriptor from DEX, not merely from the manifest:
+    # a manifest declaration pointing to an omitted/stripped Application is not
+    # a runnable WorkManager Configuration.Provider.
+    if [ "$mode" = "no-application-class" ]; then
+      printf 'dex' > "$dir/classes.dex"
+    else
+      printf 'dexLapp/thetooltable/mubashir/TheToolTableApplication;' > "$dir/classes.dex"
+    fi
+  fi
   # Every real Tauri APK carries its Rust library for the target ABI. Without
   # this the new arm64 gate would (correctly) refuse the mock as unrunnable.
   if [ "$mode" != "no-arm-lib" ]; then
@@ -76,14 +85,15 @@ EOF
   chmod +x "$WORK/build-tools/35.0.0/aapt2"
 }
 
-# A merged manifest for a package whose launch path is sound: androidx.startup's
-# InitializationProvider is still there (other initialisers use it) but nothing
-# under it names WorkManager, which is what `tools:node="remove"` achieves.
-write_manifest_tree() { # $1 fixed|broken|unreadable
+# A sound merged manifest does two things: it removes WorkManager's AndroidX
+# Startup metadata, and it names the Application that implements
+# Configuration.Provider for the download plugin's lazy WorkManager lookup.
+write_manifest_tree() { # $1 fixed|broken|missing-provider|unreadable
   case "$1" in
     broken) printf '      E: provider\n        A: android:name(0x01010003)=\"androidx.startup.InitializationProvider\"\n        E: meta-data\n          A: android:name(0x01010003)=\"androidx.work.WorkManagerInitializer\"\n          A: android:value(0x01010024)=\"androidx.startup\"\n' > "$WORK/manifest-tree.txt" ;;
+    missing-provider) printf '      E: application\n        A: android:label(0x01010001)=\"TheToolTable\"\n      E: provider\n        A: android:name(0x01010003)=\"androidx.startup.InitializationProvider\"\n        E: meta-data\n          A: android:name(0x01010003)=\"androidx.profileinstaller.ProfileInstallReceiver\"\n' > "$WORK/manifest-tree.txt" ;;
     unreadable) : > "$WORK/manifest-tree.txt" ;;
-    *) printf '      E: provider\n        A: android:name(0x01010003)=\"androidx.startup.InitializationProvider\"\n        E: meta-data\n          A: android:name(0x01010003)=\"androidx.profileinstaller.ProfileInstallReceiver\"\n' > "$WORK/manifest-tree.txt" ;;
+    *) printf '      E: application\n        A: android:name(0x01010003)=\"app.thetooltable.mubashir.TheToolTableApplication\"\n      E: provider\n        A: android:name(0x01010003)=\"androidx.startup.InitializationProvider\"\n        E: meta-data\n          A: android:name(0x01010003)=\"androidx.profileinstaller.ProfileInstallReceiver\"\n' > "$WORK/manifest-tree.txt" ;;
   esac
 }
 write_manifest_tree fixed
@@ -117,7 +127,7 @@ mkdir -p "$WORK/badging"
 cat > "$WORK/badging/typed-fgs.txt" <<'EOF'
 package: name='app.thetooltable.desktop'
 sdkVersion:'24'
-targetSdkVersion:'35'
+targetSdkVersion:'37'
 uses-permission: name='android.permission.INTERNET'
 uses-permission: name='android.permission.POST_NOTIFICATIONS'
 uses-permission: name='android.permission.FOREGROUND_SERVICE_DATA_SYNC'
@@ -128,7 +138,7 @@ EOF
 cat > "$WORK/badging/no-notifications.txt" <<'EOF'
 package: name='app.thetooltable.desktop'
 sdkVersion:'24'
-targetSdkVersion:'35'
+targetSdkVersion:'37'
 uses-permission: name='android.permission.INTERNET'
 uses-permission: name='android.permission.FOREGROUND_SERVICE'
 application-icon-160:'res/mipmap-mdpi-v4/ic_launcher.png'
@@ -138,7 +148,7 @@ EOF
 cat > "$WORK/badging/no-fgs.txt" <<'EOF'
 package: name='app.thetooltable.desktop'
 sdkVersion:'24'
-targetSdkVersion:'35'
+targetSdkVersion:'37'
 uses-permission: name='android.permission.INTERNET'
 uses-permission: name='android.permission.POST_NOTIFICATIONS'
 application-icon-160:'res/mipmap-mdpi-v4/ic_launcher.png'
@@ -148,7 +158,7 @@ EOF
 cat > "$WORK/badging/absent-icon.txt" <<'EOF'
 package: name='app.thetooltable.desktop'
 sdkVersion:'24'
-targetSdkVersion:'35'
+targetSdkVersion:'37'
 uses-permission: name='android.permission.INTERNET'
 uses-permission: name='android.permission.POST_NOTIFICATIONS'
 uses-permission: name='android.permission.FOREGROUND_SERVICE'
@@ -157,9 +167,9 @@ native-code: 'arm64-v8a'
 native-code: 'x86_64'
 EOF
 cat > "$WORK/badging/x86-only.txt" <<'EOF'
-package: name='app.thetooltable.mubashir' versionCode='120' versionName='1.2.0' compileSdkVersion='35'
+package: name='app.thetooltable.mubashir' versionCode='120' versionName='1.2.2' compileSdkVersion='37'
 sdkVersion:'24'
-targetSdkVersion:'35'
+targetSdkVersion:'37'
 uses-permission: name='android.permission.INTERNET'
 uses-permission: name='android.permission.POST_NOTIFICATIONS'
 uses-permission: name='android.permission.FOREGROUND_SERVICE'
@@ -167,9 +177,9 @@ application-icon-160:'res/mipmap-mdpi-v4/ic_launcher.png'
 native-code: 'x86_64'
 EOF
 cat > "$WORK/badging/no-abi.txt" <<'EOF'
-package: name='app.thetooltable.mubashir' versionCode='120' versionName='1.2.0' compileSdkVersion='35'
+package: name='app.thetooltable.mubashir' versionCode='120' versionName='1.2.2' compileSdkVersion='37'
 sdkVersion:'24'
-targetSdkVersion:'35'
+targetSdkVersion:'37'
 uses-permission: name='android.permission.INTERNET'
 uses-permission: name='android.permission.POST_NOTIFICATIONS'
 uses-permission: name='android.permission.FOREGROUND_SERVICE'
@@ -177,9 +187,9 @@ application-icon-160:'res/mipmap-mdpi-v4/ic_launcher.png'
 EOF
 : > "$WORK/badging/unreadable.txt"
 cat > "$WORK/badging/good.txt" <<'EOF'
-package: name='app.thetooltable.desktop' versionCode='120' versionName='1.2.0' compileSdkVersion='35'
+package: name='app.thetooltable.desktop' versionCode='120' versionName='1.2.2' compileSdkVersion='37'
 sdkVersion:'24'
-targetSdkVersion:'35'
+targetSdkVersion:'37'
 uses-permission: name='android.permission.INTERNET'
 uses-permission: name='android.permission.POST_NOTIFICATIONS'
 uses-permission: name='android.permission.FOREGROUND_SERVICE'
@@ -318,7 +328,7 @@ run 1 "$WORK/good.apk" "an APK that reports no ABI at all is refused" "advertise
 # The device job installs this exact file on an x86_64 emulator, so a package
 # without that library could never be tested. It is refused here instead, at the
 # point where it can still be fixed.
-printf "package: name='app.thetooltable.mubashir' versionCode='120' versionName='1.2.0' compileSdkVersion='35'\nsdkVersion:'24'\ntargetSdkVersion:'35'\nuses-permission: name='android.permission.INTERNET'\nuses-permission: name='android.permission.POST_NOTIFICATIONS'\nuses-permission: name='android.permission.FOREGROUND_SERVICE'\napplication-icon-160:'res/mipmap-mdpi-v4/ic_launcher.png'\nnative-code: 'arm64-v8a'\n" > "$WORK/badging/arm-only.txt"
+printf "package: name='app.thetooltable.mubashir' versionCode='120' versionName='1.2.2' compileSdkVersion='37'\nsdkVersion:'24'\ntargetSdkVersion:'37'\nuses-permission: name='android.permission.INTERNET'\nuses-permission: name='android.permission.POST_NOTIFICATIONS'\nuses-permission: name='android.permission.FOREGROUND_SERVICE'\napplication-icon-160:'res/mipmap-mdpi-v4/ic_launcher.png'\nnative-code: 'arm64-v8a'\n" > "$WORK/badging/arm-only.txt"
 run 1 "$WORK/good.apk" "an APK the device job could not install is refused" "no x86_64 ABI" "$WORK/badging/arm-only.txt"
 
 build_apk "$WORK/wrong-arch.apk" wrong-arch-lib
@@ -331,10 +341,18 @@ run 1 "$WORK/no-arm-lib.apk" "an APK with no arm64 native library is refused" "U
 # obviously wrong on its face; this one is the exception. It installs, it has an
 # icon, its signature verifies, its ABIs are right and it passes every check
 # above - and then it dies before drawing a frame on a real phone, because
-# WorkManager is still initialised during handleBindApplication. Only the merged
-# manifest can tell you that, which is what these two cases exist to prove.
+# WorkManager may still be initialised during handleBindApplication, or it may
+# be removed without the Application Configuration.Provider the plugin needs.
+# Only the merged manifest can prove either property.
 write_manifest_tree broken
-run 1 "$WORK/good.apk" "an APK that starts WorkManager at launch is refused" "keeps stopping" "$WORK/badging/good.txt"
+run 1 "$WORK/good.apk" "an APK that starts WorkManager at launch is refused" "still initialises WorkManager" "$WORK/badging/good.txt"
+
+write_manifest_tree missing-provider
+run 1 "$WORK/good.apk" "an APK that removes startup initialization but has no Configuration.Provider is refused" "does not declare app.thetooltable.mubashir.TheToolTableApplication" "$WORK/badging/good.txt"
+
+build_apk "$WORK/no-application-class.apk" no-application-class
+write_manifest_tree fixed
+run 1 "$WORK/no-application-class.apk" "an APK whose manifest names an Application absent from DEX is refused" "compiled Application class is missing from DEX" "$WORK/badging/good.txt"
 
 write_manifest_tree unreadable
 run 1 "$WORK/good.apk" "a package whose manifest cannot be read is refused" "merged AndroidManifest.xml" "$WORK/badging/good.txt"

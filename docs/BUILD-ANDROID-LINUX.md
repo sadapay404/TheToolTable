@@ -16,7 +16,7 @@ You need, on the machine:
 | Node.js | 20 or newer | the app's build tooling |
 | Rust | stable, via rustup | the native side of the app |
 | JDK | **17** (Temurin recommended) | Android's build requires exactly this |
-| Android SDK | platform 35, build-tools 35.0.0, NDK, platform-tools | Tauri compiles native code against the NDK |
+| Android SDK | platform 37, build-tools 35.0.0, NDK, platform-tools | Tauri 2.12 and the patched download plugin compile against API 37; native code uses the NDK |
 | git, curl, build-essential | any | ordinary build prerequisites |
 
 Roughly **15 GB of free disk**. No GPU is needed.
@@ -65,7 +65,7 @@ Install Android Studio, open it once, and let it install the SDK. Then, using
 `sdkmanager` (found under `Android Studio > Settings > Languages & Frameworks >
 Android SDK > SDK Tools`), install:
 
-- `platforms;android-35`
+- `platforms;android-37`
 - `build-tools;35.0.0`
 - `ndk;27.2.12479018`
 - `platform-tools`
@@ -126,11 +126,14 @@ bearing:
 | `android:launch-fix` | **the app closing instantly on launch** |
 
 That last one is the reason this file exists. `scripts/ensure-android-launch-survives.mjs`
-removes AndroidX WorkManager from the application startup path. WorkManager
-builds a Room database during `handleBindApplication`, before the first frame; if
-that database cannot be created, the exception kills the process and Android
-reports "The Tool Table keeps stopping". The patch removes the initializer and
-keeps Room's generated classes from being stripped.
+uses AndroidX WorkManager's complete deferred-initialization contract. It removes
+WorkManager from the AndroidX Startup path, which otherwise builds a Room
+database during `handleBindApplication` before the first frame; it also generates
+and declares `TheToolTableApplication`, which implements
+`Configuration.Provider` when the download plugin later asks WorkManager for its
+instance. Removing the initializer without that Application causes a later native
+“WorkManager is not initialized properly” abort. The patch also keeps the
+necessary WorkManager/Room and Application classes from being stripped.
 
 The project's `app:android` script originally did **not** run that patch. Anyone
 following the documented command would have built and installed the exact APK
@@ -142,20 +145,23 @@ nothing at all - which is why `init` is a separate step above.
 
 ## Verify what you built
 
-To confirm the launch fix actually made it into your APK:
+To confirm the full launch fix actually made it into your APK:
 
 ```bash
-$ANDROID_HOME/build-tools/35.0.0/aapt2 dump xmltree \
-  --file AndroidManifest.xml \
-  src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk \
-  | grep -c WorkManagerInitializer
+APK=src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk
+MANIFEST="$($ANDROID_HOME/build-tools/35.0.0/aapt2 dump xmltree \
+  --file AndroidManifest.xml "$APK")"
+printf '%s\n' "$MANIFEST" | grep -F WorkManagerInitializer && exit 1
+printf '%s\n' "$MANIFEST" | grep -F \
+  'app.thetooltable.mubashir.TheToolTableApplication'
 ```
 
-`0` means the launch path is clean. Any number above `0` means the patch did not
-take effect and the app will crash on launch.
-
-The CI pipeline runs exactly this check, and refuses to publish an APK that
-fails it.
+The first check must print nothing; the second must print the custom Application
+class. Both conditions matter: an initializer left behind can crash before the
+first frame, while an initializer removed without the Application provider can
+abort when the download plugin initializes. The CI pipeline runs the equivalent
+merged-manifest checks **and** verifies the class descriptor in APK DEX, refusing
+a candidate whose manifest merely points to an omitted/stripped Application.
 
 ## If something goes wrong
 
@@ -176,13 +182,14 @@ cache.
 re-downloads what it needs.
 
 **The build succeeds but the app still crashes on launch**
-Run the verification command in the section above. A non-zero result means the
-launch patch did not survive the build, and that specific APK will crash. If it
-reports `0`, capture a clean startup log on Windows and share it with the
-maintainer:
+Run the verification command in the section above. A failed first check or
+missing Application-class output means the launch patch did not survive the build
+and that specific APK is unsafe. Even if both checks pass, capture a clean
+startup log if the app exits after its first screen: that timing can indicate a
+native download-plugin initialization failure.
 
 ```bat
-adb logcat -c && adb shell am force-stop app.thetooltable.mubashir && adb shell monkey -p app.thetooltable.mubashir 1 && timeout /t 8 >nul && adb logcat -d -v time | findstr /I /C:"app.thetooltable.mubashir" /C:"FATAL EXCEPTION" /C:"AndroidRuntime" /C:"WorkManager" /C:"Room" /C:"Caused by"
+adb logcat -c && adb shell am force-stop app.thetooltable.mubashir && adb shell monkey -p app.thetooltable.mubashir 1 && timeout /t 8 >nul && adb logcat -d -v time | findstr /I /C:"app.thetooltable.mubashir" /C:"FATAL EXCEPTION" /C:"AndroidRuntime" /C:"WorkManager" /C:"PluginInitialization" /C:"Abort message" /C:"Fatal signal" /C:"Room" /C:"Caused by"
 ```
 
 This starts one clean app session and filters the resulting log to the launch

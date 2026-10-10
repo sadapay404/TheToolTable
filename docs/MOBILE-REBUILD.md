@@ -26,7 +26,7 @@ A ground-up mobile pass driven by seven Android defects reported against v1.2.0.
 | 7 | Background transfers + notification progress | **Complete** |
 | 8 | Android icon, signing, CI de-risking | **Complete** |
 | 9 | Functional sweep + regression tests | **Complete** |
-| 10 | Native builds + GitHub release | **Complete.** v1.2.1 exact-source build passed Android/Windows packaging and Android emulator smoke, then was published. |
+| 10 | Native builds + GitHub release | **Blocked — v1.2.2 Android recovery candidate pending.** The former v1.2.1 first-frame/emulator result was invalidated by a real-device native download-plugin abort; all public Android releases were withdrawn. |
 
 ---
 
@@ -1023,17 +1023,19 @@ It builds a Room database to do it, and R8 had stripped the generated
 stopping."
 
 ABI, `panic = "abort"`, WebView/ANGLE and the frontend were all ruled out by the
-`nativeloader` lines in the same logcat. `scripts/ensure-android-launch-survives.mjs`
-applies two independent repairs after `tauri android init`, so that neither one
-being insufficient can cost the user their app:
+`nativeloader` lines in the same logcat. The **initial** version of
+`scripts/ensure-android-launch-survives.mjs` applied two necessary protections
+after `tauri android init`:
 
-1. R8 keep rules for the Room and WorkManager classes, which is the actual repair.
+1. R8 keep rules for the Room and WorkManager classes; and
 2. `tools:node="remove"` detaching `WorkManagerInitializer` from
-   `InitializationProvider`, so a background-download dependency can no longer
-   decide whether the app opens at all.
+   `InitializationProvider`, preventing the background-download dependency from
+   creating its Room database during `handleBindApplication`.
 
-The script no-ops when the Android project has not been generated, and is
-idempotent.
+That removed the pre-first-frame failure but was not the complete deferred
+initialization contract; the follow-up native plugin failure and its
+`Configuration.Provider` correction are recorded in Batch 10u. The script
+no-ops when the Android project has not been generated and is idempotent.
 
 #### A verifier that could reject a perfect build
 
@@ -1131,20 +1133,20 @@ resources. It died before the first frame anyway.
 
 Nothing in the verifier could see that, because every check it made was reading
 `aapt2 dump badging` or the archive listing, and badging does not describe
-providers. The merged manifest does. So the verifier now reads
-`AndroidManifest.xml` out of the built package - the *merged* one, which is what
-actually ships, rather than the source manifest the patch edits, since only the
-merged result proves `tools:node="remove"` took effect - and refuses any package
-whose startup path still names `WorkManagerInitializer`. If that manifest cannot
-be read at all, it refuses too, rather than assuming an unreadable manifest
-means a clean launch.
+providers. The merged manifest does. So the verifier reads `AndroidManifest.xml`
+out of the built package - the *merged* one, which is what actually ships, rather
+than the source manifest the patch edits. It rejects a remaining
+`WorkManagerInitializer`, an absent
+`app.thetooltable.mubashir.TheToolTableApplication` declaration, or an unreadable
+manifest. The Application check was added in Batch 10u after the physical-device
+plugin abort proved that `tools:node="remove"` alone is not a complete repair.
 
-This is the check that would have caught the crash before a phone did. Two
-harness cases cover it, both of which fail when the check is deleted: an APK that
-still initialises WorkManager at startup, and an APK whose manifest cannot be
-read. The mock `aapt2` now answers `dump badging` and `dump xmltree` separately,
-because a fixture that only satisfies one of the two would have let a genuinely
-empty manifest masquerade as a passing one.
+The harness now covers all three failures: an APK that still initializes
+WorkManager at startup, one that removes startup initialization but omits the
+required Application provider, and one whose manifest cannot be read. The mock
+`aapt2` answers `dump badging` and `dump xmltree` separately, because a fixture
+that only satisfies one of the two would have let a genuinely empty manifest
+masquerade as a passing one.
 
 The lesson generalises past this bug. Every check added so far was added *after*
 a crash shipped, and each one asked the same question in a new place: not "does
@@ -1251,3 +1253,41 @@ fails three of the four tests, and re-adding `armv7` alone fails the fourth.
 JDK 17 requirement and why it is not optional, disk and time expectations for a
 low-end machine, the install steps, and a command to verify from the built APK
 that the launch fix is actually present.
+
+## Batch 10u: removing eager startup was necessary, but not sufficient
+
+The first repair was still incomplete. A physical device showed that v1.2.1 could
+reach its first visible Activity and then abort while Tauri initialized the
+`tauri-plugin-download` native plugin. The download plugin calls
+`WorkManager.getInstance(context)`. Once `WorkManagerInitializer` has been
+removed, AndroidX WorkManager's documented on-demand path requires the
+application context to implement `Configuration.Provider`; otherwise it throws
+“WorkManager is not initialized properly” and the Rust/native startup path
+aborts.
+
+The corrective v1.2.2 patch therefore does **not** restore the eager initializer
+or call `WorkManager.initialize` in `Application.onCreate`. Instead it generates
+`app.thetooltable.mubashir.TheToolTableApplication` after `tauri android init`,
+declares that exact class with `android:name` on the generated manifest's
+`<application>`, and implements `Configuration.Provider` with the default
+configuration. This preserves deferred initialization while giving the download
+plugin the configuration it needs on first use. The generated Application is
+kept from R8 and the patch fails rather than overwriting a pre-existing custom
+Application.
+
+The shipping checks now match that full contract:
+
+1. the APK verifier reads the merged manifest and rejects a remaining
+   `WorkManagerInitializer` **or** a missing
+   `TheToolTableApplication` declaration, then requires that class's descriptor
+   in DEX;
+2. fixture tests prove the patch's manifest, Kotlin source, direct app-module
+   WorkManager dependency, ProGuard rule, idempotence, and refusal to clobber a
+   custom Application; and
+3. the device smoke waits five seconds after the collection appears, confirms the
+   app remains foregrounded, and treats `PluginInitialization("download", …)`
+   records and native `Abort message:` tombstones as failures.
+
+This work intentionally has no public APK yet. v1.2.1 and older Android releases
+remain withdrawn until the exact v1.2.2 signed artifact passes these checks and
+is installed and kept open through native/plugin initialization.

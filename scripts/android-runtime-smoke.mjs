@@ -39,6 +39,11 @@ function homeHeading() {
 const HOME_HEADING = homeHeading()
 const POLL_MS = 900
 const UI_TIMEOUT_MS = 120_000
+const NAVIGATION_SETTLE_MS = 1_500
+// A visible WebView is not proof Tauri's native download plugin has completed
+// its WorkManager setup. Keep the launch under observation long enough for that
+// background setup and its native abort path to surface in logcat.
+const PLUGIN_INITIALIZATION_SETTLE_MS = 5_000
 let lastTree = ''
 let systemAnrRecoveries = 0
 
@@ -136,7 +141,7 @@ function atHome(tree) {
 
 async function waitForHome() {
   const result = await waitUntil('the home collection after back navigation', atHome)
-  if (!foreground()) throw new Error('The app left the foreground after returning to its home screen.')
+  await assertStableForeground('returning to its home screen')
   return result
 }
 
@@ -176,7 +181,30 @@ function assertNoAppCrash() {
   const fatalBlocks = log.match(/FATAL EXCEPTION[\s\S]{0,2500}/g) || []
   const ownCrash = fatalBlocks.find((block) => block.includes(`Process: ${packageId}`))
   const nativeCrash = log.split('\n').find((line) => line.includes('Fatal signal') && line.includes(packageId))
-  if (ownCrash || nativeCrash) throw new Error(`Android reported an app crash:\n${ownCrash || nativeCrash}`)
+
+  // `panic = "abort"` does not necessarily emit Java's "FATAL EXCEPTION" or
+  // a same-line "Fatal signal". The broken v1.2.1 APK logged this exact native
+  // tombstone shape after the download plugin rejected missing WorkManager
+  // configuration, and the old smoke test could miss it.
+  const cmdlineAt = log.lastIndexOf(`Cmdline: ${packageId}`)
+  const nativeAbort = cmdlineAt >= 0
+    ? log.slice(cmdlineAt, cmdlineAt + 6_000).match(/Abort message:[\s\S]{0,2_500}/)?.[0]
+    : null
+  const pluginInitialization = log.split('\n').find((line) =>
+    line.includes('PluginInitialization("download"')
+    || line.includes('WorkManager is not initialized properly'),
+  )
+  if (ownCrash || nativeCrash || nativeAbort || pluginInitialization) {
+    throw new Error(`Android reported an app crash:\n${ownCrash || nativeCrash || nativeAbort || pluginInitialization}`)
+  }
+}
+
+async function assertStableForeground(where, settleMs = NAVIGATION_SETTLE_MS) {
+  // A splash frame can be reported before Rust plugin initialization aborts the
+  // native process. Give launch a settling window before calling it a pass.
+  await delay(settleMs)
+  assertNoAppCrash()
+  if (!foreground()) throw new Error(`The app left the foreground after ${where}.`)
 }
 
 async function main() {
@@ -190,8 +218,8 @@ async function main() {
   if (!/Status:\s*ok/.test(launchResult)) throw new Error(`Android did not start the app's MainActivity:\n${launchResult}`)
   console.log(launchResult)
   await waitUntil('the Android home collection on launch', atHome)
-  if (!foreground()) throw new Error('The app rendered its home collection but is not the resumed Android activity.')
-  console.log('PASS: fresh install launches into the accessible tool collection.')
+  await assertStableForeground('the initial home collection', PLUGIN_INITIALIZATION_SETTLE_MS)
+  console.log('PASS: fresh install launches into the accessible tool collection and remains alive after plugin initialization.')
 
   // Tool 04: exercise actual system-back navigation instead of just checking the
   // APK build. The home collection must remain rendered (not a header-only page).

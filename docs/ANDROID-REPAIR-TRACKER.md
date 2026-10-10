@@ -10,7 +10,7 @@ corresponding Android checks pass.
 
 | Part | Tool screens | Status |
 |---|---|---|
-| 1 | 04 Media Clipper & Downloader; 06 AI Background Remover | **Launch/shell smoke passed** for the published v1.2.1 repair release; repeat the gate for every future source revision. |
+| 1 | 04 Media Clipper & Downloader; 06 AI Background Remover | **Blocked pending v1.2.2 device validation.** The former v1.2.1 first-frame smoke result was invalidated when a physical device later aborted in native download-plugin initialization. |
 | 2 | 01 Metadata Extractor; 02 Any-to-Any Converter | Not started |
 | 3 | 03 Target-Size Compressor; 05 ImagePlayer Studio | Not started |
 | 4 | 07 Frame Extractor & Clipper; 08 Audio Visualizer Video | Not started |
@@ -39,33 +39,38 @@ corresponding Android checks pass.
   functional limitation; do not describe it as a bundled Android yt-dlp
   downloader.
 - `scripts/ensure-android-launch-survives.mjs` removes WorkManager's AndroidX
-  Startup initializer after Tauri generates the project and preserves the
-  required generated WorkManager/Room classes. This is the repair for the
-  pre-first-frame crash, not a cosmetic manifest change.
+  Startup initializer after Tauri generates the project **and** generates a
+  manifest-declared `TheToolTableApplication` implementing WorkManager
+  `Configuration.Provider`. The latter is required when the download plugin
+  later calls `WorkManager.getInstance(context)`; removing the initializer by
+  itself causes a later native abort.
 
-## Latest Android emulator run
+## Latest Android validation state
 
 - [Run 38032876221](https://github.com/sadapay404/TheToolTable/actions/runs/38032876221)
-  completed successfully on 2026-10-10 for the published v1.2.1 source
-  `5e93a08`: `prepare`, `windows`, `android`, and `android-device` all passed.
-- The Android job verified the signed universal APK before banking it, including
-  both `arm64-v8a` and `x86_64` libraries and the absence of
-  `WorkManagerInitializer` from the merged manifest. The `android-device` job
-  then booted an x86_64 emulator and smoke-tested the exact release artefact.
-- This resolves the former “instant close before the first frame” launch gate
-  for the published release. It does **not** turn an older APK into a valid
-  download: every future source candidate must pass the same verifier and device
-  job before release promotion.
+  did complete on 2026-10-10 for v1.2.1 source `5e93a08`, but it is historical
+  evidence only. A real device subsequently demonstrated an abort after the
+  older smoke check's first visible screen, so v1.2.1 and every public Android
+  release were withdrawn.
+- The v1.2.2 candidate's APK verifier now requires both `WorkManagerInitializer`
+  to be absent and `app.thetooltable.mubashir.TheToolTableApplication` to be
+  declared in the merged manifest *and compiled into DEX*. The device smoke then
+  waits five seconds after launch, checks foreground/process survival, and
+  rejects native abort tombstones or `PluginInitialization("download", …)`
+  records.
+- No Android release may be marked complete or published until this strengthened
+  candidate has passed CI and the exact signed APK has been installed and kept
+  open through native/plugin initialization on a device or emulator.
 
 ## Acceptance checklist
 
-- [x] v1.2.1 stays open after a fresh install and renders the collection in the
-  passed Android emulator smoke run.
-- [x] v1.2.1 system Back and tool Back navigate through app/tool history in the
+- [ ] v1.2.2 stays open after a fresh install, delayed native/plugin
+  initialization, and collection rendering.
+- [ ] v1.2.2 system Back and tool Back navigate through app/tool history in the
   Android smoke path.
-- [x] Tool 04 and Tool 06 are covered by the v1.2.1 Android smoke/navigation
+- [ ] Tool 04 and Tool 06 are covered by the v1.2.2 Android smoke/navigation
   path.
-- [x] v1.2.1 package verification checks the expected branded Android icon.
+- [ ] v1.2.2 package verification checks the expected branded Android icon.
 - [ ] Status-bar/camera safe area and every header/sheet control are visually
   reviewed on a physical cutout device.
 - [ ] Model downloads and Beam/file transfers continue in the background with

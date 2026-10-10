@@ -239,6 +239,14 @@ test('the icon generator does not read a file it writes', () => {
 
 /* ------------------------------------------------------------ the workflow */
 
+test('the Android runner installs the compile SDK required by Tauri and the patched download plugin', () => {
+  const workflow = read('.github/workflows/native.yml')
+  const pluginPatch = read('scripts/patch-android-download-plugin.mjs')
+  assert.match(workflow, /platforms;android-37/,
+    'CI must not rely on an incidental preinstalled SDK when the generated app compiles against API 37')
+  assert.match(pluginPatch, /compileSdk = 37/)
+})
+
 test('a build runs for every arena branch, not one frozen name', () => {
   const workflow = read('.github/workflows/native.yml')
   assert.match(workflow, /branches: \['arena\/\*\*', 'main', 'master'\]/)
@@ -279,11 +287,13 @@ test('the web package, native package and Tauri bundle share one release version
   assert.equal(tauri.version, packageJson.version)
 })
 
-test('README sends Android users to the current APK instead of the known-bad v1.1.1 asset', () => {
+test('README does not direct Android users to an APK that was withdrawn after a device crash', () => {
   const readme = read('README.md')
-  assert.match(readme, /releases\/latest\/download\/TheToolTable\.apk/)
+  assert.doesNotMatch(readme, /releases\/latest\/download\/TheToolTable\.apk/)
   assert.doesNotMatch(readme, /releases\/download\/v1\.1\.1\/TheToolTable\.apk/)
-  assert.match(readme, /WorkManager startup initializer/)
+  assert.match(readme, /temporarily paused/)
+  assert.match(readme, /v1\.2\.2/)
+  assert.match(readme, /WorkManager\/download-plugin startup/)
 })
 
 test('a missing signing key is discovered before the build, not after it', () => {
@@ -404,18 +414,26 @@ test('the release is banked from the verified build, and the emulator only advis
     'nothing in an x86_64 emulator loads the ARM library, so its bytes have to be checked directly')
   assert.match(verify, /expected b7/)
 
-  /* This is what now stands between a broken APK and a user's phone, so it is
-     the check that matters most. Badging cannot see it: the defect shipped in a
-     package with correct ABIs, its own icon and a valid signature. */
+  /* The manifest has to prove both halves of the workaround. Badging cannot see
+     either one: an APK can have correct ABIs, icons and a valid signature yet
+     either construct Room before its first frame or abort later because its
+     download plugin has no WorkManager configuration. */
   assert.match(verify, /dump xmltree --file AndroidManifest\.xml/,
     'the launch path can only be judged from the merged manifest, not from badging')
   assert.match(verify, /WorkManagerInitializer/,
-    'the crash is WorkManager being initialised before the first frame')
+    'the crash starts when WorkManager is initialised before the first frame')
+  assert.match(verify, /TheToolTableApplication/,
+    'removing the startup initializer also requires the custom Application provider')
+  assert.match(verify, /WORK_MANAGER_APPLICATION_DESCRIPTOR/,
+    'a manifest declaration alone is insufficient; the custom Application must be compiled into DEX')
+  assert.match(verify, /compiled Application class is missing from DEX/)
   assert.match(verify, /could not read the merged AndroidManifest\.xml/,
     'if the manifest cannot be read the step must refuse rather than assume the launch path is clean')
   // A herestring, not a pipe: this step may never SIGPIPE its producers.
   assert.match(verify, /grep -q "WorkManagerInitializer" <<< "\$MANIFEST_TREE"/,
     'piping into grep -q is what made this step reject good APKs at random')
+  assert.match(verify, /grep -qF "\$WORK_MANAGER_APPLICATION" <<< "\$MANIFEST_TREE"/,
+    'the APK must declare the Configuration.Provider Application after removing startup initialization')
 })
 
 test('the device job still cleans up and still leaves the crash log behind', () => {
@@ -481,6 +499,14 @@ test('the smoke test still covers the two navigation bugs', () => {
   assert.match(smoke, /tapLabel\(LABELS\.back\)/, 'the app back control must be exercised too')
   assert.match(smoke, /no header-only black screen/)
   assert.match(smoke, /assertNoAppCrash/)
+  assert.match(smoke, /PluginInitialization\("download"/,
+    'the smoke test must recognize the native download-plugin abort reported by a physical device')
+  assert.match(smoke, /Abort message:/,
+    'Rust panic=abort tombstones must count as crashes even without FATAL EXCEPTION')
+  assert.match(smoke, /assertStableForeground/,
+    'a splash frame is not a pass; the process must survive plugin initialization')
+  assert.match(smoke, /PLUGIN_INITIALIZATION_SETTLE_MS = 5_000/,
+    'launch must remain under observation after the first visible frame')
 })
 
 /* ============================================== the APK is verified, not assumed */
@@ -621,32 +647,34 @@ test('the verification step cannot race itself into rejecting a good APK', () =>
 
 /* ==================== the crash that killed the app before its first frame */
 
-test('the Android build detaches WorkManager from Application startup', () => {
-  /* A real phone died here, every launch:
-   *
-   *   java.lang.RuntimeException: Unable to get provider
-   *     androidx.startup.InitializationProvider: Failed to create an instance of
-   *     class androidx.work.impl.WorkDatabase.canonicalName
-   *     at android.app.ActivityThread.handleBindApplication
-   *
-   * WorkManager builds a Room database before a single line of this app's
-   * JavaScript runs, so its failure cannot be caught by the app and the process
-   * is simply killed. */
+test('the Android build detaches WorkManager startup but supplies lazy application configuration', () => {
+  /* AndroidX Startup used to create WorkManager's Room database before any app
+     code ran. Removing that initializer alone is not sufficient: the download
+     plugin calls WorkManager.getInstance later and Android then requires either
+     a manual initialize call or Configuration.Provider on Application. */
   const wf = read('.github/workflows/native.yml')
+  const script = read('scripts/ensure-android-launch-survives.mjs')
   assert.match(wf, /node scripts\/ensure-android-launch-survives\.mjs/,
     'nothing repairs the launch path')
   assert.ok(
     wf.indexOf('ensure-android-launch-survives.mjs') > wf.indexOf('tauri android init'),
     'the repair has to run after the Android project is generated',
   )
+  assert.match(script, /Configuration\.Provider/,
+    'removing WorkManagerInitializer requires lazy manual configuration for the download plugin')
+  assert.match(script, /TheToolTableApplication/)
 })
 
-test('the launch repair is applied to the generated manifest and ProGuard rules', () => {
+test('the launch repair is applied to the generated manifest, application and ProGuard rules', () => {
   const script = read('scripts/ensure-android-launch-survives.mjs')
   assert.match(script, /androidx\.startup\.InitializationProvider/)
   assert.match(script, /androidx\.work\.WorkManagerInitializer/)
   assert.match(script, /tools:node="remove"/,
     'removing the initializer needs a manifest merge directive, not a comment')
+  assert.match(script, /Configuration\.Provider/,
+    'the custom Application must satisfy WorkManager after startup initialization is removed')
+  assert.match(script, /androidx\.work:work-runtime-ktx:2\.9\.1/,
+    'the generated app source needs a direct WorkManager compile dependency')
   assert.match(script, /androidx\.room\.RoomDatabase/,
     'the generated Room implementation class has to be kept')
   assert.match(script, /proguard-rules\.pro/)
@@ -686,8 +714,17 @@ test('the launch repair actually edits a pristine generated Android project', as
   await fs.mkdir(path.join(tmp, 'scripts'), { recursive: true })
   await fs.copyFile(path.join(repo, 'scripts/ensure-android-launch-survives.mjs'),
     path.join(tmp, 'scripts/ensure-android-launch-survives.mjs'))
+  await fs.writeFile(path.join(tmp, 'src-tauri/tauri.conf.json'), JSON.stringify({
+    identifier: 'app.thetooltable.mubashir',
+  }))
   const app = path.join(tmp, 'src-tauri/gen/android/app')
   await fs.writeFile(path.join(app, 'src/main/AndroidManifest.xml'), pristine)
+  await fs.writeFile(path.join(app, 'build.gradle.kts'), `
+plugins { id("com.android.application") }
+dependencies {
+  implementation("androidx.webkit:webkit:1.14.0")
+}
+`)
 
   const run = () => cp.execFileSync(process.execPath,
     ['scripts/ensure-android-launch-survives.mjs'],
@@ -696,22 +733,79 @@ test('the launch repair actually edits a pristine generated Android project', as
     const first = run()
     const manifest = await fs.readFile(path.join(app, 'src/main/AndroidManifest.xml'), 'utf8')
     const rules = await fs.readFile(path.join(app, 'proguard-rules.pro'), 'utf8')
+    const gradle = await fs.readFile(path.join(app, 'build.gradle.kts'), 'utf8')
+    const applicationSource = await fs.readFile(
+      path.join(app, 'src/main/kotlin/app/thetooltable/mubashir/TheToolTableApplication.kt'),
+      'utf8',
+    )
 
-    assert.match(first, /detached from Application startup/,
+    assert.match(first, /detached from AndroidX Startup/,
       'the repair must act on a pristine manifest, not assume it is done')
+    assert.match(first, /Configuration\.Provider/,
+      'a plugin that calls WorkManager.getInstance needs a lazy configuration path')
     assert.ok(!pristine.includes('InitializationProvider'))
     assert.match(manifest, /xmlns:tools="http:\/\/schemas\.android\.com\/tools"/,
       'tools:node="remove" is silently ignored without the tools namespace')
     assert.match(manifest, /android:name="androidx\.startup\.InitializationProvider"/)
     assert.match(manifest, /android:name="androidx\.work\.WorkManagerInitializer"/)
     assert.match(manifest, /tools:node="remove"/)
+    assert.match(manifest, /android:name="app\.thetooltable\.mubashir\.TheToolTableApplication"/)
+    assert.match(applicationSource, /class TheToolTableApplication : Application\(\), Configuration\.Provider/)
+    assert.match(applicationSource, /Configuration\.Builder\(\)\.build\(\)/)
+    assert.match(gradle, /implementation\("androidx\.work:work-runtime-ktx:2\.9\.1"\)/,
+      'the app module must compile the generated Configuration.Provider source directly')
     assert.match(rules, /-keep class androidx\.work\.impl\.\*\*/)
     assert.match(rules, /-keep class \* extends androidx\.room\.RoomDatabase/)
+    assert.match(rules, /-keep class \*\*\.TheToolTableApplication/)
 
     assert.match(run(), /already detached/, 'the repair must be idempotent')
     assert.equal(
       await fs.readFile(path.join(app, 'src/main/AndroidManifest.xml'), 'utf8'), manifest,
-      'a second run must not duplicate the provider block')
+      'a second run must not duplicate the startup-removal block')
+    assert.equal(
+      await fs.readFile(path.join(app, 'src/main/kotlin/app/thetooltable/mubashir/TheToolTableApplication.kt'), 'utf8'),
+      applicationSource,
+      'a second run must not replace or duplicate the Application source')
+    assert.equal(
+      await fs.readFile(path.join(app, 'build.gradle.kts'), 'utf8'), gradle,
+      'a second run must not duplicate the direct WorkManager dependency')
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true })
+  }
+})
+
+test('the launch repair refuses to replace a generated project custom Application', async () => {
+  const fs = await import('node:fs/promises')
+  const os = await import('node:os')
+  const cp = await import('node:child_process')
+  const repo = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..')
+  const tmp = path.join(os.tmpdir(), `ttt-custom-application-${process.pid}`)
+  const manifestPath = path.join(tmp, 'src-tauri/gen/android/app/src/main/AndroidManifest.xml')
+  const customManifest = `<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <application android:name="com.example.ExistingApplication" android:label="TheToolTable" />
+</manifest>
+`
+
+  await fs.rm(tmp, { recursive: true, force: true })
+  await fs.mkdir(path.dirname(manifestPath), { recursive: true })
+  await fs.mkdir(path.join(tmp, 'scripts'), { recursive: true })
+  await fs.copyFile(path.join(repo, 'scripts/ensure-android-launch-survives.mjs'),
+    path.join(tmp, 'scripts/ensure-android-launch-survives.mjs'))
+  await fs.writeFile(path.join(tmp, 'src-tauri/tauri.conf.json'), JSON.stringify({
+    identifier: 'app.thetooltable.mubashir',
+  }))
+  await fs.writeFile(manifestPath, customManifest)
+
+  try {
+    const result = cp.spawnSync(process.execPath, ['scripts/ensure-android-launch-survives.mjs'], {
+      cwd: tmp,
+      encoding: 'utf8',
+    })
+    assert.notEqual(result.status, 0, 'a foreign Application must be an error, not something the patch overwrites')
+    assert.match(`${result.stdout}\n${result.stderr}`, /already declares Application com\.example\.ExistingApplication/)
+    assert.equal(await fs.readFile(manifestPath, 'utf8'), customManifest,
+      'the manifest must remain untouched when a custom Application needs a human merge')
   } finally {
     await fs.rm(tmp, { recursive: true, force: true })
   }

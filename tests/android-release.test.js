@@ -10,6 +10,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const read = (p) => readFileSync(path.join(ROOT, p), 'utf8')
 const exists = (p) => existsSync(path.join(ROOT, p))
 const packageJson = JSON.parse(read('package.json'))
+const mobileFooter = read('src/components/MobileFooter.jsx')
 
 const ICON_DIR = 'src-tauri/icons/android'
 const DENSITIES = { mdpi: 48, hdpi: 72, xhdpi: 96, xxhdpi: 144, xxxhdpi: 192 }
@@ -284,6 +285,10 @@ test('the web package, native package and Tauri bundle share one release version
   const tauri = JSON.parse(read('src-tauri/tauri.conf.json'))
   assert.match(cargo, new RegExp(`^version = "${packageJson.version.replace(/\./g, '\\.')}"$`, 'm'))
   assert.equal(tauri.version, packageJson.version)
+  assert.match(mobileFooter, /import \{ version as APP_VERSION \} from '\.\.\/\.\.\/package\.json'/,
+    'the visible phone footer must consume the manifest version instead of a second literal')
+  assert.match(mobileFooter, /v\{APP_VERSION\}/)
+  assert.doesNotMatch(mobileFooter, /v1\.2\.0/, 'the stale footer version must not survive a release bump')
 })
 
 test('README does not direct Android users to an APK that was withdrawn after a device crash', () => {

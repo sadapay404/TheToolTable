@@ -5,6 +5,7 @@ import { Logo } from './Logo.jsx'
 import { ToolIcon } from './ToolIcon.jsx'
 import { AMBIENT_STATIC, EASE, DURATION, SPRING, t } from '../lib/motion.js'
 import { useRipple } from '../lib/ripple.js'
+import { version as APP_VERSION } from '../../package.json'
 
 /**
  * The phone footer.
@@ -333,7 +334,7 @@ export default function MobileFooter({ ambient = AMBIENT_STATIC }) {
         <div className="mfoot-base">
           <span>© {year} TheToolTable</span>
           <span className="mfoot-base-dot" aria-hidden="true" />
-          <span>v1.2.0</span>
+          <span>v{APP_VERSION}</span>
           <span className="mfoot-base-dot" aria-hidden="true" />
           <span>{TOOLS.length} tools</span>
           <button type="button" className="mfoot-base-top" onClick={scrollToTop}>Top</button>

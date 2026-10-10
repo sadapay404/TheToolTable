@@ -594,6 +594,27 @@ jobs:
             echo "| ARM native library | \\`$arm_lib\\`, e_machine \\`$arm_elf\\` (AArch64) |"
           } >> "$GITHUB_STEP_SUMMARY"
 
+          # 3b. The shipped manifest must not start WorkManager during
+          # handleBindApplication.
+          #
+          # This is the one defect that shipped an APK which installed, showed an
+          # icon, verified its signature, and then died before drawing a frame on
+          # every real phone - while passing every other check in this step. Nothing
+          # here could see it, because badging does not describe providers. The
+          # manifest does, so read the *merged* manifest out of the built package
+          # rather than the source manifest the patch edits: only the merged result
+          # proves the tools:node="remove" directive actually took effect.
+          MANIFEST_TREE="$("$BT/aapt2" dump xmltree --file AndroidManifest.xml "$APK" 2>/dev/null || true)"
+          if [ -z "$MANIFEST_TREE" ]; then
+            fail "aapt2 could not read the merged AndroidManifest.xml out of $APK."
+          fi
+          if grep -q "WorkManagerInitializer" <<< "$MANIFEST_TREE"; then
+            fail "$APK still initialises WorkManager from androidx.startup during Application startup. That builds a Room database before the first frame and kills the process - 'The Tool Table keeps stopping'. The launch patch (scripts/ensure-android-launch-survives.mjs) did not survive the build."
+          fi
+          {
+            echo "| Launch path | no WorkManagerInitializer in the merged manifest |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
           ICON_ROWS=$(printf '%s\n' "$BADGING" | grep "^application-icon-.*:" || true)
           ICON_COUNT=$(printf '%s\n' "$ICON_ROWS" | grep -c . || true)
           if [ "$ICON_COUNT" -eq 0 ]; then

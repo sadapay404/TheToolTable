@@ -348,6 +348,23 @@ test('nothing reaches the release until a device has run that exact file', () =>
   assert.match(verify, /not an AArch64 ELF/,
     'nothing in an x86_64 emulator loads the ARM library, so its bytes have to be checked directly')
   assert.match(verify, /expected b7/)
+
+  /* Everything above inspects badging, archive entries and file headers. None of
+     it can see the defect that actually shipped: an APK that installs, shows its
+     own icon, carries both ABIs, verifies its signature - and dies before the
+     first frame on a real phone, because WorkManager is still initialised during
+     handleBindApplication. Only the *merged* manifest shows that, and the merged
+     manifest is what ships. If this check is ever dropped, the same crash sails
+     through a green pipeline again. */
+  assert.match(verify, /dump xmltree --file AndroidManifest\.xml/,
+    'the launch path can only be judged from the merged manifest, not from badging')
+  assert.match(verify, /WorkManagerInitializer/,
+    'the crash is WorkManager being initialised before the first frame')
+  assert.match(verify, /could not read the merged AndroidManifest\.xml/,
+    'if the manifest cannot be read the step must refuse rather than assume the launch path is clean')
+  // A herestring, not a pipe: this step may never SIGPIPE its producers.
+  assert.match(verify, /grep -q "WorkManagerInitializer" <<< "\$MANIFEST_TREE"/,
+    'piping into grep -q is what made this step reject good APKs at random')
 })
 
 test('the device test can veto the release, and leaves the crash log behind', () => {

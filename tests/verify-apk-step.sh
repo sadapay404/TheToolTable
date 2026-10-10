@@ -57,11 +57,36 @@ build_apk() { # $1 output, $2 good|no-dex|no-icons
   rm -f "$out"; (cd "$dir" && zip -qr "$out" .)
 }
 
-# aapt2 is fed its badging on stdin and echoes it verbatim, the way the real one does.
+# aapt2 is fed its badging on stdin and echoes it verbatim, the way the real one
+# does. `dump xmltree` is answered from a separate fixture, because that is the
+# one subcommand the mock cannot fudge with badging text: the merged manifest is
+# the only place the launch crash is visible at all.
 write_aapt2() {
-  { printf '#!/bin/sh\ncat <<BADGING\n'; cat; printf 'BADGING\n'; } > "$WORK/build-tools/35.0.0/aapt2"
+  cat > "$WORK/badging.txt"
+  # One subcommand per invocation, exactly like the real tool: `dump badging` and
+  # `dump xmltree` are separate reads, so a fixture that only satisfies one of
+  # them has to leave the other genuinely empty.
+  cat > "$WORK/build-tools/35.0.0/aapt2" <<EOF
+#!/bin/sh
+case "\$*" in
+  *xmltree*) cat "$WORK/manifest-tree.txt" ;;
+  *) cat "$WORK/badging.txt" ;;
+esac
+EOF
   chmod +x "$WORK/build-tools/35.0.0/aapt2"
 }
+
+# A merged manifest for a package whose launch path is sound: androidx.startup's
+# InitializationProvider is still there (other initialisers use it) but nothing
+# under it names WorkManager, which is what `tools:node="remove"` achieves.
+write_manifest_tree() { # $1 fixed|broken|unreadable
+  case "$1" in
+    broken) printf '      E: provider\n        A: android:name(0x01010003)=\"androidx.startup.InitializationProvider\"\n        E: meta-data\n          A: android:name(0x01010003)=\"androidx.work.WorkManagerInitializer\"\n          A: android:value(0x01010024)=\"androidx.startup\"\n' > "$WORK/manifest-tree.txt" ;;
+    unreadable) : > "$WORK/manifest-tree.txt" ;;
+    *) printf '      E: provider\n        A: android:name(0x01010003)=\"androidx.startup.InitializationProvider\"\n        E: meta-data\n          A: android:name(0x01010003)=\"androidx.profileinstaller.ProfileInstallReceiver\"\n' > "$WORK/manifest-tree.txt" ;;
+  esac
+}
+write_manifest_tree fixed
 
 write_apksigner() { # $1 ok|bad
   if [ "$1" = "ok" ]; then
@@ -301,6 +326,20 @@ run 1 "$WORK/wrong-arch.apk" "a file that only calls itself arm64 is refused" "n
 
 build_apk "$WORK/no-arm-lib.apk" no-arm-lib
 run 1 "$WORK/no-arm-lib.apk" "an APK with no arm64 native library is refused" "UnsatisfiedLinkError" "$WORK/badging/good.txt"
+
+# The crash that shipped. Every other case above describes a package that is
+# obviously wrong on its face; this one is the exception. It installs, it has an
+# icon, its signature verifies, its ABIs are right and it passes every check
+# above - and then it dies before drawing a frame on a real phone, because
+# WorkManager is still initialised during handleBindApplication. Only the merged
+# manifest can tell you that, which is what these two cases exist to prove.
+write_manifest_tree broken
+run 1 "$WORK/good.apk" "an APK that starts WorkManager at launch is refused" "keeps stopping" "$WORK/badging/good.txt"
+
+write_manifest_tree unreadable
+run 1 "$WORK/good.apk" "a package whose manifest cannot be read is refused" "merged AndroidManifest.xml" "$WORK/badging/good.txt"
+
+write_manifest_tree fixed
 
 echo
 echo "$pass passed, $fail failed"

@@ -1114,3 +1114,39 @@ every other gate in the pipeline.
 Both new refusals are exercised by the harness, and both fail when the check is
 removed: a package with no x86_64 library, and a package whose ARM library is not
 ARM64.
+
+## Batch 10q: judging the launch path from the binary that ships
+
+The phone kept reporting the same crash on a fresh install. The log was
+byte-for-byte the capture already diagnosed: same PID `30083`, same
+`10-10 08:18:53.492` fatal line, now with the launcher `START` immediately above
+it. The installed APK was `v1.2.0-build-0836b38`, which predates the launch fix -
+so nothing had regressed. There was simply no build carrying the fix on it.
+
+That is the second half of the problem, and it is the part worth writing down: a
+correct fix that never reaches a device is indistinguishable from no fix at all.
+The pipeline had been green on this package. It installs, it carries its own
+icon, it advertises both ABIs, its signature verifies, it has dex, it has
+resources. It died before the first frame anyway.
+
+Nothing in the verifier could see that, because every check it made was reading
+`aapt2 dump badging` or the archive listing, and badging does not describe
+providers. The merged manifest does. So the verifier now reads
+`AndroidManifest.xml` out of the built package - the *merged* one, which is what
+actually ships, rather than the source manifest the patch edits, since only the
+merged result proves `tools:node="remove"` took effect - and refuses any package
+whose startup path still names `WorkManagerInitializer`. If that manifest cannot
+be read at all, it refuses too, rather than assuming an unreadable manifest
+means a clean launch.
+
+This is the check that would have caught the crash before a phone did. Two
+harness cases cover it, both of which fail when the check is deleted: an APK that
+still initialises WorkManager at startup, and an APK whose manifest cannot be
+read. The mock `aapt2` now answers `dump badging` and `dump xmltree` separately,
+because a fixture that only satisfies one of the two would have let a genuinely
+empty manifest masquerade as a passing one.
+
+The lesson generalises past this bug. Every check added so far was added *after*
+a crash shipped, and each one asked the same question in a new place: not "does
+the build succeed?" but "what would this artifact do on a device?". The next one
+will be found the same way.

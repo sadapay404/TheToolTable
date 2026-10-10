@@ -17,7 +17,9 @@
     "app:win:sidecars": "node scripts/fetch-sidecars.mjs && tauri build --config src-tauri/tauri.sidecars.conf.json",
     "android:permissions": "node scripts/ensure-android-transfer-permissions.mjs",
     "android:patch": "cargo fetch --manifest-path src-tauri/Cargo.toml && node scripts/patch-android-download-plugin.mjs && node scripts/patch-android-background-service.mjs",
-    "app:android": "npm run android:permissions && npm run android:patch && tauri android build --apk --target aarch64 --target armv7 --target x86_64"
+    "app:android": "npm run android:permissions && npm run android:patch && npm run android:icons && npm run android:launch-fix && tauri android build --apk --target aarch64",
+    "android:launch-fix": "node scripts/ensure-android-launch-survives.mjs",
+    "android:icons": "node scripts/install-android-launcher-icons.mjs"
   },
   "dependencies": {
     "@ffmpeg/core": "^0.12.6",

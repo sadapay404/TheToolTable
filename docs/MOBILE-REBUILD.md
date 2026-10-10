@@ -1218,3 +1218,36 @@ The demotion is deliberately narrow, and the tests keep it narrow:
 Two mutations confirm the arrangement is real rather than asserted: moving the
 banking step back behind the device job fails two tests, and deleting the manifest
 launch check fails two more.
+
+## Batch 10t: the project's own build command could not build a working APK
+
+The person waiting on this build asked whether they could compile the APK
+themselves on a Kali box, which is a fair question and turned out to expose
+something much more serious than a missing instruction.
+
+`npm run app:android` is the command this repository tells anyone to use to
+build the Android app. It ran two patchers and then `tauri android build`. It did
+**not** run `scripts/ensure-android-launch-survives.mjs` - the patch that removes
+AndroidX WorkManager from the launch path, the patch that fixes the instant
+crash. It also skipped the launcher-icon installer, so it produced an APK with
+the default Android robot, and it still passed `--target armv7`, the 32-bit
+target that had already been dropped from the release pipeline after shipping.
+
+So the documented local build would have reproduced the exact APK this
+repository spent a week diagnosing, and someone following the project's own
+instructions would have installed it and seen the same crash again - while CI,
+which does run all three steps, sat green beside it. The divergence between the
+two paths was invisible until somebody asked to do it by hand.
+
+`app:android` now runs the same steps CI runs, in the same order, targeting
+`aarch64` alone. `tests/android-local-build.test.js` pins all of it: the launch
+fix is present, so are the other three patchers, `armv7` stays out, and every
+script path the build references actually exists - because a typo there fails
+late, after a full Rust build, which on a slow machine is the worst possible
+moment to find out. Two mutations confirm it bites: restoring the old script
+fails three of the four tests, and re-adding `armv7` alone fails the fourth.
+
+`docs/BUILD-ANDROID-LINUX.md` is the resulting guide: toolchain versions, the
+JDK 17 requirement and why it is not optional, disk and time expectations for a
+low-end machine, the install steps, and a command to verify from the built APK
+that the launch fix is actually present.

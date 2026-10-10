@@ -379,6 +379,36 @@ test('the device test can veto the release, and leaves the crash log behind', ()
     'the throwaway tag must be cleaned up whether the device passed or not')
 })
 
+test('the device step reports why it failed instead of dying with an exit code', () => {
+  /* This step ran for two minutes and died with `/usr/bin/sh failed with exit
+     code 2` and nothing else. That is dash's signature for a redirection it
+     could not perform, and the only redirect in play was the action's own
+     `printf ... >> <avd>/config.ini`, which `ram-size` and `disk-size` are the
+     sole triggers for. Worse, the failure path used to `echo >> $GITHUB_STEP_SUMMARY`
+     inline, so when a redirect did fail it took the diagnostics with it: the one
+     time the log was most needed was the time it could not be written.
+
+     So the report is assembled in a plain file and appended afterwards, and the
+     failure is announced with an annotation, which is the part of a CI run that
+     is actually visible. */
+  const wf = read('.github/workflows/native.yml')
+  const device = wf.slice(wf.indexOf('\n  android-device:'))
+
+  assert.doesNotMatch(device, /ram-size:|disk-size:/,
+    'these two are the only inputs that trigger the action\'s config.ini redirect, and a failed redirect exits sh with 2')
+  assert.match(device, /smoke test exit status/,
+    'the real status has to be reported rather than collapsed into the action\'s exit code')
+  assert.match(device, /::error title=Android device test failed/,
+    'an annotation is what a reader sees; a log nobody can open is not a report')
+  assert.match(device, /adb logcat -d -t 4000 > "\$LOG"/,
+    'logcat goes to a file first, because a failing redirect is what destroyed the last report')
+  assert.match(device, /\|\| echo "\(adb logcat failed too\)"/,
+    'a missing adb must still produce a readable summary rather than abort the block')
+
+  // The pass path has to report too, or a silent green run proves nothing.
+  assert.match(device, /Android device test passed/)
+})
+
 test('the smoke test reads its labels from the app instead of hardcoding them', () => {
   /* It looked for a "Back to the table" button that the mobile redesign renamed
      to "Go back". Two minutes of timeout later, a good build was thrown away. */

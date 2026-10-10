@@ -1150,3 +1150,37 @@ The lesson generalises past this bug. Every check added so far was added *after*
 a crash shipped, and each one asked the same question in a new place: not "does
 the build succeed?" but "what would this artifact do on a device?". The next one
 will be found the same way.
+
+## Batch 10r: the device step died with an exit code and no explanation
+
+With KVM finally working and the APK finally reaching the device job, the run got
+further than any before - and then the emulator step died after two minutes with
+`The process '/usr/bin/sh' failed with exit code 2` and nothing else. Job logs are
+not reachable from outside, so the diagnosis had to come from somewhere else.
+
+Exit code 2 out of `sh` is not a mystery once you know it: it is dash's signature
+for a redirection it could not perform. Reading the emulator action's source
+narrows it to exactly one redirect in the AVD setup path -
+`sh -c "printf ... >> <avd-home>/<name>.avd/config.ini"` - and that line is
+reached only when `cores`, `ramSize`, `heapSize`, `enableHardwareKeyboard` or
+`diskSize` is set. The workflow set two of them: `ram-size` and `disk-size`. The
+device profile already carries a workable amount of both, so the tuning bought
+nothing and cost the entire step.
+
+Both inputs are gone.
+
+The second half of the fix is the part that matters more. The old failure block
+collected its own diagnostics with `echo ... >> "$GITHUB_STEP_SUMMARY"` inline,
+so when a redirection failed it took the report down with it. The one run where
+the log mattered most was the run that could not write one. The report is now
+assembled in a plain file and appended afterwards, logcat is captured to a file
+before anything is summarised, a missing `adb` degrades to a readable line rather
+than aborting the block, and the failure is announced with an `::error` annotation
+- which is the part of a CI run that is actually visible when the logs are not.
+The passing case reports too, because a silent green run proves nothing either.
+
+Verified by running the extracted script under `dash` for all three paths: the
+smoke test passing (exit 0), failing (exit 1 with the full logcat in the summary),
+and `adb` missing entirely (still exit 1, still readable). Two mutations confirm
+the test bites - restoring `ram-size`/`disk-size`, and restoring the old inline
+summary redirect, each fail it.

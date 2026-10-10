@@ -797,21 +797,54 @@ jobs:
           arch: x86_64
           profile: pixel_6
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          ram-size: 4096M
-          disk-size: 2048M
+          # Deliberately no `ram-size` or `disk-size`.
+          #
+          # Those two are the only inputs that make the action append its own
+          # settings to the AVD's config.ini, and it does that by shelling out to
+          # `sh -c "printf ... >> <avd-home>/<name>.avd/config.ini"`. If that path
+          # is not there, dash cannot create the file, the redirect fails, and sh
+          # exits 2 - which is exactly how this step died after two minutes with
+          # `/usr/bin/sh failed with exit code 2` and no explanation anywhere. The
+          # device profile already carries a workable amount of RAM and disk, so
+          # the tuning these inputs bought was never worth a shell redirection
+          # whose failure looks like an emulator problem and is not one.
           emulator-boot-timeout: 1500
           disable-animations: true
+          # Every echo below goes through a redirect, and a redirect whose target
+          # cannot be opened kills the whole diagnostic under `sh` with nothing but
+          # an exit code. `GITHUB_STEP_SUMMARY` is guaranteed by the platform, but
+          # the point of this block is to be readable when things are broken, so
+          # the log is written to a plain file first and only then summarised.
           script: |
-            node scripts/android-runtime-smoke.mjs device-input/android-device-input.apk || {
-              echo "::group::logcat from the failed device run"
-              adb logcat -d -t 4000 || true
-              echo "::endgroup::"
-              echo "### Android device test failed" >> "$GITHUB_STEP_SUMMARY"
-              echo '```text' >> "$GITHUB_STEP_SUMMARY"
-              adb logcat -d -t 4000 >> "$GITHUB_STEP_SUMMARY" || true
-              echo '```' >> "$GITHUB_STEP_SUMMARY"
+            LOG=android-device-logcat.txt
+            node scripts/android-runtime-smoke.mjs device-input/android-device-input.apk > /tmp/smoke.out 2>&1
+            STATUS=$?
+            cat /tmp/smoke.out
+            echo "smoke test exit status: $STATUS"
+            if [ "$STATUS" -ne 0 ]; then
+              adb logcat -d -t 4000 > "$LOG" 2>&1 || echo "(adb logcat failed too)"
+              {
+                echo "### Android device test failed (exit $STATUS)"
+                echo ""
+                echo '```text'
+                cat /tmp/smoke.out
+                echo ""
+                echo "--- logcat ---"
+                cat "$LOG"
+                echo '```'
+              } >> "$GITHUB_STEP_SUMMARY"
+              # The annotation is what a reader actually sees on the run page, and
+              # it survives even when the log itself is not reachable.
+              echo "::error title=Android device test failed::The app did not pass the on-device smoke test. See the logcat in this job's summary."
               exit 1
-            }
+            fi
+            {
+              echo "### Android device test passed"
+              echo ""
+              echo '```text'
+              cat /tmp/smoke.out
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Bank the device-verified APK
         env:

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { motion, useMotionValueEvent, useReducedMotion, useScroll, useSpring, useTransform } from 'framer-motion'
+import { motion, useReducedMotion, useScroll, useTransform } from 'framer-motion'
 import { TOOLS } from '../toolsRegistry.jsx'
 import { Logo } from './Logo.jsx'
 import { ToolIcon } from './ToolIcon.jsx'
@@ -256,17 +256,13 @@ function Constellation() {
   )
 }
 
-/** A round button whose ring fills as you scroll back up the page. */
+/** A round button whose ring follows scroll without React rendering each frame. */
 function BackToTop() {
-  const { scrollY } = useScroll()
-  const progress = useSpring(scrollY, { stiffness: 140, damping: 30, mass: 0.5 })
+  const { scrollYProgress } = useScroll()
   const circumference = 2 * Math.PI * 22
-  const [pct, setPct] = useState(0)
-  const reduceMotion = useReducedMotion()
-  useMotionValueEvent(progress, 'change', (v) => {
-    const height = Math.max(1, document.documentElement.scrollHeight - window.innerHeight)
-    setPct(Math.min(1, v / height))
-  })
+  const dashOffset = useTransform(scrollYProgress, (value) => (
+    circumference * (1 - Math.min(1, Math.max(0, value)))
+  ))
 
   return (
     <motion.button
@@ -275,15 +271,13 @@ function BackToTop() {
       onClick={scrollToTop}
       aria-label="Back to top"
       whileTap={{ scale: 0.9 }}
-      animate={reduceMotion ? undefined : { y: pct < 0.02 ? [0, -4, 0] : 0 }}
-      transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
     >
       <svg className="mfoot-top-ring" viewBox="0 0 52 52" aria-hidden="true">
         <circle cx="26" cy="26" r="22" fill="none" stroke="var(--border)" strokeWidth="2.5" />
-        <circle
+        <motion.circle
           cx="26" cy="26" r="22" fill="none" stroke="var(--primary)" strokeWidth="2.5" strokeLinecap="round"
           strokeDasharray={circumference}
-          strokeDashoffset={circumference * (1 - pct)}
+          style={{ strokeDashoffset: dashOffset }}
           transform="rotate(-90 26 26)"
         />
       </svg>

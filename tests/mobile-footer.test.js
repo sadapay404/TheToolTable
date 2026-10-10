@@ -107,9 +107,13 @@ test('the credit rows are real, accessible, pressable list rows', () => {
   assert.match(mobile, /useRipple\(\)/, 'and ripple like everything else')
 })
 
-test('back to top is one control with a ring that tracks scroll position', () => {
-  assert.match(mobile, /function BackToTop/)
-  assert.match(mobile, /strokeDashoffset=\{circumference \* \(1 - pct\)\}/, 'the ring must reflect how far you have scrolled')
+test('back to top tracks scroll with a motion value, not React state per frame', () => {
+  const backToTop = mobile.slice(mobile.indexOf('function BackToTop'), mobile.indexOf('/* ------------------------------------------------------------------ shell -- */'))
+  assert.match(backToTop, /const \{ scrollYProgress \} = useScroll\(\)/)
+  assert.match(backToTop, /const dashOffset = useTransform\(scrollYProgress/, 'the ring must derive from scroll progress')
+  assert.match(backToTop, /<motion\.circle/, 'the SVG ring must accept the motion value directly')
+  assert.match(backToTop, /style=\{\{ strokeDashoffset: dashOffset \}\}/)
+  assert.doesNotMatch(backToTop, /setPct|useMotionValueEvent|useState/, 'scrolling must not schedule React state updates')
   assert.match(mobile, /scrollToTop/)
   assert.match(mobile, /prefers-reduced-motion/, 'smooth scrolling still respects the setting')
 })

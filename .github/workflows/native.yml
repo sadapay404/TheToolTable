@@ -473,88 +473,137 @@ jobs:
           set -euo pipefail
           BT="$ANDROID_HOME/build-tools/35.0.0"
           APK="${ANDROID_RELEASE_APK:-}"
+
+          # Every way this step can say "no" goes through here, so a refusal is always an
+          # API-readable check-run annotation *and* a non-zero exit. A refusal that merely
+          # logged would let a broken package reach the draft release.
+          fail() {
+            echo "::error file=native.yml,title=Android APK rejected::$1"
+            exit 1
+          }
+
           {
             echo "### Android APK verification"
             echo ""
+            echo "| Property | Value |"
+            echo "| --- | --- |"
           } >> "$GITHUB_STEP_SUMMARY"
 
           if [ -z "$APK" ] || [ ! -f "$APK" ]; then
-            echo "::error title=Android APK missing::Nothing to verify — the signing step produced no release APK."
-            exit 1
+            fail "Nothing to verify - the signing step produced no release APK."
           fi
 
           SIZE=$(wc -c < "$APK" | tr -d ' ')
-          echo "| Property | Value |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| --- | --- |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| File | \`$APK\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Size | $SIZE bytes ($(awk "BEGIN{printf \"%.1f\", $SIZE/1048576}") MB) |" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "| File | \`$APK\` |"
+            echo "| Size | $SIZE bytes ($(awk "BEGIN{printf \"%.1f\", $SIZE/1048576}") MB) |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
-          # 1. It must be a real zip with the parts an Android package needs.
+          # 1. It must be a real package carrying the parts Android needs to install it.
           if ! unzip -tq "$APK" > /dev/null 2>&1; then
-            echo "::error title=Corrupt APK::$APK is not a readable zip archive."
-            exit 1
+            fail "$APK is not a readable zip archive."
           fi
           ENTRIES=$(unzip -Z1 "$APK" | wc -l | tr -d ' ')
-          for required in AndroidManifest.xml classes.dex resources.arsc; do
+          for required in AndroidManifest.xml resources.arsc; do
             if ! unzip -Z1 "$APK" | grep -qx "$required"; then
-              echo "::error title=Incomplete APK::$APK has no $required."
-              exit 1
+              fail "$APK has no $required."
             fi
           done
-          echo "| Archive | $ENTRIES entries, manifest + dex + resources present |" >> "$GITHUB_STEP_SUMMARY"
+          # The whole dex family, so a multidex build is not mistaken for an empty one.
+          if ! unzip -Z1 "$APK" | grep -qE '^classes[0-9]*\.dex$'; then
+            fail "$APK has no dex bytecode."
+          fi
+          DEX=$(unzip -Z1 "$APK" | grep -cE '^classes[0-9]*\.dex$' || true)
+          {
+            echo "| Archive | $ENTRIES entries, $DEX dex file(s), manifest and resources present |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
-          # 2. The launcher icon must be TheToolTable's own, at every density.
+          # 2. aapt2 has to be able to read it before any of its answers mean anything.
           BADGING="$("$BT/aapt2" dump badging "$APK" 2>/dev/null || true)"
           if [ -z "$BADGING" ]; then
-            echo "::error title=Unreadable APK::aapt2 could not read $APK."
-            exit 1
+            fail "aapt2 could not read $APK - the manifest is unparseable."
           fi
-          ICONS=$(printf '%s\n' "$BADGING" | grep -c "^application-icon-.*:" || true)
-          ICON_PATHS=$(printf '%s\n' "$BADGING" | grep "^application-icon-.*:" | sed 's/.*=//' | tr '\n' ' ')
+
+          # 3. The launcher icons, checked against what aapt2 actually names rather than
+          #    against densities this project guessed at.
+          ICON_ROWS=$(printf '%s\n' "$BADGING" | grep "^application-icon-.*:" || true)
+          ICON_COUNT=$(printf '%s\n' "$ICON_ROWS" | grep -c . || true)
+          if [ "$ICON_COUNT" -eq 0 ]; then
+            fail "The package declares no launcher icon, so it would install with the default Android robot."
+          fi
           MISSING=""
-          for density in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
-            if ! unzip -Z1 "$APK" | grep -q "res/mipmap-$density/"; then
-              MISSING="$MISSING $density"
+          while IFS= read -r row; do
+            # Deliberately not `[ -z "$row" ] && continue`: under `set -e` a false test
+            # at the head of an && list is the step's exit status, which aborts the whole
+            # step the moment a real icon row arrives. That is how a good APK was
+            # rejected by the very check meant to protect it.
+            if [ -z "$row" ]; then continue; fi
+            # aapt2 quotes its values: application-icon-160:'res/mipmap-mdpi-v4/ic_launcher.png'
+            entry="${row#*:}"
+            entry="${entry%\'}"
+            entry="${entry#\'}"
+            entry="${entry%\"}"
+            entry="${entry#\"}"
+            if ! unzip -Z1 "$APK" | grep -qxF "$entry"; then
+              MISSING="$MISSING $entry"
             fi
-          done
+          done <<< "$ICON_ROWS"
           if [ -n "$MISSING" ]; then
-            echo "::error title=Launcher icons missing::No mipmap resources for:$MISSING"
-            exit 1
+            fail "aapt2 names launcher icons that are not in the archive:$MISSING"
           fi
-          echo "| Launcher icons | $ICONS densities present |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| | \`$ICON_PATHS\` |" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "| Launcher icons | $ICON_COUNT, every one present in the archive |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
-          # 3. The permissions the app actually depends on must be declared.
-          PERMS=$(printf '%s\n' "$BADGING" | grep "^uses-permission:" | sed 's/^uses-permission: *//' | sort | tr '\n' ' ')
-          for needed in android.permission.INTERNET android.permission.POST_NOTIFICATIONS android.permission.FOREGROUND_SERVICE; do
+          # 4. The permissions the app genuinely cannot work without.
+          for needed in android.permission.INTERNET android.permission.POST_NOTIFICATIONS; do
             if ! printf '%s\n' "$BADGING" | grep -q "uses-permission: name='$needed'"; then
-              echo "::error title=Permission not declared::$APK does not request $needed."
-              exit 1
+              fail "$APK does not request $needed."
             fi
           done
-          echo "| Permissions | $(printf '%s\n' "$BADGING" | grep -c '^uses-permission:') declared |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| | \`$PERMS\` |" >> "$GITHUB_STEP_SUMMARY"
-
-          # 4. The package identity and architectures.
-          PKG=$(printf '%s\n' "$BADGING" | sed -n "s/^package: name='\([^']*\)'.*/\1/p")
-          SDK=$(printf '%s\n' "$BADGING" | sed -n "s/^sdkVersion:'\([^']*\)'.*/\1/p")
-          TARGET=$(printf '%s\n' "$BADGING" | sed -n "s/^targetSdkVersion:'\([^']*\)'.*/\1/p")
-          ABIS=$(printf '%s\n' "$BADGING" | grep "^native-code:" | sed 's/^native-code: *//' | tr '\n' ' ')
-          echo "| Package | \`$PKG\` (min $SDK, target $TARGET) |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| ABIs | $ABIS |" >> "$GITHUB_STEP_SUMMARY"
-
-          # 5. And it must actually verify as signed.
-          if ! "$BT/apksigner" verify --print-certs "$APK" > verify.txt 2>&1; then
-            echo "::error title=Signature invalid::$(head -3 verify.txt)"
-            cat verify.txt
-            exit 1
+          # Matched by prefix on purpose: Android 14 adds FOREGROUND_SERVICE_DATA_SYNC,
+          # which the earlier exact-name check rejected as a missing permission.
+          if ! printf '%s\n' "$BADGING" | grep -qE "uses-permission: name='android\.permission\.FOREGROUND_SERVICE"; then
+            fail "$APK requests no foreground-service permission, so background transfers cannot survive the app being backgrounded."
           fi
-          FINGERPRINT=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' verify.txt | head -1)
-          SCHEMES=$(grep -o 'Verified using v[123][^:]*' verify.txt | awk 'NR>1{printf "; "}{printf "%s", $0}')
-          echo "| Signature | $SCHEMES |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| SHA-256 | \`$FINGERPRINT\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "A package that installs with the default Android robot instead of the TheToolTable icon is a valid APK and a broken app. This step is what stops one being banked." >> "$GITHUB_STEP_SUMMARY"
+          PERMS=$(printf '%s\n' "$BADGING" | grep "^uses-permission:" | sed 's/^uses-permission: *//' | sort | tr '\n' ' ' || true)
+          PERM_COUNT=$(printf '%s\n' "$BADGING" | grep -c '^uses-permission:' || true)
+          {
+            echo "| Permissions | $PERM_COUNT declared |"
+            echo "| | \`$PERMS\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # 5. The package identity and architectures, for the record. Reporting only: an
+          #    aapt2 line that is simply absent must never abort the step under `set -e`
+          #    and `pipefail`, because that is how a good APK gets thrown away over a
+          #    missing caption.
+          PKG=$(printf '%s\n' "$BADGING" | sed -n "s/^package: name='\([^']*\)'.*/\1/p" || true)
+          SDK=$(printf '%s\n' "$BADGING" | sed -n "s/^sdkVersion:'\([^']*\)'.*/\1/p" || true)
+          TARGET=$(printf '%s\n' "$BADGING" | sed -n "s/^targetSdkVersion:'\([^']*\)'.*/\1/p" || true)
+          ABIS=$(printf '%s\n' "$BADGING" | grep "^native-code:" | sed 's/^native-code: *//' | tr '\n' ' ' || true)
+          {
+            echo "| Package | \`$PKG\` (min ${SDK:-?}, target ${TARGET:-?}) |"
+            echo "| ABIs | ${ABIS:-none reported} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # 6. And it must actually verify as signed. The report goes to the runner's
+          #    temp directory - a previous version wrote it into the checkout and it got
+          #    committed to the repository.
+          CERTLOG="${RUNNER_TEMP:-/tmp}/apksigner-report.txt"
+          if ! "$BT/apksigner" verify --print-certs "$APK" > "$CERTLOG" 2>&1; then
+            fail "the signature does not verify: $(head -1 "$CERTLOG")"
+          fi
+          FINGERPRINT=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$CERTLOG" | head -1 || true)
+          SCHEMES=$(grep -o 'Verified using v[123][^:]*' "$CERTLOG" | awk 'NR>1{printf "; "}{printf "%s", $0}' || true)
+          {
+            echo "| Signature | ${SCHEMES:-reported as valid} |"
+            echo "| SHA-256 | \`${FINGERPRINT:-unavailable}\` |"
+            echo ""
+            echo "Checked, not assumed: a signed APK is not automatically a working one, and a package that installs with the default Android robot is a valid APK and a broken app."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "APK verified: $PKG, $ICON_COUNT launcher icons, $SIZE bytes"
+
       - name: Remove signing material
         if: always()
         shell: bash

@@ -4,6 +4,7 @@ import { readFileSync, existsSync } from 'node:fs'
 import { inflateSync } from 'node:zlib'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { spawnSync } from 'node:child_process'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const read = (p) => readFileSync(path.join(ROOT, p), 'utf8')
@@ -353,9 +354,8 @@ test('the Android job verifies the APK before it can be banked', () => {
   const body = wf.slice(step, upload)
   for (const check of [
     ['is a readable zip', 'unzip -tq'],
-    ['carries a dex', 'classes.dex'],
+    ['carries its manifest', 'AndroidManifest.xml'],
     ['carries its resources', 'resources.arsc'],
-    ['has a launcher icon at every density', 'res/mipmap-'],
     ['is inspected with aapt2', 'aapt2'],
     ['declares the notification permission', 'POST_NOTIFICATIONS'],
     ['declares the foreground-service permission', 'FOREGROUND_SERVICE'],
@@ -364,6 +364,9 @@ test('the Android job verifies the APK before it can be banked', () => {
   ]) {
     assert.ok(body.includes(check[1]), `the APK verification does not ${check[0]}`)
   }
+  /* Dex is matched as a whole family so a multidex build is not mistaken for a
+     package with no bytecode. */
+  assert.match(body, /grep -qE '\^classes\[0-9\]\*\\\.dex\$'/, 'dex bytecode is not checked')
 })
 
 test('a failing APK verification stops the job rather than warning', () => {
@@ -371,9 +374,47 @@ test('a failing APK verification stops the job rather than warning', () => {
   const step = wf.indexOf('name: Verify the signed APK before it is banked')
   const body = wf.slice(step, wf.indexOf('name: Remove signing material', step))
   assert.doesNotMatch(body, /continue-on-error/, 'a broken APK must not be allowed to continue')
-  assert.doesNotMatch(body, /^\s*\|\|\s*true\s*$/m, 'a failing check must not be swallowed')
-  /* Every refusal has to be a failure, not a note. */
-  const refusals = body.match(/::error title=/g) || []
-  assert.ok(refusals.length >= 5, `only ${refusals.length} failure paths are handled`)
   assert.ok(body.includes('set -euo pipefail'), 'the step must stop on the first failure')
+
+  /* Every way this step can say "no" funnels through one helper, and that
+     helper both annotates the check-run and exits non-zero. A refusal that
+     merely logged would let a broken package reach the draft release. */
+  const calls = body.match(/^\s*fail "/gm) || []
+  assert.ok(calls.length >= 5, `only ${calls.length} refusal paths are handled`)
+  const helper = body.slice(body.indexOf('fail() {'), body.indexOf('}\n', body.indexOf('fail() {')))
+  assert.match(helper, /::error file=native\.yml,title=/, 'a refusal must be API-readable, not just a log line')
+  assert.match(helper, /exit 1/, 'a refusal must stop the job')
+
+  /* `|| true` is allowed only on the lines that build the job summary. On a
+     check it would swallow exactly the failure this step exists to catch. */
+  const swallowed = body
+    .split('\n')
+    .filter((line) => /\|\|\s*true/.test(line) && !/^\s*"?[A-Z_]+="?\$\(/.test(line))
+  assert.deepEqual(swallowed, [], 'a check must not be allowed to swallow its failure')
+
+  /* The step must not litter the checkout. A previous version wrote its
+     certificate report into the repository root and it got committed. */
+  assert.doesNotMatch(body, /> verify\.txt/, 'the step must not write into the checkout')
+})
+
+/* ====================================== the verification step, actually executed */
+
+test('the APK verification step itself accepts a good build and refuses every broken one', () => {
+  /* String-matching the workflow cannot tell a check that works from a check that
+     looks right. This runs the shipped step - read out of native.yml, never
+     copied - against a real zip and mock aapt2/apksigner, and asserts both the
+     exit code and the reason. Its first run caught three bugs that rejected
+     builds which had already compiled, signed and smoked. */
+  const harness = path.join(path.dirname(fileURLToPath(import.meta.url)), 'verify-apk-step.sh')
+  if (!existsSync(harness)) throw new Error('tests/verify-apk-step.sh is missing')
+
+  const out = spawnSync('bash', [harness], { encoding: 'utf8', timeout: 120000 })
+  if (out.error || out.status !== 0) {
+    throw new Error(`the APK verification step did not behave:\n${out.stdout || ''}${out.stderr || ''}`)
+  }
+  const passed = Number((out.stdout.match(/(\d+) passed/) || [])[1])
+  const failed = Number((out.stdout.match(/(\d+) failed/) || [])[1])
+  assert.equal(failed, 0, `the APK verification step misbehaved:\n${out.stdout}`)
+  assert.ok(passed >= 10, `only ${passed} cases covered - the harness has stopped testing enough`)
+  assert.match(out.stdout, /ok {4}well-formed, signed, fully-iconed APK is accepted/)
 })

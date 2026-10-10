@@ -236,9 +236,12 @@ test('Lite pauses decorative motion through one shell profile while preserving i
 
   /* Essential information and interaction feedback remain in Lite. */
   const card = read('src/components/ToolCard.jsx')
-  assert.match(card, /level === 'lite' \? 4 : level === 'balanced' \? 7 : 11/,
-    'the card tilt still scales rather than disappearing')
-  assert.match(card, /whileTap="tap"/, 'card press feedback must remain')
+  assert.match(card, /if \(level === 'lite'\) return <LiteSurface/,
+    'Lite must select the static card path before desktop tilt work mounts')
+  assert.match(card, /function LiteSurface[\s\S]*?onClick=\{\(\) => onOpen\(tool\)\}/,
+    'Lite cards must keep their native tool action')
+  assert.match(card, /className="card3d card3d--static/,
+    'Lite card press feedback must remain available through the static surface')
   assert.match(app, /className="scroll-progress"/, 'scroll progress must remain visible')
   assert.match(mobileFooter, /function BackToTop/, 'the back-to-top control must remain')
   assert.match(all, /prefers-reduced-motion/, 'the operating-system accessibility setting remains wired')

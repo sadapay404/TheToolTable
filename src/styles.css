@@ -102,6 +102,16 @@ html[data-theme="oled"] body::after, html[data-theme="cyberpunk"] body::after, h
   border-color: color-mix(in srgb, var(--primary, var(--accent)) 45%, var(--border));
   box-shadow: var(--shadow-lg);
 }
+/* Lite cards are intentionally flat: the press response stays tactile without
+   creating a tilt or parallax compositing path for every result in the grid. */
+.card3d--static {
+  transform-style: flat;
+  backface-visibility: visible;
+  transition: transform .15s ease, box-shadow .2s ease, border-color .2s ease;
+}
+.card3d--static:active { transform: scale(.985); }
+.card3d--static .card-content,
+.card3d--static .tool-icon { transform-style: flat; }
 .card3d:focus-visible { outline: 3px solid color-mix(in srgb, var(--primary, var(--accent)) 38%, transparent); outline-offset: 3px; }
 .card3d .inner { position: relative; z-index: 1; transform: translateZ(30px); transform-style: preserve-3d; }
 .card3d .card-content { transform-style: preserve-3d; }

@@ -1291,3 +1291,36 @@ The shipping checks now match that full contract:
 This work intentionally has no public APK yet. v1.2.1 and older Android releases
 remain withdrawn until the exact v1.2.2 signed artifact passes these checks and
 is installed and kept open through native/plugin initialization.
+
+
+## Batch 10v: the device run is again a real release gate
+
+The physical-device report exposed a policy failure as well as the missing
+WorkManager configuration: the pipeline could declare a native build successful
+and put `TheToolTable.apk` on its real draft release **before** the only step
+that launches the app had a result. The `android-device` step was marked
+`continue-on-error`, so a native abort was visible at most as an advisory after
+the artifact had already been banked.
+
+That ordering is no longer acceptable for Android releases. The `android` job
+still signs and verifies the archive, but it uploads it only to a throwaway,
+source-specific candidate release, accompanied by its SHA-256 record. The device
+job downloads and verifies that checksum, installs those exact bytes on the
+x86_64 emulator, waits through the delayed download-plugin initialization, and
+fails on a Rust abort, `PluginInitialization("download", ...)`, lost foreground,
+or failed navigation. Only after that normal (non-demoted) smoke step passes does
+`Bank the device-tested APK` upload the same checked bytes to the intended draft
+release. A failed device job reaches its logcat report and candidate cleanup, but
+cannot reach the banking step.
+
+The transport filename is deliberately generic, so the workflow also carries a
+small reviewed release-name record. This prevents a fallback-key test APK from
+being silently relabelled `TheToolTable.apk`: the final bank allows only
+`TheToolTable.apk` or `TheToolTable-fallback-signed.apk` and retains the latter
+when the signing certificate cannot upgrade an existing install.
+
+The static verifier still checks the ARM64 ELF because a hosted x86_64 emulator
+cannot load that half of the universal APK. Together, archive verification,
+manifest/DEX checks, a checksum-verified device run, and the post-smoke upload
+make a green Android candidate mean the source-specific bytes were actually run,
+not merely packaged.

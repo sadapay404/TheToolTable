@@ -60,7 +60,11 @@ corresponding Android checks pass.
   records.
 - No Android release may be marked complete or published until this strengthened
   candidate has passed CI and the exact signed APK has been installed and kept
-  open through native/plugin initialization on a device or emulator.
+  open through native/plugin initialization on a device or emulator. The device
+  smoke is now a hard release gate: the Android build uploads only a temporary,
+  source-specific candidate plus SHA-256 record; `android-device` verifies those
+  bytes, runs them, and only then uploads that exact APK to the real draft
+  release. A failed smoke therefore cannot leave a newly banked Android asset.
 
 ## Acceptance checklist
 

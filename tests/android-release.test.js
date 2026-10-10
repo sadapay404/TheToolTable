@@ -316,18 +316,26 @@ test('the build checks its certificate against the published v1.1.1 APK', () => 
     'both verdicts have to be stated, not just logged')
 })
 
-test('an APK signed with the wrong key never gets the plain release name', () => {
+test('a fallback-signed APK remains visibly fallback-signed after the device gate', () => {
+  /* A fallback key cannot upgrade an existing installation. Relabelling that
+     APK as TheToolTable.apk hides that operational fact and was how an earlier
+     build became misleading. The generic candidate filename is only transport;
+     the signed filename is recorded and restored on the draft release. */
   const workflow = read('.github/workflows/native.yml')
-  assert.match(workflow, /APK_NAME=TheToolTable-fallback-signed\.apk/)
-  const bank = workflow.slice(workflow.indexOf('name: Bank the verified APK'))
-  assert.match(bank, /cp "\$APK_NAME" TheToolTable\.apk/,
-    'the banked file is the one this run signed and verified, copied rather than re-fetched')
-  assert.doesNotMatch(bank, /gh release download[\s\S]{0,400}gh release upload/,
-    'the upload must use the APK this run just built, never one fetched back off the tag')
-  // Banked before it is copied to the device job, so the device job's fate
-  // cannot decide whether the file is published.
-  assert.ok(workflow.indexOf('name: Bank the verified APK') < workflow.indexOf('name: Hand the signed APK to the device job'),
-    'the APK is banked before the device job can possibly fail')
+  const build = workflow.slice(workflow.indexOf('\n  android:'), workflow.indexOf('\n  android-device:'))
+  const device = workflow.slice(workflow.indexOf('\n  android-device:'))
+
+  assert.match(build, /APK_NAME=TheToolTable-fallback-signed\.apk/)
+  assert.match(build, /basename "\$APK_NAME" > android-release-name\.txt/,
+    'the original signed filename must travel with the generic device-test APK')
+  assert.match(build, /"android-device-input\.apk" "android-device-input\.apk\.sha256" "android-release-name\.txt"/,
+    'the candidate must contain both its bytes, checksum and intended release name')
+  assert.match(device, /FINAL_APK_NAME=/)
+  assert.match(device, /TheToolTable\.apk\|TheToolTable-fallback-signed\.apk/,
+    'only the two reviewed Android filenames may be promoted')
+  assert.match(device, /gh release upload "\$RELEASE_TAG" "\$FINAL_APK_NAME"/)
+  assert.doesNotMatch(device, /cp "\$APK" TheToolTable\.apk/,
+    'the final bank must not silently relabel a fallback-signed APK as upgradeable')
 })
 
 test('signing material is removed even when a later step fails', () => {
@@ -342,65 +350,50 @@ test('the release stays a draft', () => {
   assert.doesNotMatch(workflow, /gh release (publish|edit .*--draft=false)/,
     'nothing here may publish a release')
 })
-/* ------------------- the failure that shipped an APK no ARM phone could run */
 
-test('the release is banked from the verified build, and the emulator only advises', () => {
-  /* This design went wrong three times, and the third time it cost somebody an
-     install they were waiting on.
+/* ---------------- the real-device crash made the emulator a release gate */
 
-     First the APK was uploaded *after* the smoke test, so a renamed UI label
-     discarded builds that had already compiled and signed. It was moved
-     *before* the test, with `continue-on-error` so nothing could veto it - which
-     was worse, because the emulator then ran against a different APK than the
-     one that shipped. It was then made a hard precondition again, so the file
-     that is banked is the file that was driven. That was correct in principle
-     and useless in practice: the emulator is infrastructure, and when it failed
-     - `/usr/bin/sh failed with exit code 2`, two minutes, no readable log -
-     nobody received the fix that had already been built, signed and verified.
-
-     So the emulator is now a second opinion rather than a veto. What stands in
-     front of it is not a hope but a check: the verifier reads the merged
-     manifest out of the package and refuses anything that starts WorkManager
-     before the first frame, which is the crash this pipeline was built to
-     catch. The emulator can still fail, can still report, and its verdict is
-     still written down - it just no longer decides whether people get the app. */
+test('only the checksum-verified, device-tested APK is banked to the release draft', () => {
+  /* v1.2.1 was a valid, signed package that was uploaded before a device test
+     could veto it. Its native download-plugin abort made that ordering unsafe.
+     The build job may make a temporary candidate available to the device job,
+     but it must not put an Android asset on the actual release. */
   const wf = read('.github/workflows/native.yml')
   const build = wf.slice(wf.indexOf('\n  android:'), wf.indexOf('\n  android-device:'))
   const device = wf.slice(wf.indexOf('\n  android-device:'))
 
-  // Banked by the job that built and verified it.
-  const bankStep = build.indexOf('name: Bank the verified APK')
   const verifyStep = build.indexOf('name: Verify the signed APK before it is banked')
-  assert.ok(bankStep > verifyStep,
-    'the APK is banked only after the verifier has passed it')
-  assert.match(build, /gh release upload "\$RELEASE_TAG" TheToolTable\.apk/,
-    'the signed, verified APK goes onto the release the user downloads from')
-
-  // Still no artifact transport: that storage is quota-metered and ran out.
-  assert.doesNotMatch(build, /actions\/upload-artifact/)
+  const handoff = build.indexOf('name: Hand the signed APK to the device job')
+  assert.ok(verifyStep > -1 && handoff > verifyStep,
+    'the signed package must be verified before it enters the device handoff')
+  assert.doesNotMatch(build, /gh release upload "\$RELEASE_TAG"/,
+    'the build job must not bank an un-run Android APK on the release draft')
   assert.match(build, /candidate-android-\$\{GITHUB_SHA\}/,
-    'the device job still gets the same bytes over the throwaway tag')
+    'the device gets a source-specific throwaway release, not Actions artifact storage')
+  assert.match(build, /sha256sum android-device-input\.apk > android-device-input\.apk\.sha256/)
 
-  // The emulator reports, and cannot veto.
+  // No hosted artifact transport: quota exhaustion must not make the gate lie.
+  assert.doesNotMatch(build, /actions\/upload-artifact/)
+  assert.match(device, /sha256sum --check android-device-input\.apk\.sha256/,
+    'the device must reject a stale or altered candidate before it launches it')
+
   const smoke = device.indexOf('id: smoke')
-  assert.match(device, /- name: Boot an x86_64 emulator and run the app\n\s+id: smoke\n\s+continue-on-error: true/,
-    'a broken emulator must not be able to withhold the app from people waiting on it')
-  assert.match(device, /::warning title=Android device test failed/,
-    'the failure is still announced - demoted from an error, not silenced')
-  assert.match(device, /name: Report what the device test made of that exact APK/,
-    'the verdict is recorded even when it is not obeyed')
-  assert.match(device, /Banked independently of this result/,
-    'the summary must say plainly that the result did not gate the release')
-  assert.ok(smoke > -1)
+  const bank = device.indexOf('name: Bank the device-tested APK')
+  assert.ok(smoke > -1 && bank > smoke,
+    'the final upload must occur after the device smoke test, never before it')
+  assert.match(device, /- name: Boot an x86_64 emulator and run the app\n\s+id: smoke\n\s+uses:/,
+    'the emulator result must be a normal step result, not silently demoted')
+  assert.doesNotMatch(device, /continue-on-error/,
+    'a launch failure must fail the workflow before any Android asset is banked')
+  assert.match(device, /gh release upload "\$RELEASE_TAG" "\$FINAL_APK_NAME"/,
+    'the checked APK is promoted from the device job itself')
 
-  /* The emulator must still be a real check, run against the shipped bytes.
-     Demoting it to advisory is only honest while it is genuinely testing
-     something - these keep it from decaying into decoration. */
+  /* The emulator executes x86_64 code, so arm64 remains independently checked
+     from the exact archive that will be released to a phone. */
   assert.match(device, /runs-on: ubuntu-latest/,
     'an emulator needs KVM, which hosted ARM64 runners do not have')
   assert.match(device, /arch: x86_64/, 'the emulator arch must match the library the APK carries')
   assert.match(device, /99-kvm4all\.rules/, 'without /dev/kvm access the emulator cannot boot in time')
-  assert.match(device, /android-device-input\.apk/, 'it tests the exact file that is published')
   assert.match(wf, /--target aarch64 --target x86_64/,
     'the package must carry both libraries for a phone and for CI')
   assert.match(wf, /--target aarch64 --target x86_64(?!.*--target armv7)/,
@@ -413,14 +406,12 @@ test('the release is banked from the verified build, and the emulator only advis
     'nothing in an x86_64 emulator loads the ARM library, so its bytes have to be checked directly')
   assert.match(verify, /expected b7/)
 
-  /* The manifest has to prove both halves of the workaround. Badging cannot see
-     either one: an APK can have correct ABIs, icons and a valid signature yet
-     either construct Room before its first frame or abort later because its
-     download plugin has no WorkManager configuration. */
+  /* The manifest proves the custom Application survived merging and shrinking;
+     the device run proves its lazy WorkManager path actually stays alive. */
   assert.match(verify, /dump xmltree --file AndroidManifest\.xml/,
     'the launch path can only be judged from the merged manifest, not from badging')
   assert.match(verify, /WorkManagerInitializer/,
-    'the crash starts when WorkManager is initialised before the first frame')
+    'the default eager initializer must be absent')
   assert.match(verify, /TheToolTableApplication/,
     'removing the startup initializer also requires the custom Application provider')
   assert.match(verify, /WORK_MANAGER_APPLICATION_DESCRIPTOR/,
@@ -428,57 +419,36 @@ test('the release is banked from the verified build, and the emulator only advis
   assert.match(verify, /compiled Application class is missing from DEX/)
   assert.match(verify, /could not read the merged AndroidManifest\.xml/,
     'if the manifest cannot be read the step must refuse rather than assume the launch path is clean')
-  // A herestring, not a pipe: this step may never SIGPIPE its producers.
   assert.match(verify, /grep -q "WorkManagerInitializer" <<< "\$MANIFEST_TREE"/,
-    'piping into grep -q is what made this step reject good APKs at random')
+    'a herestring, not a pipe, keeps verification from SIGPIPE false positives')
   assert.match(verify, /grep -qF "\$WORK_MANAGER_APPLICATION" <<< "\$MANIFEST_TREE"/,
     'the APK must declare the Configuration.Provider Application after removing startup initialization')
 })
 
-test('the device job still cleans up and still leaves the crash log behind', () => {
-  /* The emulator lost its veto - see the test on banking. It has not lost its
-     voice: a failing run still dumps logcat, still announces itself, and still
-     removes the throwaway tag it created. A demoted check that also became a
-     silent one would be worse than either. */
+test('a device failure emits diagnostics, fails the gate, and cleans its temporary candidate', () => {
   const wf = read('.github/workflows/native.yml')
   const device = wf.slice(wf.indexOf('\n  android-device:'))
-  assert.match(device, /adb logcat -d/,
-    'a failure has to leave the crash log behind, or it is a mystery again')
-  assert.match(device, /android-device-input\.apk/, 'it tests the exact file that is published')
-  assert.match(device, /name: Delete the temporary candidate release\n\s+if: always\(\)/,
-    'the throwaway tag must be cleaned up whether the device passed or not')
-  assert.match(device, /name: Report what the device test made of that exact APK\n\s+if: always\(\)/,
-    'the verdict is recorded even when the run failed before reaching it')
-})
-
-test('the device step reports why it failed instead of dying with an exit code', () => {
-  /* This step ran for two minutes and died with `/usr/bin/sh failed with exit
-     code 2` and nothing else. That is dash's signature for a redirection it
-     could not perform, and the only redirect in play was the action's own
-     `printf ... >> <avd>/config.ini`, which `ram-size` and `disk-size` are the
-     sole triggers for. Worse, the failure path used to `echo >> $GITHUB_STEP_SUMMARY`
-     inline, so when a redirect did fail it took the diagnostics with it: the one
-     time the log was most needed was the time it could not be written.
-
-     So the report is assembled in a plain file and appended afterwards, and the
-     failure is announced with an annotation, which is the part of a CI run that
-     is actually visible. */
-  const wf = read('.github/workflows/native.yml')
-  const device = wf.slice(wf.indexOf('\n  android-device:'))
+  const bank = device.slice(device.indexOf('name: Bank the device-tested APK'))
 
   assert.doesNotMatch(device, /ram-size:|disk-size:/,
-    'these two are the only inputs that trigger the action\'s config.ini redirect, and a failed redirect exits sh with 2')
+    'these two inputs make the emulator action use its fragile config.ini redirect')
+  assert.match(device, /set \+e\s+node scripts\/android-runtime-smoke\.mjs[\s\S]*?STATUS=\$\?\s+set -e/,
+    'the smoke status must be captured even when the action shell starts with -e')
   assert.match(device, /smoke test exit status/,
-    'the real status has to be reported rather than collapsed into the action\'s exit code')
-  assert.match(device, /::warning title=Android device test failed/,
-    'an annotation is what a reader sees; a log nobody can open is not a report')
+    'the actual failure status must be printed')
+  assert.match(device, /::error title=Android device test failed/,
+    'the failure must be a release-blocking error, not an advisory warning')
+  assert.match(device, /APK was not uploaded to the release draft/)
   assert.match(device, /adb logcat -d -t 4000 > "\$LOG"/,
-    'logcat goes to a file first, because a failing redirect is what destroyed the last report')
+    'logcat goes to a file first, so the failure leaves actionable evidence')
   assert.match(device, /\|\| echo "\(adb logcat failed too\)"/,
-    'a missing adb must still produce a readable summary rather than abort the block')
-
-  // The pass path has to report too, or a silent green run proves nothing.
-  assert.match(device, /Android device test passed/)
+    'a missing adb must still leave a readable failure report')
+  assert.match(device, /name: Report what the device test made of that exact APK\n\s+if: always\(\)/,
+    'the summary runs even after the gate fails')
+  assert.match(device, /name: Delete the temporary candidate release\n\s+if: always\(\)/,
+    'the throwaway release is cleaned up whether the device passed or failed')
+  assert.doesNotMatch(bank.slice(0, bank.indexOf('name: Report what the device test')), /if: always\(\)/,
+    'the final bank must remain skipped after a failed smoke step')
 })
 
 test('the smoke test reads its labels from the app instead of hardcoding them', () => {
@@ -610,14 +580,20 @@ test('the two jobs agree on the candidate release they hand the APK over in', ()
   assert.ok(!wf.includes('candidate-android-${{ github.sha }}:${'),
     'one side truncates the SHA and the other does not, so they can never agree')
 
-  const asset = wf.match(/gh release upload "\$CANDIDATE_TAG" "([^"]+)"/)
-  assert.ok(asset, 'nothing uploads the candidate APK')
-  assert.ok(!asset[1].includes('#'),
-    'the `file#label` form sets a display label, not the asset name, so the download pattern cannot match it')
-  const downloaded = wf.match(/--pattern '([^']+)' --dir device-input/)
-  assert.ok(downloaded, 'nothing downloads the candidate APK')
-  assert.equal(asset[1], downloaded[1],
-    'the uploaded asset name and the downloaded pattern must be the same string')
+  const candidateUpload = wf.match(/gh release upload "\$CANDIDATE_TAG"[\s\S]{0,300}?--repo "\$GITHUB_REPOSITORY" --clobber/)
+  assert.ok(candidateUpload, 'nothing uploads the candidate APK')
+  for (const asset of ['android-device-input.apk', 'android-device-input.apk.sha256', 'android-release-name.txt']) {
+    assert.ok(candidateUpload[0].includes(`"${asset}"`),
+      `the candidate upload omits ${asset}`)
+    assert.ok(!candidateUpload[0].includes(`#${asset}`),
+      'the `file#label` form sets a display label, not an asset name the device can download')
+  }
+  const downloaded = [...wf.matchAll(/--pattern '([^']+)' --dir device-input/g)].map((match) => match[1])
+  assert.deepEqual(downloaded.slice(0, 3), [
+    'android-device-input.apk',
+    'android-device-input.apk.sha256',
+    'android-release-name.txt',
+  ], 'the device must retrieve the same candidate bytes, checksum and release-name record that Android uploaded')
   assert.ok(wf.includes('`device-input/android-device-input.apk`') ||
     wf.includes('device-input/android-device-input.apk'),
     'the smoke test reads the file under its real name')
@@ -662,6 +638,19 @@ test('the Android build detaches WorkManager startup but supplies lazy applicati
   assert.match(script, /Configuration\.Provider/,
     'removing WorkManagerInitializer requires lazy manual configuration for the download plugin')
   assert.match(script, /TheToolTableApplication/)
+})
+
+test('the generated Application uses WorkManager’s supported lazy provider path', () => {
+  const script = read('scripts/ensure-android-launch-survives.mjs')
+  const application = script.slice(
+    script.indexOf('function applicationSource'),
+    script.indexOf('/** Add the tools namespace'),
+  )
+  assert.match(application, /class \$\{APPLICATION_CLASS\} : Application\(\), Configuration\.Provider/)
+  assert.match(application, /override val workManagerConfiguration: Configuration/)
+  assert.match(application, /Configuration\.Builder\(\)\.build\(\)/)
+  assert.doesNotMatch(application, /WorkManager\.initialize\(/,
+    'manual eager initialization would recreate the pre-first-frame launch path')
 })
 
 test('the launch repair is applied to the generated manifest, application and ProGuard rules', () => {

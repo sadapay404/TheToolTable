@@ -726,32 +726,12 @@ jobs:
         if: always()
         shell: bash
         run: rm -f ks.jks aligned-arm.apk previous-apk/TheToolTable.apk
-      # Bank the APK as soon as it is built, signed and verified.
-      #
-      # This used to happen only after the emulator had driven the app, which
-      # meant a broken emulator - an infrastructure problem with a two-minute
-      # timeout and an exit code nobody could read - withheld the fix from
-      # everyone waiting on it. That is the wrong trade. The launch crash this
-      # pipeline exists to catch is caught statically now: the verifier reads
-      # the merged manifest out of the package and refuses anything that starts
-      # WorkManager before the first frame. The emulator is a second opinion
-      # worth having, not a veto worth obeying.
-      - name: Bank the verified APK
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
-          APK_NAME: ${{ env.ANDROID_RELEASE_APK }}
-        run: |
-          set -euo pipefail
-          if [ -z "$APK_NAME" ] || [ ! -f "$APK_NAME" ]; then
-            echo '::error title=No Android APK::Signing did not finish, so there is nothing to bank.'
-            exit 1
-          fi
-          cp "$APK_NAME" TheToolTable.apk
-          gh release upload "$RELEASE_TAG" TheToolTable.apk \
-            --repo "$GITHUB_REPOSITORY" --clobber
-          echo "Banked TheToolTable.apk to $RELEASE_TAG: $(du -h TheToolTable.apk | cut -f1), sha256 $(sha256sum TheToolTable.apk | cut -d' ' -f1)"
-
+      # A correct zip, signature and merged manifest do not prove that the
+      # app survives native plugin initialization. The release asset is therefore
+      # not uploaded here: only the temporary, source-specific candidate below
+      # is allowed to carry this APK until android-device has run these exact
+      # bytes. That reverses the previous false-green path which published an
+      # APK before the test capable of seeing its launch abort had a verdict.
       - name: Hand the signed APK to the device job
         env:
           APK_NAME: ${{ env.ANDROID_RELEASE_APK }}
@@ -762,6 +742,10 @@ jobs:
             exit 1
           fi
           cp "$APK_NAME" android-device-input.apk
+          # Preserve the final release filename across the generic candidate
+          # handoff: a fallback key must remain visibly fallback-signed rather
+          # than being relabelled as a normal upgradeable APK.
+          basename "$APK_NAME" > android-release-name.txt
           sha256sum android-device-input.apk | tee -a "$GITHUB_STEP_SUMMARY"
           echo "### Android" >> "$GITHUB_STEP_SUMMARY"
           echo "- \`$APK_NAME\` — $(du -h "$APK_NAME" | cut -f1), verified, awaiting a device test." >> "$GITHUB_STEP_SUMMARY"
@@ -786,19 +770,19 @@ jobs:
           # Uploaded under its own name. The `file#label` form sets a *display
           # label*, not the asset name, so the `#candidate.apk` this step used to
           # carry left the asset called android-device-input.apk while the device
-          # job went looking for candidate.apk and found nothing.
-          gh release upload "$CANDIDATE_TAG" "android-device-input.apk" --repo "$GITHUB_REPOSITORY" --clobber
-          echo "CANDIDATE_TAG=$CANDIDATE_TAG" >> "$GITHUB_ENV"
+          # job went looking for candidate.apk and found nothing. Ship a checksum
+          # alongside it so the device job proves the final draft asset is exactly
+          # the signed file this job verified, not a stale candidate asset.
+          sha256sum android-device-input.apk > android-device-input.apk.sha256
+          gh release upload "$CANDIDATE_TAG" \
+            "android-device-input.apk" "android-device-input.apk.sha256" "android-release-name.txt" \
+            --repo "$GITHUB_REPOSITORY" --clobber
           echo "Candidate handed to the device job as draft $CANDIDATE_TAG"
 
-  # The APK that ships is the APK that gets run.
-  #
-  # This used to be an x86_64 emulator testing a *different* APK than the one
-  # that was banked, after the bank had already happened and with
-  # `continue-on-error` so that even a failure could not stop it. A build could
-  # therefore pass CI and still crash on every ARM phone in the world. Testing
-  # now happens on an arm64 emulator - the same architecture as the artifact -
-  # and the upload to the release happens here, after the device has run it.
+  # The APK that ships is the APK that the device job ran. A universal APK also
+  # contains x86_64 code specifically so the hosted emulator can run the exact
+  # signed bytes while the verifier independently checks its arm64 ELF payload.
+  # No Android asset reaches the actual draft release before this gate passes.
   android-device:
     needs: [prepare, android]
     # ubuntu-latest, deliberately. This job ran on ubuntu-24.04-arm, which
@@ -817,6 +801,7 @@ jobs:
       # The full SHA is used on both sides precisely because it needs no
       # truncation for an expression to reproduce.
       CANDIDATE_TAG: candidate-android-${{ github.sha }}
+      RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
     steps:
       - name: Check out the app sources the smoke test reads
         uses: actions/checkout@v4
@@ -842,14 +827,17 @@ jobs:
           mkdir -p device-input
           gh release download "$CANDIDATE_TAG" --repo "$GITHUB_REPOSITORY" \
             --pattern 'android-device-input.apk' --dir device-input --clobber
+          gh release download "$CANDIDATE_TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'android-device-input.apk.sha256' --dir device-input --clobber
+          gh release download "$CANDIDATE_TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'android-release-name.txt' --dir device-input --clobber
+          (cd device-input && sha256sum --check android-device-input.apk.sha256)
 
-      # `continue-on-error` here is a deliberate, narrow demotion, not a way of
-      # making a broken app look fine: the APK is already banked by the android
-      # job, and this job exists only to add a second opinion about it. Its
-      # result is still reported, in the summary and in the annotation below.
+      # This is a release gate, not an advisory check. The previous workflow
+      # deliberately ignored this result and banked a broken APK; the real-device
+      # abort proved that static manifest checks alone cannot substitute for it.
       - name: Boot an x86_64 emulator and run the app
         id: smoke
-        continue-on-error: true
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -877,8 +865,13 @@ jobs:
           # the log is written to a plain file first and only then summarised.
           script: |
             LOG=android-device-logcat.txt
+            # The action's shell can enable -e. Disable it only long enough to
+            # preserve the smoke command's status and write the useful logcat
+            # diagnostic; re-enable it before all remaining commands.
+            set +e
             node scripts/android-runtime-smoke.mjs device-input/android-device-input.apk > /tmp/smoke.out 2>&1
             STATUS=$?
+            set -e
             cat /tmp/smoke.out
             echo "smoke test exit status: $STATUS"
             if [ "$STATUS" -ne 0 ]; then
@@ -895,7 +888,7 @@ jobs:
               } >> "$GITHUB_STEP_SUMMARY"
               # The annotation is what a reader actually sees on the run page, and
               # it survives even when the log itself is not reachable.
-              echo "::warning title=Android device test failed::The app did not pass the on-device smoke test. The APK has still been banked and published; see the logcat in this job's summary before trusting it."
+              echo "::error title=Android device test failed::The app did not pass the launch smoke test. The APK was not uploaded to the release draft; see the logcat in this job's summary."
               exit 1
             fi
             {
@@ -906,8 +899,33 @@ jobs:
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
 
-      # Reports only. The APK is already banked by the android job above, so a
-      # failed emulator is now visible rather than load-bearing.
+      # This step only runs after the emulator has installed, launched and kept
+      # alive the checksum-verified candidate. It promotes those exact bytes to
+      # the intended draft release; a failed device job cannot reach this step.
+      - name: Bank the device-tested APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          APK=device-input/android-device-input.apk
+          NAME_FILE=device-input/android-release-name.txt
+          if [ ! -f "$APK" ] || [ ! -f "$NAME_FILE" ]; then
+            echo "::error title=No device-tested Android APK::The candidate APK or its release-name record is missing after the device gate."
+            exit 1
+          fi
+          FINAL_APK_NAME="$(tr -d '\r\n' < "$NAME_FILE")"
+          case "$FINAL_APK_NAME" in
+            TheToolTable.apk|TheToolTable-fallback-signed.apk) ;;
+            *)
+              echo "::error title=Unsafe Android APK name::Unexpected candidate release filename: $FINAL_APK_NAME"
+              exit 1
+              ;;
+          esac
+          cp "$APK" "$FINAL_APK_NAME"
+          gh release upload "$RELEASE_TAG" "$FINAL_APK_NAME" \
+            --repo "$GITHUB_REPOSITORY" --clobber
+          echo "Banked device-tested $FINAL_APK_NAME to $RELEASE_TAG: $(du -h "$FINAL_APK_NAME" | cut -f1), sha256 $(sha256sum "$FINAL_APK_NAME" | cut -d' ' -f1)"
+
       - name: Report what the device test made of that exact APK
         if: always()
         run: |
@@ -916,7 +934,7 @@ jobs:
           if [ -f "$APK" ]; then
             echo "- The device job tested \`$APK\`, sha256 \`$(sha256sum "$APK" | cut -d" " -f1)\`." >> "$GITHUB_STEP_SUMMARY"
           fi
-          echo "- Banked independently of this result; see the android job's verification table." >> "$GITHUB_STEP_SUMMARY"
+          echo "- Android assets are banked only by the post-smoke \`Bank the device-tested APK\` step." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Delete the temporary candidate release
         if: always()

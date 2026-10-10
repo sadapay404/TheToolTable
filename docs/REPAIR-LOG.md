@@ -36,7 +36,10 @@ The requested 20-tool repair is tracked in ten parts, two consecutively numbered
   implements WorkManager `Configuration.Provider`, in addition to removing the
   eager `WorkManagerInitializer`. Its APK gate checks both conditions in the
   merged manifest; its device smoke waits past launch and fails on native abort
-  records or `PluginInitialization("download", …)` failures.
+  records or `PluginInitialization("download", …)` failures. The signed APK is
+  now held on a temporary source-specific candidate with a SHA-256 record until
+  that device smoke passes; only the device-tested bytes can be banked to the
+  actual draft release.
 - The release workflow creates one distinct draft tag per exact app version and
   source commit (`v<version>-build-<short-sha>`); it does not overwrite an
   unrelated candidate with `--clobber`. A candidate must remain a draft until

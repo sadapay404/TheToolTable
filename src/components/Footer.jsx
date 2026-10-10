@@ -8,7 +8,6 @@ import { useScroll, useTransform } from 'framer-motion'
 const SPRING = { type: 'spring', stiffness: 300, damping: 25 }
 const EASE = [0.22, 1, 0.36, 1]
 const ROLES = [['Idea by', '01'], ['Designed by', '02'], ['Created by', '03']]
-const TICKER = 'IDEA BY MUBASHIR · DESIGNED WITH CARE · CREATED FOR EVERYDAY WORK · THE TOOLTABLE · '
 const RISE = { hidden: { y: '105%' }, show: (i) => ({ y: 0, transition: { duration: 0.7, ease: EASE, delay: 0.05 + i * 0.045 } }) }
 const scrollToTop = () => window.scrollTo({ top: 0, behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ? 'auto' : 'smooth' })
 
@@ -26,27 +25,23 @@ function Glyph({ c, i }) {
   )
 }
 
-/**
- * Wide desktop lockup, plus the purpose-built phone footer in `MobileFooter.jsx`.
- * Both keep moving continuously unless the operating system requests reduced
- * motion.
- */
-export default function Footer() {
+/** Wide footer, mounted only for the desktop/tablet shell. */
+function DesktopFooter() {
   const word = [...'TOOL'], word2 = [...'TABLE']
   /* The lockup drifts a little as the footer arrives — depth, not decoration. */
   const { scrollY } = useScroll()
   const lockupY = useTransform(scrollY, [0, 6000], [0, -46])
   const lockupScale = useTransform(scrollY, [0, 6000], [1, 1.015])
+
   return (
-    <footer className="relative mt-4 border-t border-line overflow-hidden" style={{ background: 'var(--surface2)' }} aria-label="TheToolTable credits">
+    <>
       <div className="desktop-footer-aura" aria-hidden="true">
         <span className="footer-aura-blob footer-aura-blob--a" />
         <span className="footer-aura-blob footer-aura-blob--b" />
         <span className="footer-aura-blob footer-aura-blob--c" />
         <span className="footer-aura-scan" />
       </div>
-      <div className="sm:hidden"><MobileFooter /></div>
-      <div className="desktop-footer hidden sm:block">
+      <div className="desktop-footer">
         <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(60% 80% at 85% 110%, var(--glow), transparent 70%)' }} />
         <div className="relative max-w-6xl mx-auto px-6 pt-14 pb-8">
           <div role="img" aria-label="the TOOLTABLE by Mubashir" style={{ containerType: 'inline-size' }}>
@@ -77,6 +72,19 @@ export default function Footer() {
           </div>
         </div>
       </div>
+    </>
+  )
+}
+
+/**
+ * One responsive footer at a time. CSS visibility alone leaves mounted React
+ * hooks, timers and Framer Motion work alive, so the shell selects its actual
+ * footer variant before it enters the tree.
+ */
+export default function Footer({ isPhone = false }) {
+  return (
+    <footer className="relative mt-4 border-t border-line overflow-hidden" style={{ background: 'var(--surface2)' }} aria-label="TheToolTable credits">
+      {isPhone ? <MobileFooter /> : <DesktopFooter />}
     </footer>
   )
 }

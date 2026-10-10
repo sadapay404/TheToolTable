@@ -718,7 +718,7 @@ export default function App() {
         onSearch={() => setOverlay('search')}
         onPersonalize={() => setOverlay('personalize')}
       />
-      <Footer />
+      <Footer isPhone={isPhone} />
 
       {!isPhone && (
         <CommandPalette

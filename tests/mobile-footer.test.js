@@ -8,17 +8,24 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const read = (p) => readFileSync(path.join(ROOT, p), 'utf8')
 
 /* JSX again: the footer is asserted structurally from source. */
+const app = read('src/App.jsx')
 const footer = read('src/components/Footer.jsx')
 const mobile = read('src/components/MobileFooter.jsx')
 const css = read('src/styles.css')
 
 /* ------------------------------------------------------------ structure --- */
 
-test('the footer is a phone component and a desktop component, not one of both', () => {
+test('the shell mounts exactly one footer variant for the current breakpoint', () => {
   assert.ok(mobile.includes("export default function MobileFooter()"))
   assert.match(footer, /import MobileFooter from '\.\/MobileFooter\.jsx'/)
-  assert.match(footer, /<div className="sm:hidden"><MobileFooter \/><\/div>/, 'the phone footer must be phone-only')
-  assert.match(footer, /className="desktop-footer hidden sm:block"/, 'the wide lockup must stay desktop-only')
+  assert.match(footer, /export default function Footer\(\{ isPhone = false \}\)/)
+  assert.match(footer, /\{isPhone \? <MobileFooter \/> : <DesktopFooter \/>\}/, 'the inactive footer must not mount behind a CSS visibility class')
+  assert.match(app, /<Footer isPhone=\{isPhone\} \/>/, 'the shell must provide its existing responsive state')
+  assert.doesNotMatch(footer, /sm:hidden|hidden sm:block/, 'responsive CSS must not keep an inactive footer tree mounted')
+
+  const desktop = footer.slice(footer.indexOf('function DesktopFooter'), footer.indexOf('export default function Footer'))
+  assert.match(desktop, /className="desktop-footer-aura"/, 'the desktop aura belongs only to the desktop branch')
+  assert.match(desktop, /useScroll\(\)/, 'desktop scroll work belongs only to the desktop branch')
 })
 
 test('the old shrunk desktop footer markup is gone', () => {

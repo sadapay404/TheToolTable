@@ -217,7 +217,7 @@ async function start(e, tier = active.tier) {
         const cpu = cpuPlan('pro')
         const fallbackGeneration = e.generation
         const cpuRuntimePlan = await prepareNativeModel(e, cpu, fallbackGeneration)
-        if (e.generation !== fallbackGeneration) throw new Error('Engine stopped or restarted')
+        if (e.generation !== fallbackGeneration) throw new Error('Engine stopped or restarted', { cause: error })
         const fallbackWorkerGeneration = fallbackGeneration + 1
         patch(e, { note: 'WebGPU failed here — using the CPU weights instead.' })
         try { return await boot(e, cpuRuntimePlan) }

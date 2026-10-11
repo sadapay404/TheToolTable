@@ -48,7 +48,6 @@ export function Dropzone({ onFiles, multiple = false, accept, label = 'Drop file
   const ripple = useRipple()
   const reduceMotion = useReducedMotion()
   const decorativeMotion = useDecorativeMotion()
-  const perimeter = 1180
 
   const accept_ = (files) => {
     const list = [...files]

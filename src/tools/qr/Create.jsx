@@ -27,7 +27,7 @@ function Tilt({ children }) {
 }
 
 export default function Create() {
-  const { payload, content, style, setStyle, go } = useQR()
+  const { payload, content, style } = useQR()
   const [sub, setSub] = useStore('sub', 'content')
   const [toastNode, toast] = useToast()
   const T = typeById(content.type)
@@ -35,7 +35,7 @@ export default function Create() {
   const text = payload || SAMPLE.url
   const built = useMemo(() => { try { return { r: buildQR(text, style, 'm') } } catch (e) { return { err: e } } }, [text, style])
   const [saved, setSaved] = useState(0)
-  const [designs, setDesigns] = useStore('designs', [])
+  const [, setDesigns] = useStore('designs', [])
   const name = `qr-${slug(T.id)}`
 
   const saveDesign = async () => {

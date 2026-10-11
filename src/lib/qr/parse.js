@@ -1,11 +1,10 @@
 /* Detect what a decoded payload is, and extract fields for the smart result card. */
 const unesc = (s) => s.replace(/\\([\\;,:"nN])/g, (_, c) => (c === 'n' || c === 'N' ? '\n' : c))
 const safeDecode = (value) => { try { return decodeURIComponent(value) } catch { return value } }
-const first = (o, k) => (o[k] ?? '').toString()
 
 export function parseWifi(s) {
   const body = s.replace(/^WIFI:/i, ''), o = {}
-  let cur = '', key = null, i = 0
+  let cur = '', i = 0
   const parts = []
   for (; i < body.length; i++) { const ch = body[i]; if (ch === '\\') { cur += body[i + 1] ?? ''; i++ } else if (ch === ';') { parts.push(cur); cur = '' } else cur += ch }
   if (cur) parts.push(cur)

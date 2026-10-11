@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import {
   TRANSFER_STATUS, useTransfers, formatBytes, clearFinishedTransfers, cancelTransfer, activeTransferCount,
@@ -41,7 +41,6 @@ function TransferRow({ transfer, onDismiss, onCancel }) {
   const reduceMotion = useReducedMotion()
   const ripple = useRipple()
   const done = transfer.status === TRANSFER_STATUS.completed
-  const failed = transfer.status === TRANSFER_STATUS.failed || transfer.status === TRANSFER_STATUS.canceled
   const running = transfer.status === TRANSFER_STATUS.running || transfer.status === TRANSFER_STATUS.queued
 
   return (
@@ -152,7 +151,6 @@ export default function TransferCentre({ onCancel }) {
   const [open, setOpen] = useState(false)
   const reduceMotion = useReducedMotion()
 
-  const active = useMemo(() => transfers.filter((t) => t.status === TRANSFER_STATUS.running || t.status === TRANSFER_STATUS.queued), [transfers])
   const running = activeTransferCount()
 
   // The sheet opens itself the moment work appears — however many transfers

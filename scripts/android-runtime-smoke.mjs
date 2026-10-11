@@ -55,7 +55,7 @@ function adb(...args) {
       .map((value) => value?.toString().trim())
       .filter(Boolean)
       .join('\n')
-    throw new Error(`${error.message}${output ? `\n${output}` : ''}`)
+    throw new Error(`${error.message}${output ? `\n${output}` : ''}`, { cause: error })
   }
 }
 

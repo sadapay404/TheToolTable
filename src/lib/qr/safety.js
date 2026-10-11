@@ -24,7 +24,6 @@ export function checkSafety(p) {
       if (RISKY_TLD.includes(tld)) add('warn', `“.${tld}” domains are used disproportionately for spam and scams.`)
       if (u.username || u.password || /@/.test((p.url || raw).split('?')[0].split('//')[1]?.split('/')[0] || '')) add('danger', 'The address contains “@” credentials — the real host is whatever comes after it, not what comes first.')
       if (host.split('.').length > 4) add('warn', 'Unusually many sub-domains — a typical way to hide the real site name.')
-      const lab = host.split('.')
       Object.entries(BRANDS).forEach(([b, real]) => { if (h2.includes(b) && !(h2 === real || h2.endsWith('.' + real))) { if (!f.some((x) => x.t.startsWith('Mentions'))) add('danger', `Mentions “${b}” but is not on ${real} — looks like an imitation.`) } })
       if (EXEC.test(u.pathname)) add('danger', 'Direct download of an app / installer file — only install software from stores you trust.')
       if ((p.url || raw).length > 220) add('info', 'Very long address with lots of tracking or redirect data.')

@@ -115,13 +115,13 @@ export function EngineChooser({ eng }) {
           </motion.div>
         )}
       </AnimatePresence>
-      <StatusStrip eng={eng} cached={cached} onCleared={refresh} />
+      <StatusStrip eng={eng} onCleared={refresh} />
     </div>
   )
 }
 
 /** The little status row with progress and the cache controls. */
-function StatusStrip({ eng, cached, onCleared }) {
+function StatusStrip({ eng, onCleared }) {
   const online = eng.mode === 'online'
   const busy = !eng.ready && !eng.error
   return (

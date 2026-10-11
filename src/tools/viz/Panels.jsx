@@ -251,7 +251,7 @@ export function TextPanel({ c }) {
 
 /* ============================================ MOTION ============================================ */
 export function MotionPanel({ c }) {
-  const { P, sl } = c
+  const { sl } = c
   return (
     <div className="space-y-6">
       <Block i={0}>

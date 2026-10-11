@@ -151,7 +151,3 @@ test('the scannability report does not lie', async () => {
     assert.ok(h.logoPct >= 0 && h.logoPct < 30, `${t.name} covers ${h.logoPct}% of the code with its logo`)
   }
 })
-
-function require$templates() {
-  return globalThis.__tttTemplates
-}

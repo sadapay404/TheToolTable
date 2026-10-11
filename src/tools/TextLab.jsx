@@ -67,7 +67,7 @@ function StatsPanel({ text }) {
 }
 
 function Tools({ text, setText, toast }) {
-  const [ext, setExt] = useState(null), [enc, setEnc] = useState('')
+  const [ext, setExt] = useState(null)
   const run = (fn, label) => { try { const o = fn(text); if (o === text) toast('Nothing to change'); else { setText(o); toast(label) } } catch { toast('That text can not be converted', 'err') } }
   const group = (title, items, i) => <Panel key={title} delay={i * 0.05}><Label>{title}</Label><div className="flex flex-wrap gap-2">{items.map(([k, l, fn]) => <Btn key={k} small onClick={() => run(fn, l)}>{l}</Btn>)}</div></Panel>
   const found = ext ? [...new Set(text.match(ext[2]) || [])] : []
@@ -85,7 +85,7 @@ function Tools({ text, setText, toast }) {
 
 function Find({ text, setText, toast }) {
   const [q, setQ] = useState(''), [r, setR] = useState(''), [o, setO] = useState({ regex: false, cs: false, whole: false })
-  const { re, err } = useMemo(() => { try { return { re: findRe(q, o) } } catch (e) { return { err: 'That pattern is not valid' } } }, [q, o])
+  const { re, err } = useMemo(() => { try { return { re: findRe(q, o) } } catch { return { err: 'That pattern is not valid' } } }, [q, o])
   const count = re ? (text.match(re) || []).length : 0
   const parts = useMemo(() => { if (!re || !count) return null; const out = []; let last = 0; for (const m of text.matchAll(re)) { if (!m[0]) continue; out.push([text.slice(last, m.index), false], [m[0], true]); last = m.index + m[0].length; if (out.length > 400) break } out.push([text.slice(last), false]); return out }, [text, re, count])
   return (
@@ -104,7 +104,7 @@ function Find({ text, setText, toast }) {
   )
 }
 
-function Diff({ toast }) {
+function Diff() {
   const [a, setA] = usePref('txt', 'diffA', ''), [b, setB] = usePref('txt', 'diffB', ''), [mode, setMode] = useState('words')
   const d = useMemo(() => (a || b ? diff(a, b, mode) : null), [a, b, mode])
   const add = d?.filter((x) => x.t === '+').reduce((s, x) => s + (x.s.match(/\S+/g) || []).length, 0) || 0, del = d?.filter((x) => x.t === '-').reduce((s, x) => s + (x.s.match(/\S+/g) || []).length, 0) || 0

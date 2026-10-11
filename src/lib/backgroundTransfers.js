@@ -10,7 +10,6 @@ const isNative = () => typeof window !== 'undefined' && isTauri()
 const isAndroidNative = () => isNative() && /android/i.test(typeof navigator !== 'undefined' ? navigator.userAgent || '' : '')
 const activeDownloads = new Map()
 let backgroundTaskCount = 0
-let backgroundServicePromise = null
 let backgroundServiceRunning = false
 let backgroundServiceQueue = Promise.resolve()
 let notificationChannelPromise = null
@@ -47,15 +46,13 @@ export async function beginBackgroundTransfer(label = 'Transfer in progress') {
       backgroundServiceRunning = true
     }
   })
-  backgroundServicePromise = start
   backgroundServiceQueue = start.catch(() => {})
 
   try {
     await start
   } catch (error) {
     backgroundTaskCount = Math.max(0, backgroundTaskCount - 1)
-    if (backgroundTaskCount === 0) backgroundServicePromise = null
-    throw new Error(`Could not start the Android background transfer service: ${String(error?.message || error)}`)
+    throw new Error(`Could not start the Android background transfer service: ${String(error?.message || error)}`, { cause: error })
   }
 
   let released = false
@@ -70,7 +67,6 @@ export async function beginBackgroundTransfer(label = 'Transfer in progress') {
           const service = await import('tauri-plugin-background-service')
           await service.stopService()
           backgroundServiceRunning = false
-          backgroundServicePromise = null
         }
       })
       backgroundServiceQueue = stop.catch(() => {})

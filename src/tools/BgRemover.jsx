@@ -400,7 +400,7 @@ export default function BgRemover() {
     return (
       <div className="space-y-6">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={SPRING}>
-          <Dropzone onFiles={addFiles} multiple accept="image/*,.avif,.heic,.heif,.tif,.tiff,.jfif,.jif,.jpe" label="" sub=""><Hero eng={eng} onRetry={retry} /></Dropzone>
+          <Dropzone onFiles={addFiles} multiple accept="image/*,.avif,.heic,.heif,.tif,.tiff,.jfif,.jif,.jpe" label="" sub=""><Hero eng={eng} /></Dropzone>
         </motion.div>
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {[[2, 'cut-out engines', 'Offline: a 44 MB model bundled in the site. Online: BiRefNet, one of the best open models.'], [0, 'bytes uploaded', 'Photos are processed on this device. Online mode only downloads model weights.'], [4, 'ways to inspect', 'Result, original, matte and a draggable before / after split.'], [6, 'background types', 'Transparent, colour, gradient, blur, scenes or your own picture.']].map(([n, a, b], i) => (
@@ -596,7 +596,7 @@ function StatusCard({ eng, sel, elapsed, ahead }) {
   )
 }
 
-function Hero({ eng, onRetry }) {
+function Hero({ eng }) {
   const reduceMotion = useReducedMotion()
   return (
     <div className="py-7">

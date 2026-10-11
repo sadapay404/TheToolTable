@@ -298,7 +298,7 @@ const STYLES = {
   },
 
   wave(g, c) {
-    const { P, hw, hh, col, smp, d, ph, S, lw } = g, m = 72, layers = 4
+    const { P, hw, hh, col, smp, d, ph, lw } = g, m = 72, layers = 4
     const y0 = P.reflect ? 0 : hh * 0.35
     for (let l = layers - 1; l >= 0; l--) {
       const pts = []

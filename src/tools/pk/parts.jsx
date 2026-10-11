@@ -2,7 +2,7 @@ import { motion } from 'framer-motion'
 import { CountText, SPRING } from '../kit/ui.jsx'
 import { pk, short, parseNum } from '../../lib/pk/calc.js'
 
-export function Money({ value, onChange, label, hint, prefix = 'Rs', suffix, d = 0 }) {
+export function Money({ value, onChange, label, hint, prefix = 'Rs', suffix }) {
   const shown = value === '' || value == null ? '' : pk(parseNum(value), 0).replace(/^0$/, value === 0 || value === '0' ? '0' : '')
   return (
     <label className="block">

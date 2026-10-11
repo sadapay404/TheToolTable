@@ -79,7 +79,7 @@ for (const density of DENSITIES) {
 if (missing.length) fail(`Committed icons are missing: ${missing.join(', ')}`)
 
 /* ------------------------------------------------------- adaptive manifests */
-const adaptiveXml = (label) => `<?xml version="1.0" encoding="utf-8"?>
+const adaptiveXml = () => `<?xml version="1.0" encoding="utf-8"?>
 <!-- TheToolTable launcher icon. The foreground is transparent and carries the
      wordmark inside the centre circle every launcher mask preserves; the
      background is the brand cream; the monochrome layer drives Android 13+

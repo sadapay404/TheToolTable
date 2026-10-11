@@ -17,8 +17,7 @@ const below1000 = (n) => {
 function englishInt(n) {
   if (n === 0n) return 'zero'
   const groups = []
-  let i = 0
-  while (n > 0n) { groups.push(Number(n % 1000n)); n /= 1000n; i++ }
+  while (n > 0n) { groups.push(Number(n % 1000n)); n /= 1000n }
   if (groups.length > SCALES.length) return null
   const parts = []
   for (let g = groups.length - 1; g >= 0; g--) {

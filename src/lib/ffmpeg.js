@@ -51,7 +51,7 @@ async function runConversion(inputFile, outputName, args, onProgress) {
     return new Blob([data], { type: 'application/octet-stream' })
   } catch (e) {
     if (e?.name === 'ErrnoError' || /no such file|does not exist/i.test(String(e?.message || e))) {
-      throw new Error(args.includes('-vn') ? 'This file has no audio track to extract.' : 'Nothing could be produced — the file may be empty or unsupported.')
+      throw new Error(args.includes('-vn') ? 'This file has no audio track to extract.' : 'Nothing could be produced — the file may be empty or unsupported.', { cause: e })
     }
     throw e
   } finally {

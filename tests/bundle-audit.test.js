@@ -22,7 +22,6 @@ const pkg = JSON.parse(read('package.json'))
 const built = existsSync(DIST)
 const assets = built ? readdirSync(path.join(DIST, 'assets')) : []
 const js = assets.filter((f) => f.endsWith('.js'))
-const css = assets.filter((f) => f.endsWith('.css'))
 
 /** The build must have run before this file means anything. */
 const describeBuilt = (name, fn) => test(name, { skip: built ? false : 'run `npm run build` first' }, fn)

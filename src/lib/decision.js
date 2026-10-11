@@ -1,5 +1,4 @@
 const UINT32_RANGE = 0x1_0000_0000
-const identity = (value) => value
 
 function randomWord(cryptoApi = globalThis.crypto) {
   if (!cryptoApi || typeof cryptoApi.getRandomValues !== 'function') {

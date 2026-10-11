@@ -9,7 +9,6 @@ import { copyPng, slug } from '../../lib/qr/exportKit.js'
 import { download, recentAction } from '../../lib/utils.js'
 
 const fit = (svg) => svg.replace(/width="\d+" height="\d+"/, (m) => { const [, w, h] = /width="(\d+)" height="(\d+)"/.exec(m); return `viewBox="0 0 ${w} ${h}" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"` })
-const sizedSvg = (svg, w, h) => svg.replace(/width="\d+" height="\d+"/, `width="${w}" height="${h}"`)
 const load = (src) => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src })
 
 async function rasterize(res, px) {

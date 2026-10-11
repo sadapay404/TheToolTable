@@ -7,7 +7,7 @@ const PIPS = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6,
 const FACE_ROT = { 1: [0, 0], 6: [0, 180], 2: [0, -90], 5: [0, 90], 3: [-90, 0], 4: [90, 0] }
 const CUBE_FACES = [[1, 'rotateY(0deg)'], [6, 'rotateY(180deg)'], [2, 'rotateY(90deg)'], [5, 'rotateY(-90deg)'], [3, 'rotateX(90deg)'], [4, 'rotateX(-90deg)']]
 
-function Cube({ value, rot, size, rolling, delay }) {
+function Cube({ rot, size, rolling, delay }) {
   const half = size / 2
   return (
     <motion.div className="relative" style={{ width: size, height: size, transformStyle: 'preserve-3d' }} animate={{ rotateX: rot.x, rotateY: rot.y, y: rolling ? [0, -size * 0.7, 0] : 0 }} transition={{ rotateX: { duration: 1.5, ease: [0.2, 0.85, 0.3, 1], delay }, rotateY: { duration: 1.5, ease: [0.2, 0.85, 0.3, 1], delay }, y: { duration: 1.4, times: [0, 0.4, 1], ease: ['easeOut', 'easeIn'], delay } }}>
@@ -76,7 +76,7 @@ export default function Dice() {
           <div className="flex-1 flex items-center justify-center gap-7 flex-wrap" style={{ perspective: 900 }}>
             {shown.map((d, i) => (
               <div key={i} className="flex flex-col items-center">
-                {six ? <Cube value={d.v} rot={d.rot} size={size} rolling={d.rolling} delay={i * 0.07} /> : <Token value={d.v} faces={o.faces} rolling={d.rolling} size={size + 10} delay={i * 0.07} />}
+                {six ? <Cube rot={d.rot} size={size} rolling={d.rolling} delay={i * 0.07} /> : <Token value={d.v} faces={o.faces} rolling={d.rolling} size={size + 10} delay={i * 0.07} />}
                 <motion.div className="rounded-[50%] mt-8" style={{ width: size * 0.9, height: size * 0.12, background: 'radial-gradient(ellipse, rgba(0,0,0,.32), transparent 70%)' }} animate={d.rolling ? { scaleX: [1, 0.5, 1], opacity: [1, 0.3, 1] } : {}} transition={{ duration: 1.4, times: [0, 0.4, 1], delay: i * 0.07 }} />
               </div>
             ))}

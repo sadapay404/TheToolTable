@@ -35,7 +35,7 @@ function fit(L, C, H) { let c = C; for (let i = 0; i < 24; i++) { const r = (H *
 export const HARMONIES = [['analogous', 'Analogous'], ['mono', 'Monochrome'], ['complement', 'Complement'], ['split', 'Split'], ['triad', 'Triad'], ['tetrad', 'Tetrad']]
 /** build a palette (dark → light) from a base hex using a harmony rule */
 export function harmony(base, kind, n = 5) {
-  const [L0, C0, H0] = hexToLch(base); const C = Math.max(0.06, Math.min(0.2, C0 || 0.12))
+  const [, C0, H0] = hexToLch(base); const C = Math.max(0.06, Math.min(0.2, C0 || 0.12))
   const hues = { analogous: [-40, -20, 0, 20, 40], mono: [0, 0, 0, 0, 0], complement: [0, 0, 180, 180, 0], split: [0, 150, 210, 0, 150], triad: [0, 120, 240, 0, 120], tetrad: [0, 90, 180, 270, 0] }[kind] || [0, 0, 0, 0, 0]
   const out = []
   for (let i = 0; i < n; i++) { const t = i / Math.max(1, n - 1); const L = 0.2 + t * 0.7; const h = H0 + hues[i % hues.length] + (kind === 'analogous' ? (t - 0.5) * 10 : 0)

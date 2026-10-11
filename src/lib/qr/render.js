@@ -191,10 +191,8 @@ const forceContrast = (hex, bg, min = MIN_MODULE_CONTRAST) => {
   if (contrast(hex, bg) >= min) return hex
   const [h, s, l] = rgbToHsl(from)
   const target = lum(bg) > 0.5 ? 0 : 1
-  let best = hex
   for (let step = 1; step <= 100; step += 1) {
     const next = rgbToHex(hslToRgb([h, s, l + ((target - l) * step) / 100]))
-    best = next
     if (contrast(next, bg) >= min) return next
   }
   return target === 0 ? '#000000' : '#FFFFFF'

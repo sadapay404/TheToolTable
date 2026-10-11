@@ -46,7 +46,7 @@ export function useDecodeCheck(r, enabled = true) {
 
 const tone = (s) => (s >= 85 ? ['#2F9C6B', 'Excellent'] : s >= 65 ? ['#6FA23C', 'Good'] : s >= 45 ? ['#D9962B', 'Risky'] : ['#C3423F', 'Poor'])
 
-export default function Meter({ r, text }) {
+export default function Meter({ r }) {
   const decoded = useDecodeCheck(r)
   const h = useMemo(() => heuristics(r), [r])
   const { rows, total } = scoreOf(h, decoded)
@@ -84,7 +84,6 @@ export default function Meter({ r, text }) {
           </motion.div>
         ))}
       </div>
-      <div className="mt-2.5 grid gap-0.5">{rows.map((x) => <div key={x.k} className="text-[11px] hidden" />)}</div>
       {tips.length > 0 && <motion.ul initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="mt-3 text-[12px] space-y-1 overflow-hidden" style={{ color: 'var(--muted)' }}>{tips.slice(0, 3).map((t) => <li key={t} className="flex gap-2"><span style={{ color: 'var(--copper)' }}><QIco n="bulb" s={13} /></span>{t}</li>)}</motion.ul>}
     </div>
   )

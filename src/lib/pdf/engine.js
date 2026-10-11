@@ -95,7 +95,7 @@ export async function loadDoc(file) {
   const pages = lib.getPageCount()
   if (pages < 1 || pages > MAX_PDF_PAGES) throw new RangeError(`This PDF must contain between 1 and ${MAX_PDF_PAGES.toLocaleString()} pages.`)
   const doc = { id: 'd' + (++counter) + Math.random().toString(36).slice(2, 5), name: String(file.name || 'document.pdf').slice(0, 200), bytes, pages, size: bytes.length }
-  try { await openJs(doc) } catch (e) { forget(doc.id); throw new Error(/password/i.test(e?.name + e?.message) ? 'This PDF is password-protected. Remove the password first.' : 'Could not read this PDF.') }
+  try { await openJs(doc) } catch (e) { forget(doc.id); throw new Error(/password/i.test(e?.name + e?.message) ? 'This PDF is password-protected. Remove the password first.' : 'Could not read this PDF.', { cause: e }) }
   return doc
 }
 export const fromBytes = async (bytes, name = 'document.pdf') => {

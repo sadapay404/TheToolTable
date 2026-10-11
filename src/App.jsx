@@ -67,34 +67,6 @@ function SearchIcon() {
   )
 }
 
-const CARD_ICON_VARIANTS = {
-  rest: { rotateY: 0, rotateZ: 0, scale: 1 },
-  hover: { rotateY: 180, rotateZ: -8, scale: 1.12, transition: { type: 'spring', stiffness: 300, damping: 18 } },
-}
-const CARD_NUMBER_VARIANTS = {
-  rest: { opacity: 0.08, scale: 1, rotateZ: 0, y: 0 },
-  hover: { opacity: 0.22, scale: 1.12, rotateZ: 5, y: -3, transition: SPRING },
-}
-const CARD_TITLE_VARIANTS = {
-  rest: { y: 0 },
-  hover: { y: -3, transition: SPRING },
-}
-const CARD_DESCRIPTION_VARIANTS = {
-  rest: { y: 0, opacity: 0.9 },
-  hover: { y: -1, opacity: 1, transition: SPRING },
-}
-const CARD_RULE_VARIANTS = {
-  rest: { scaleX: 1 },
-  hover: { scaleX: 2.3, transition: { type: 'spring', stiffness: 260, damping: 22 } },
-}
-const CARD_CTA_VARIANTS = {
-  rest: { x: 0 },
-  hover: { x: 3, transition: SPRING },
-}
-const CARD_ARROW_VARIANTS = {
-  rest: { x: 0, y: 0, rotate: 0, scale: 1 },
-  hover: { x: 5, y: -2, rotate: 8, scale: 1.12, transition: SPRING },
-}
 const HOME_FILTERS = [
   { id: 'all', label: 'All tools', ids: null },
   { id: 'media', label: 'Media', ids: ['clipper', 'imagestudio', 'compressor', 'frames', 'visualizer', 'voice', 'converter'] },

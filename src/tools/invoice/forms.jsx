@@ -162,7 +162,7 @@ export function Style({ inv, set }) {
   )
 }
 export function Saved({ lib, load, dup, del, current, exportAll, importAll }) {
-  const rows = lib.map((i) => ({ i, t: totals(i) })), sum = (f) => rows.filter(f).reduce((s, r) => s + r.t.total, 0)
+  const rows = lib.map((i) => ({ i, t: totals(i) }))
   const ref = useRef(null)
   return (
     <div className="space-y-4">

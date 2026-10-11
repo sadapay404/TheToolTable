@@ -97,8 +97,8 @@ test('Material reads as violet, not as another Creamy White', () => {
   assert.notEqual(material['--surface-container-low'], creamy['--surface-container-low'])
   // A violet keeps blue clearly above red; caramel/ivory does not.
   const channel = (hex) => [1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16))
-  const [mr, mg, mb] = channel(material['--primary'])
-  const [cr, cg, cb] = channel(creamy['--accent'])
+  const [mr, , mb] = channel(material['--primary'])
+  const [cr, , cb] = channel(creamy['--accent'])
   assert.ok(mb > mr, 'Material primary should be blue-dominant')
   assert.ok(cr > cb, 'Creamy accent should be red-dominant')
 })

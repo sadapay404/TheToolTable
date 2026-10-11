@@ -75,7 +75,7 @@ test('a history sentinel turns a WebView popstate into an in-app back press', ()
   const events = {}
   let depth = 0
   const fakeHistory = {
-    pushState(_s, _t) { depth += 1 },
+    pushState() { depth += 1 },
     replaceState() {},
     back() {},
     go() {},

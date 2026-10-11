@@ -94,7 +94,7 @@ function ClipFile() {
         const narrowScreen = window.matchMedia?.('(max-width: 640px)')?.matches || false
         const maxProbeBytes = (narrowScreen ? 64 : 192) * 1024 * 1024
         if (f.size > maxProbeBytes) {
-          throw new Error(`${browserError.message}. FFmpeg’s safe metadata fallback is limited to ${narrowScreen ? '64 MB on phones' : '192 MB'}; try a supported MP4/WebM file or a smaller source.`)
+          throw new Error(`${browserError.message}. FFmpeg’s safe metadata fallback is limited to ${narrowScreen ? '64 MB on phones' : '192 MB'}; try a supported MP4/WebM file or a smaller source.`, { cause: browserError })
         }
         setMsg('This browser cannot inspect the container. Checking its duration with the bundled FFmpeg probe…')
         const probed = await probeMediaDuration(f)

@@ -122,7 +122,7 @@ export async function buildPack(id, options, img) {
     f['manifest-icons.json'] = strToU8(JSON.stringify({ icons: [...[72, 96, 128, 144, 152, 192, 384, 512].map((S) => ({ src: `icons/icon-${S}.png`, sizes: `${S}x${S}`, type: 'image/png', purpose: 'any' })), ...[192, 512].map((S) => ({ src: `icons/maskable-${S}.png`, sizes: `${S}x${S}`, type: 'image/png', purpose: 'maskable' }))] }, null, 2))
   } else if (id === 'android') {
     for (const [d, s, fg] of AND) { f[`res/mipmap-${d}/ic_launcher.png`] = await P(s); f[`res/mipmap-${d}/ic_launcher_round.png`] = await P(s, 'circle'); f[`res/mipmap-${d}/ic_launcher_foreground.png`] = await P(fg, 'foreground') }
-    const ad = (r) => `<?xml version="1.0" encoding="utf-8"?>\n<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">\n    <background android:drawable="@color/ic_launcher_background"/>\n    <foreground android:drawable="@mipmap/ic_launcher_foreground"/>\n</adaptive-icon>\n`
+    const ad = () => `<?xml version="1.0" encoding="utf-8"?>\n<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">\n    <background android:drawable="@color/ic_launcher_background"/>\n    <foreground android:drawable="@mipmap/ic_launcher_foreground"/>\n</adaptive-icon>\n`
     f['res/mipmap-anydpi-v26/ic_launcher.xml'] = strToU8(ad()); f['res/mipmap-anydpi-v26/ic_launcher_round.xml'] = strToU8(ad())
     f['res/values/ic_launcher_background.xml'] = strToU8(`<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="ic_launcher_background">#${hex6(o.bgType === 'none' ? '#FFFFFF' : o.bg1)}</color>\n</resources>\n`)
     f['playstore-icon.png'] = await P(512, 'opaque')

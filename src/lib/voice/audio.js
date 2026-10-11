@@ -81,8 +81,8 @@ export async function decodeFile(file, onStatus) {
           const raw = await ff.readFile(output)
           return new Uint8Array(raw).slice()
         } catch (error) {
-          if (/no audio|matches no streams|does not contain any stream/i.test(String(error?.message || error))) throw new Error('This file has no audio track I can read.')
-          throw new Error(`Could not extract audio from this file: ${String(error?.message || error).slice(0, 140)}`)
+          if (/no audio|matches no streams|does not contain any stream/i.test(String(error?.message || error))) throw new Error('This file has no audio track I can read.', { cause: error })
+          throw new Error(`Could not extract audio from this file: ${String(error?.message || error).slice(0, 140)}`, { cause: error })
         } finally {
           await Promise.all([input, output].map(async (path) => { try { await ff.deleteFile(path) } catch {} }))
         }

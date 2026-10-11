@@ -54,7 +54,7 @@ export default function ImageStudio() {
   const [section, setSection] = useState('looks')
   const [params, setP] = useState(DEFAULTS)
   const pRef = useRef(DEFAULTS)
-  const [hist, setHist] = useState(0)
+  const [, setHist] = useState(0)
   const [ready, setReady] = useState(0)
   const [renderInfo, setRenderInfo] = useState(null)
   const [box, setBox] = useState({ w: 800, h: 560 })

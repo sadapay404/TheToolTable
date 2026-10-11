@@ -16,7 +16,6 @@ const ICON_DIR = 'src-tauri/icons/android'
 const DENSITIES = { mdpi: 48, hdpi: 72, xhdpi: 96, xxhdpi: 144, xxxhdpi: 192 }
 const LEGACY = ['ic_launcher.png', 'ic_launcher_round.png']
 const ADAPTIVE = ['ic_launcher_foreground.png', 'ic_launcher_monochrome.png', 'ic_launcher_background.png']
-const BRAND_BACKGROUND = '#EFEBDE'
 
 /**
  * A deliberately small RGBA PNG reader.

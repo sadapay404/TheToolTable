@@ -15,7 +15,7 @@ const Group = ({ title, children, delay = 0 }) => (
   </motion.div>
 )
 
-function Chip({ on, onClick, children, id }) {
+function Chip({ on, onClick, children }) {
   return (
     <motion.button whileHover={{ y: -2 }} whileTap={{ scale: 0.9 }} onClick={onClick} className="relative px-3 py-1.5 rounded-full text-[11.5px] font-semibold border border-line whitespace-nowrap"
       style={{ color: on ? 'var(--bg)' : 'var(--muted)', background: 'var(--surface)' }}>
@@ -238,7 +238,6 @@ export function FxPanel({ c }) {
 export function CropPanel({ c }) {
   const p = c.params
   const { ow, oh } = c.dims
-  const crop = { x: p.cx, y: p.cy, w: p.cw, h: p.ch }
   const px = { w: Math.round(p.cw * ow), h: Math.round(p.ch * oh) }
   return (
     <div className="space-y-6">

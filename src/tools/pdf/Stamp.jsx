@@ -24,7 +24,7 @@ export default function Stamp({ docs, active, setActive, publish, toast }) {
         tmp = { id: 'pv' + Math.random(), bytes: out, pages: 1 }
         c = await renderCanvas(tmp, 0, { width: 520 })
         if (!dead) setPrev(c.toDataURL('image/jpeg', 0.9))
-      } catch (e) { if (!dead) setPrev(null) }
+      } catch { if (!dead) setPrev(null) }
       finally { if (tmp) forget(tmp.id); if (c) c.width = c.height = 0 }
     }, 300)
     return () => { dead = true; clearTimeout(t) }

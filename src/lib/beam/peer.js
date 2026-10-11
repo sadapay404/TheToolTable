@@ -67,7 +67,6 @@ const waitIce = (pc, ms = 3500) => new Promise((res) => {
 const safeName = (name) => String(name || 'file').replace(/[\u0000-\u001f\u007f/\\]/g, '_').slice(0, MAX_BEAM_FILENAME_CHARS) || 'file'
 const safeType = (type) => typeof type === 'string' && type.length <= 127 && /^[\w!#$&^_.+-]+\/[\w!#$&^_.+-]+$/.test(type) ? type : 'application/octet-stream'
 const safeId = (id) => typeof id === 'string' && ID_RE.test(id)
-const percent = (got, size) => size > 0 ? Math.min(100, Math.max(0, (got / size) * 100)) : 100
 
 function waitForBufferLow(dc) {
   return new Promise((resolve, reject) => {

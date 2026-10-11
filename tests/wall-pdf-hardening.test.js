@@ -13,7 +13,6 @@ import {
   MAX_PDF_BYTES, MAX_PDF_PAGES, MAX_ARCHIVE_ENTRIES,
 } from '../src/lib/pdf/engine.js'
 
-const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n))
 
 test('background design normalization bounds saved, shared and imported state to known shader-safe fields', () => {
   const malicious = {

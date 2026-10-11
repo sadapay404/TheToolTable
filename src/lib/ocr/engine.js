@@ -46,7 +46,7 @@ export function toCanvas(src, max = MAX_SCAN_SIDE, maxPixels = MAX_SCAN_PIXELS) 
   const ctx = c.getContext('2d')
   if (!ctx) { c.width = c.height = 0; throw new Error('Could not create an image canvas on this device.') }
   try { ctx.drawImage(src, 0, 0, c.width, c.height); return c }
-  catch (error) { c.width = c.height = 0; throw new Error('This image could not be decoded by the browser.') }
+  catch (error) { c.width = c.height = 0; throw new Error('This image could not be decoded by the browser.', { cause: error }) }
 }
 export function rotateCanvas(c, dir = 1) {
   if (!c || !Number.isFinite(c.width) || !Number.isFinite(c.height) || c.width < 1 || c.height < 1 || c.width * c.height > MAX_SCAN_PIXELS) throw new RangeError('This page cannot be rotated safely.')
@@ -143,7 +143,7 @@ export function applyFilter(src, { filter = 'enhance', bri = 0, con = 0 } = {}) 
   const out = document.createElement('canvas'); out.width = w; out.height = h
   const ctx = out.getContext('2d', { willReadFrequently: true })
   if (!ctx) { out.width = out.height = 0; throw new Error('Could not create a canvas to clean up this page.') }
-  try { ctx.drawImage(src, 0, 0) } catch (error) { out.width = out.height = 0; throw new Error('Could not read this page for clean-up.') }
+  try { ctx.drawImage(src, 0, 0) } catch (error) { out.width = out.height = 0; throw new Error('Could not read this page for clean-up.', { cause: error }) }
   if (filter === 'original' && !bri && !con) return out
   try {
   const im = ctx.getImageData(0, 0, w, h), d = im.data, n = w * h

@@ -24,7 +24,7 @@ const positive = (v, max = MAX_AMOUNT) => {
 const choice = (v, valid, fallback) => valid.includes(v) ? v : fallback
 const iso = (v, fallback) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : fallback
 const cleanImage = (v) => typeof v === 'string' && v.length <= MAX_INVOICE_IMAGE_DATA_CHARS && IMAGE_DATA.test(v) ? v : ''
-const cleanParty = (v, fallback) => {
+const cleanParty = (v) => {
   const p = ownRecord(v) ? v : {}
   return {
     name: text(p.name, 200), address: text(p.address, 1_200), email: text(p.email, 320),
@@ -67,7 +67,7 @@ export function normalizeInvoice(value) {
     type: choice(v.type, Object.keys(TYPES), base.type),
     number: text(v.number, 100), issue: iso(v.issue, base.issue), due: iso(v.due, base.due), ref: text(v.ref, 300),
     cur, decimals, grouping: choice(v.grouping, ['intl', 'sa'], base.grouping),
-    from: cleanParty(v.from, base.from), to: cleanParty(v.to, base.to), items,
+    from: cleanParty(v.from), to: cleanParty(v.to), items,
     discType: choice(v.discType, ['pct', 'flat'], base.discType), disc: positive(v.disc, MAX_AMOUNT),
     taxName: text(v.taxName, 100), taxRate: positive(v.taxRate, 100), taxMode: choice(v.taxMode, ['add', 'included'], base.taxMode),
     shipping: positive(v.shipping, MAX_AMOUNT), paid: positive(v.paid, MAX_AMOUNT),
@@ -96,7 +96,7 @@ export function normalizeInvoiceClients(value) {
   const rows = [], names = new Set()
   for (const row of value.slice(0, MAX_INVOICE_CLIENTS)) {
     if (!ownRecord(row)) continue
-    const party = cleanParty(row, {})
+    const party = cleanParty(row)
     const key = party.name.trim().toLocaleLowerCase()
     if (!key || names.has(key)) continue
     names.add(key)

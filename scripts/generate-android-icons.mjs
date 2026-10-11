@@ -146,7 +146,7 @@ for (const [name, legacyPx, adaptivePx] of DENSITIES) {
   console.log(`mipmap-${name}: ${written.length} files`)
 }
 
-const adaptive = (round) => `<?xml version="1.0" encoding="utf-8"?>
+const adaptive = () => `<?xml version="1.0" encoding="utf-8"?>
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
   <background android:drawable="@color/ic_launcher_background"/>
   <foreground android:drawable="@mipmap/ic_launcher_foreground"/>

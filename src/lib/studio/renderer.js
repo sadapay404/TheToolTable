@@ -272,7 +272,7 @@ export function createRenderer(canvas) {
       if (state.mip) gl.generateMipmap(gl.TEXTURE_2D)
     } catch (e) {
       state.ready = false
-      throw new Error('The GPU could not upload this media. Try a smaller image or video.')
+      throw new Error('The GPU could not upload this media. Try a smaller image or video.', { cause: e })
     }
     const glError = gl.getError()
     if (glError !== gl.NO_ERROR) {

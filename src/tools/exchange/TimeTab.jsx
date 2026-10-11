@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { COUNTRIES, BY_CC, CONTINENTS, zoneLabel, partsIn, offsetMin, zonedToUtc, fmtOffset, isDst, zoneAbbr, pad2, dateStr, dayDiff, humanDiff, isValidDateString } from '../../lib/units/world'
 import { Ico, Flag, SwapButton, Picker, SelectChip, CopyBtn, Panel, Label, Seg, SlideText, usePersist, SPRING } from './parts'
+import { useDecorativeMotion } from '../../lib/motion.js'
 
 const zoneOf = (c, z) => (z && c.zones.some((x) => x.id === z) ? z : c.zone)
 const hhmm = (p, h24) => (h24 ? `${pad2(p.h)}:${pad2(p.mi)}` : `${pad2(p.h % 12 || 12)}:${pad2(p.mi)} ${p.h >= 12 ? 'PM' : 'AM'}`)
@@ -44,10 +45,11 @@ function Clock({ p, size = 124, night }) {
 const isNight = (h) => h < 6 || h >= 19
 
 function ClockCard({ c, zone, p, ts, label }) {
+  const decorative = useDecorativeMotion()
   const night = isNight(p.h)
   return (
     <div className="flex flex-col items-center gap-2.5 text-center">
-      <motion.div animate={{ y: [0, -3, 0] }} transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }} style={{ filter: 'drop-shadow(0 10px 14px rgba(0,0,0,.22))' }}><Clock p={p} night={night} /></motion.div>
+      <motion.div animate={decorative ? { y: [0, -3, 0] } : { y: 0 }} transition={decorative ? { duration: 5, repeat: Infinity, ease: 'easeInOut' } : { duration: 0 }} style={{ filter: 'drop-shadow(0 10px 14px rgba(0,0,0,.22))' }}><Clock p={p} night={night} /></motion.div>
       <div className="flex items-center gap-1.5 text-[12px] font-bold"><Flag cc={c.cc} size={16} />{label}</div>
       <div className="flex items-center gap-1.5 text-[11px]" style={{ color: 'var(--muted)' }}>
         <motion.span key={night ? 'n' : 'd'} initial={{ rotate: -90, scale: 0 }} animate={{ rotate: 0, scale: 1 }} transition={SPRING} style={{ color: night ? '#7f8fd8' : '#d99a1c' }}><Ico n={night ? 'moon' : 'sun'} s={14} /></motion.span>
@@ -129,6 +131,7 @@ function Planner({ fz, tz, fc, tc, fp, instant }) {
 }
 
 export default function TimeTab() {
+  const decorative = useDecorativeMotion()
   const [st, setSt] = usePersist('time', { from: 'IN', fz: '', to: 'PK', tz: '', mode: 'live', date: '', h: 12, mi: 0, h24: true, extras: DEFAULT_EXTRAS })
   const [more, setMore] = useState('planner')
   const upd = (p) => setSt((s) => ({ ...s, ...p }))
@@ -183,7 +186,7 @@ export default function TimeTab() {
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-1.5 sm:gap-2">
               <TimeBox label="hour" value={h24 ? fh : fh % 12 || 12} onUp={() => setH(fh + 1)} onDown={() => setH(fh - 1)} onType={typeH} />
-              <motion.span className="display text-[34px] font-semibold" animate={{ opacity: [1, 0.25, 1] }} transition={{ duration: 1, repeat: Infinity }}>:</motion.span>
+              <motion.span className="display text-[34px] font-semibold" animate={decorative ? { opacity: [1, 0.25, 1] } : { opacity: 1 }} transition={decorative ? { duration: 1, repeat: Infinity } : { duration: 0 }}>:</motion.span>
               <TimeBox label="minute" value={fmi} onUp={() => setMi(fmi + 1)} onDown={() => setMi(fmi - 1)} onType={typeMi} />
               {!h24 && <Seg small value={fh >= 12 ? 'PM' : 'AM'} onChange={(x) => setH((fh % 12) + (x === 'PM' ? 12 : 0))} options={[['AM', 'AM'], ['PM', 'PM']]} />}
             </div>

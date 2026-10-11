@@ -4,16 +4,18 @@ import { Panel, Label, Btn, Drop, Bar, KIco, SPRING, Chips, Empty, Seg, useToast
 import { Peer, MAX_BEAM_FILE_SIZE, MAX_BEAM_CHAT_CHARS } from '../lib/beam/peer.js'
 import { beginBackgroundTransfer, createTransferNotifier } from '../lib/backgroundTransfers.js'
 import { CodeOut, CodeIn, Step } from './beam/parts.jsx'
+import { useDecorativeMotion } from '../lib/motion.js'
 
 const percent = (got, size) => size > 0 ? Math.min(100, Math.max(0, (got / size) * 100)) : 100
 
 function Choose({ onPick, mode, setMode }) {
+  const decorative = useDecorativeMotion()
   return (
     <div className="space-y-5">
       <div className="grid gap-5 sm:grid-cols-2">
         {[['host', 'Start a beam', 'Create an invitation code and send it to the other device.', 'send'], ['join', 'Join a beam', 'Paste or scan an invitation you received.', 'link']].map(([k, t, d, ic], i) => (
           <motion.button key={k} type="button" onClick={() => onPick(k)} initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ ...SPRING, delay: i * 0.08 }} whileHover={{ y: -6, rotate: i ? 0.6 : -0.6 }} whileTap={{ scale: 0.97 }} className="text-left rounded-[28px] border border-line p-7 relative overflow-hidden" style={{ background: 'var(--surface)', boxShadow: 'var(--shadow)' }}>
-            <motion.div className="absolute -right-8 -top-8 w-36 h-36 rounded-full" style={{ background: 'color-mix(in srgb, var(--copper) 12%, transparent)' }} animate={{ scale: [1, 1.2, 1] }} transition={{ repeat: Infinity, duration: 4 + i }} />
+            <motion.div className="absolute -right-8 -top-8 w-36 h-36 rounded-full" style={{ background: 'color-mix(in srgb, var(--copper) 12%, transparent)' }} animate={decorative ? { scale: [1, 1.2, 1] } : { scale: 1 }} transition={decorative ? { repeat: Infinity, duration: 4 + i } : { duration: 0 }} />
             <div className="relative w-14 h-14 rounded-2xl grid place-items-center mb-5" style={{ background: 'var(--ink)', color: 'var(--bg)' }}><KIco n={ic} s={26} /></div>
             <div className="display font-semibold text-[24px] relative">{t}</div><div className="text-[13.5px] mt-1.5 relative" style={{ color: 'var(--muted)' }}>{d}</div>
           </motion.button>))}
@@ -31,6 +33,7 @@ function Choose({ onPick, mode, setMode }) {
 }
 
 function Room({ peer, onLeave, toast }) {
+  const decorative = useDecorativeMotion()
   const [items, setItems] = useState([]), [chat, setChat] = useState([]), [msg, setMsg] = useState(''), [state, setState] = useState(peer.state), endRef = useRef(null)
   const patch = useCallback((id, p) => setItems((l) => l.map((x) => (x.id === id ? { ...x, ...p } : x))), [])
   const releaseService = useRef(null)
@@ -109,7 +112,7 @@ function Room({ peer, onLeave, toast }) {
   return (
     <div className="space-y-5">
       <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} className="rounded-[22px] p-4 flex items-center gap-4 flex-wrap" style={{ background: live ? 'color-mix(in srgb, #2F9E6B 14%, var(--surface))' : 'color-mix(in srgb, #C3423F 12%, var(--surface))', border: '1px solid var(--border)' }}>
-        <div className="relative w-4 h-4"><motion.span className="absolute inset-0 rounded-full" style={{ background: live ? '#2F9E6B' : '#C3423F' }} animate={live ? { scale: [1, 2.4], opacity: [0.6, 0] } : {}} transition={{ repeat: Infinity, duration: 1.6 }} /><span className="absolute inset-0 rounded-full" style={{ background: live ? '#2F9E6B' : '#C3423F' }} /></div>
+        <div className="relative w-4 h-4"><motion.span className="absolute inset-0 rounded-full" style={{ background: live ? '#2F9E6B' : '#C3423F' }} animate={live && decorative ? { scale: [1, 2.4], opacity: [0.6, 0] } : {}} transition={{ repeat: Infinity, duration: 1.6 }} /><span className="absolute inset-0 rounded-full" style={{ background: live ? '#2F9E6B' : '#C3423F' }} /></div>
         <div className="flex-1 min-w-0"><div className="display font-semibold text-[17px]">{live ? 'Connected — beam away' : state === 'lost' ? 'Connection lost' : 'Connection closed'}</div><div className="text-[12.5px]" style={{ color: 'var(--muted)' }}>{live ? 'Files and messages go directly to the other device.' : 'Start a new beam to reconnect.'}</div></div>
         <Btn small icon="x" danger onClick={onLeave}>{live ? 'Disconnect' : 'Start over'}</Btn>
       </motion.div>

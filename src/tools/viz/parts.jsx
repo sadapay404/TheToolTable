@@ -4,6 +4,7 @@ import { Icon, SPRING } from '../studio/controls.jsx'
 import { VizRenderer } from '../../lib/viz/render.js'
 import { Analyzer, synth, NB } from '../../lib/viz/analyzer.js'
 import { usePerf } from '../../lib/perf.js'
+import { useDecorativeMotion } from '../../lib/motion.js'
 
 export const clock = (s) => { s = Math.max(0, s || 0); return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}` }
 export const clock1 = (s) => { s = Math.max(0, s || 0); return `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, '0')}` }
@@ -197,13 +198,14 @@ export function WaveScrubber({ peaks, loading, time, dur, range, onSeek, onRange
 
 /* ------------------------------------------------ hero art for the drop zone ------------------------------------------------ */
 export function HeroBars({ loading }) {
+  const decorative = useDecorativeMotion()
   const n = 28
   return (
     <div className="flex items-end justify-center gap-[5px] h-16 mb-4">
       {Array.from({ length: n }, (_, i) => {
         const base = 0.25 + 0.75 * Math.abs(Math.sin(i * 0.55) * Math.cos(i * 0.21))
         return <motion.span key={i} className="w-[5px] rounded-full origin-bottom" style={{ background: 'var(--copper)', height: '100%', opacity: 0.35 + 0.65 * (1 - Math.abs(i - n / 2) / (n / 2)) }}
-          initial={{ scaleY: 0.05 }} animate={{ scaleY: [base * 0.3, base, base * 0.45, base * 0.9, base * 0.3] }} transition={{ duration: loading ? 0.7 : 2.4 + (i % 5) * 0.25, repeat: Infinity, ease: 'easeInOut', delay: i * 0.05 }} />
+          initial={{ scaleY: 0.05 }} animate={decorative ? { scaleY: [base * 0.3, base, base * 0.45, base * 0.9, base * 0.3] } : { scaleY: base }} transition={decorative ? { duration: loading ? 0.7 : 2.4 + (i % 5) * 0.25, repeat: Infinity, ease: 'easeInOut', delay: i * 0.05 } : { duration: 0.4 }} />
       })}
     </div>
   )

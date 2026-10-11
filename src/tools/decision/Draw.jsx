@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Panel, Label, Seg, Stage, PrimaryBtn, Burst, Switch, Stepper, DIco, usePersist, useLog, useSafeTimeout, shuffle, sfx, SPRING } from './parts.jsx'
+import { useDecorativeMotion } from '../../lib/motion.js'
 
 const TEAM_COLORS = ['#B4715A', '#2F7FA6', '#7C6CD6', '#3EA6A0', '#E0A458', '#C3423F', '#59B6EC', '#B86BD1']
 const SAMPLE = 'Ayesha\nBilal\nCarla\nDaniyal\nEmre\nFatima\nGulzar\nHamza\nIrfan\nJunaid'
@@ -19,6 +20,7 @@ function Card({ name, i, color, num }) {
 }
 
 export default function Draw() {
+  const decorative = useDecorativeMotion()
   const log = useLog()
   const schedule = useSafeTimeout()
   const [o, setO] = usePersist('draw', { text: SAMPLE, mode: 'pick', count: 1, teams: 2, remove: false })
@@ -65,7 +67,7 @@ export default function Draw() {
                 </motion.div>
               ) : !res ? (
                 <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="text-center">
-                  <motion.div animate={{ y: [0, -6, 0] }} transition={{ duration: 3, repeat: Infinity }} className="mx-auto w-16 h-16 rounded-2xl grid place-items-center mb-4" style={{ background: 'var(--surface2)', color: 'var(--copper)' }}><DIco n="users" s={30} /></motion.div>
+                  <motion.div animate={decorative ? { y: [0, -6, 0] } : { y: 0 }} transition={decorative ? { duration: 3, repeat: Infinity } : { duration: 0 }} className="mx-auto w-16 h-16 rounded-2xl grid place-items-center mb-4" style={{ background: 'var(--surface2)', color: 'var(--copper)' }}><DIco n="users" s={30} /></motion.div>
                   <div className="display font-semibold text-[22px]">{names.length} names ready</div>
                   <div className="text-[13px] mt-1" style={{ color: 'var(--muted)' }}>Choose what to do, then press the button.</div>
                 </motion.div>

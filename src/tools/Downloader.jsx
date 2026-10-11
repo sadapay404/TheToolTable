@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { AnimatedNumber, LiveProgress, Note } from '../components/ui.jsx'
 import RangeTrack, { TimeField, clock } from '../components/RangeTrack.jsx'
 import { fmtBytes, recentAction } from '../lib/utils.js'
+import { useDecorativeMotion } from '../lib/motion.js'
 import { engine, getBase, isAndroidPlatform, isAndroidTauri, setBase as persistEngineBase } from '../lib/engine.js'
 import { isPlaylistUrl } from '../lib/ytdlp-core.js'
 import { beginBackgroundTransfer, createTransferNotifier } from '../lib/backgroundTransfers.js'
@@ -50,11 +51,12 @@ const Card = ({ children, delay = 0, className = '' }) => (
 /* ---------------------------------- engine status ---------------------------------- */
 
 function EnginePill({ engine: st, onRetry }) {
+  const decorative = useDecorativeMotion()
   const on = st.status === 'online'
   return (
     <button onClick={onRetry} className="flex items-center gap-2.5 rounded-full border border-line px-3.5 py-1.5 text-[11.5px] font-semibold" style={{ background: 'var(--surface)' }} title="Re-check engine">
       <span className="relative flex w-2.5 h-2.5">
-        {st.status !== 'offline' && <motion.span className="absolute inset-0 rounded-full" style={{ background: on ? 'var(--success)' : 'var(--copper)' }} animate={{ scale: [1, 2.3], opacity: [0.5, 0] }} transition={{ repeat: Infinity, duration: 1.8, ease: 'easeOut' }} />}
+        {st.status !== 'offline' && <motion.span className="absolute inset-0 rounded-full" style={{ background: on ? 'var(--success)' : 'var(--copper)' }} animate={decorative ? { scale: [1, 2.3], opacity: [0.5, 0] } : { scale: 1, opacity: 0 }} transition={decorative ? { repeat: Infinity, duration: 1.8, ease: 'easeOut' } : { duration: 0 }} />}
         <span className="relative w-2.5 h-2.5 rounded-full" style={{ background: on ? 'var(--success)' : st.status === 'offline' ? 'var(--error)' : 'var(--copper)' }} />
       </span>
       {on ? (
@@ -65,6 +67,7 @@ function EnginePill({ engine: st, onRetry }) {
 }
 
 function OfflineCard({ onRetry }) {
+  const decorative = useDecorativeMotion()
   const [baseDraft, setBaseDraft] = useState(getBase())
   const [copied, setCopied] = useState('')
   const cmds = ['npm run setup:engine', 'npm run engine']
@@ -80,7 +83,7 @@ function OfflineCard({ onRetry }) {
     <Card>
       <div className="flex flex-col sm:flex-row items-start gap-3 sm:gap-4">
         <motion.div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl grid place-items-center shrink-0" style={{ background: 'color-mix(in srgb, var(--error) 12%, transparent)', color: 'var(--error)' }}
-          animate={{ rotate: [0, -6, 6, 0] }} transition={{ repeat: Infinity, duration: 3.5, ease: 'easeInOut' }}>
+          animate={decorative ? { rotate: [0, -6, 6, 0] } : { rotate: 0 }} transition={decorative ? { repeat: Infinity, duration: 3.5, ease: 'easeInOut' } : { duration: 0 }}>
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M12 2v6m0 8v6M4.9 4.9l4.2 4.2m5.8 5.8 4.2 4.2M2 12h6m8 0h6M4.9 19.1l4.2-4.2m5.8-5.8 4.2-4.2" /></svg>
         </motion.div>
         <div className="flex-1 min-w-0">

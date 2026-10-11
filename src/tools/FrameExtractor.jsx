@@ -6,6 +6,7 @@ import Timeline from './frames/Timeline.jsx'
 import { SnapshotPanel, TrimPanel, GifPanel, Chip } from './frames/Panels.jsx'
 import { clock } from '../components/RangeTrack.jsx'
 import { fmtBytes, fmtTime, download, baseName, extName, recentAction, clamp } from '../lib/utils.js'
+import { useDecorativeMotion } from '../lib/motion.js'
 import { clipMediaFile } from '../lib/media-clip.js'
 import { tc, isVideoFile, fixDuration, detectFps, grabFrame, filmstrip, encodeGif, frameSeries } from '../lib/frames.js'
 
@@ -599,11 +600,12 @@ export default function FrameExtractor() {
 
 /* ----------------------------------- empty-state hero ----------------------------------- */
 function Hero() {
+  const decorative = useDecorativeMotion()
   const frames = ['#E0935F', '#D9A66E', '#C98A5C', '#B4715A', '#A9654F', '#8F5A52']
   return (
     <div className="py-8">
       <div className="mx-auto w-[360px] max-w-full h-[150px] relative" style={{ perspective: 600 }}>
-        <motion.div className="absolute inset-0 flex items-center gap-2 px-3 rounded-2xl overflow-hidden" initial={{ rotateX: 18 }} animate={{ rotateX: [18, 10, 18] }} transition={{ repeat: Infinity, duration: 5, ease: 'easeInOut' }}
+        <motion.div className="absolute inset-0 flex items-center gap-2 px-3 rounded-2xl overflow-hidden" initial={{ rotateX: 18 }} animate={decorative ? { rotateX: [18, 10, 18] } : { rotateX: 18 }} transition={decorative ? { repeat: Infinity, duration: 5, ease: 'easeInOut' } : { duration: 0 }}
           style={{ background: 'var(--ink)', boxShadow: '0 28px 40px -22px rgba(26,24,23,.65)' }}>
           {[0, 1].map((r) => (
             <div key={r} className="absolute inset-x-0 flex justify-around px-2" style={{ [r ? 'bottom' : 'top']: 5 }}>
@@ -612,10 +614,10 @@ function Hero() {
           ))}
           {frames.map((c, i) => (
             <motion.div key={i} className="flex-1 h-[96px] rounded-md relative overflow-hidden" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ ...SPRING, delay: 0.1 + i * 0.07 }} style={{ background: `linear-gradient(160deg, ${c}, #3a2a24)` }}>
-              <motion.span className="absolute w-4 h-4 rounded-full bg-white/80" animate={{ left: [`${10 + i * 6}%`, `${48 - i * 4}%`, `${10 + i * 6}%`], top: ['58%', '28%', '58%'] }} transition={{ repeat: Infinity, duration: 3.2, delay: i * 0.12, ease: 'easeInOut' }} />
+              <motion.span className="absolute w-4 h-4 rounded-full bg-white/80" animate={decorative ? { left: [`${10 + i * 6}%`, `${48 - i * 4}%`, `${10 + i * 6}%`], top: ['58%', '28%', '58%'] } : { left: `${10 + i * 6}%`, top: '58%' }} transition={decorative ? { repeat: Infinity, duration: 3.2, delay: i * 0.12, ease: 'easeInOut' } : { duration: 0 }} />
             </motion.div>
           ))}
-          <motion.div className="absolute inset-y-0 w-[3px]" animate={{ left: ['4%', '96%', '4%'] }} transition={{ repeat: Infinity, duration: 4.4, ease: 'easeInOut' }} style={{ background: '#fff', boxShadow: '0 0 14px 3px var(--copper)' }} />
+          <motion.div className="absolute inset-y-0 w-[3px]" animate={decorative ? { left: ['4%', '96%', '4%'] } : { left: '4%' }} transition={decorative ? { repeat: Infinity, duration: 4.4, ease: 'easeInOut' } : { duration: 0 }} style={{ background: '#fff', boxShadow: '0 0 14px 3px var(--copper)' }} />
         </motion.div>
       </div>
       <div className="display font-semibold text-[22px] text-center mt-6">Drop a video to open the frame studio</div>

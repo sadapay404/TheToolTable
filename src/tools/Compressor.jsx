@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Dropzone, Note, AnimatedNumber, LiveProgress } from '../components/ui.jsx'
 import { buildCompressionPlan, encodeToTargetSize, mediaKind } from '../lib/compressor.js'
 import { fmtBytes, fmtTime, download, baseName, recentAction, clamp } from '../lib/utils.js'
+import { useDecorativeMotion } from '../lib/motion.js'
 
 const SPRING = { type: 'spring', stiffness: 300, damping: 25 }
 const MIN_MB = 1, MAX_MB = 200
@@ -134,6 +135,7 @@ function probeMediaFile(file, kind) {
 }
 
 export default function Compressor() {
+  const decorative = useDecorativeMotion()
   const [file, setFile] = useState(null)
   const [kind, setKind] = useState(null)
   const [duration, setDuration] = useState(NaN)
@@ -258,7 +260,7 @@ export default function Compressor() {
               <motion.span
                 className="w-11 h-11 rounded-xl grid place-items-center shrink-0"
                 style={{ background: 'color-mix(in srgb, var(--copper) 14%, transparent)', color: 'var(--copper)' }}
-                animate={{ rotate: [0, -8, 8, 0] }} transition={{ repeat: Infinity, duration: 4, ease: 'easeInOut' }}
+                animate={decorative ? { rotate: [0, -8, 8, 0] } : { rotate: 0 }} transition={decorative ? { repeat: Infinity, duration: 4, ease: 'easeInOut' } : { duration: 0 }}
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M4 9h16M4 15h16M9 4v16M15 4v16" opacity=".55" /><path d="M4 4h16v16H4z" /></svg>
               </motion.span>

@@ -9,10 +9,13 @@ A personal multi-tool studio with 20 browser-first utilities. Most file processi
 > WorkManager/download-plugin startup. Do **not** install an APK from an old
 > release, and do not treat GitHub's former `latest` URL as a safe download.
 >
-> The corrective **v1.2.2** candidate is intentionally not published yet. It
-> will be listed on the [Releases page](https://github.com/sadapay404/TheToolTable/releases)
-> only after its signed APK passes the strengthened artefact checks and an
-> install/run validation that remains alive after plugin initialization.
+> **v1.3.0** is the current published release. It is the web app and does
+> **not** include an Android APK, because the Android build has not yet passed
+> its device check. The corrective Android **v1.2.2** candidate is still
+> unpublished; it will be listed on the
+> [Releases page](https://github.com/sadapay404/TheToolTable/releases) only
+> after its signed APK passes the artefact checks and an install/run validation
+> that remains alive after plugin initialization.
 
 The repository is private, so future downloads require an account with access.
 When a corrected Android release is published, if it conflicts with an older

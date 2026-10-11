@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { COUNTRIES, BY_CC, CONTINENTS, zoneLabel, partsIn, offsetMin, zonedToUtc, fmtOffset, isDst, zoneAbbr, pad2, dateStr, dayDiff, humanDiff, isValidDateString } from '../../lib/units/world'
+import { COUNTRIES, BY_CC, CONTINENTS, partsIn, offsetMin, zonedToUtc, fmtOffset, isDst, zoneAbbr, pad2, dateStr, dayDiff, humanDiff, isValidDateString } from '../../lib/units/world'
 import { Ico, Flag, SwapButton, Picker, SelectChip, CopyBtn, Panel, Label, Seg, SlideText, usePersist, SPRING } from './parts'
 import { useDecorativeMotion } from '../../lib/motion.js'
 

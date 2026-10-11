@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 export { SPRING, Panel, Label, Seg, CountText, Chips, CopyBtn } from '../exchange/parts.jsx'
 export { Switch, Range, Stepper, PrimaryBtn, Burst } from '../decision/parts.jsx'

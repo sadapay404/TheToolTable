@@ -2,7 +2,6 @@ import React, { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Slider, HueWheel, Histogram, Icon, SPRING } from './controls.jsx'
 import { AnimatedNumber } from '../../components/ui.jsx'
-import { fitAspect } from './CropOverlay.jsx'
 import { DEFAULTS, HSL_CHANNELS, PRESETS, PRESET_CATS, ASPECTS, SECTION_KEYS } from '../../lib/studio/params.js'
 import { fmtBytes } from '../../lib/utils.js'
 

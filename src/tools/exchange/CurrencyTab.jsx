@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { loadRates, refreshAll, buildItems, convertMoney, fmtMoney, fiatSymbol, fiatCountries, ago, FAVOURITES, PAIRS, SNAPSHOT_DATE } from '../../lib/units/money'
 import { Ico, ItemIcon, Spark, SwapButton, Picker, SelectChip, CopyBtn, Panel, Label, Seg, CountText, WordsPanel, usePersist, SPRING } from './parts'

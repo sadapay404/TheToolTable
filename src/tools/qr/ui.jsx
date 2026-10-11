@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect, useCallback } from 'react'
+import { useRef, useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 export { SPRING, Panel, Label, Seg, CountText } from '../exchange/parts.jsx'
 import { SPRING } from '../exchange/parts.jsx'

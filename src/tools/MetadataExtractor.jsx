@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import exifr from 'exifr'
 import { jsPDF } from 'jspdf'
 import { Dropzone, Note } from '../components/ui.jsx'

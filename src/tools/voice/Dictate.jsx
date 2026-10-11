@@ -1,6 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Panel, Label, Btn, Chips, KIco, SPRING, save, Empty, Switch } from '../kit/ui.jsx'
+import { Panel, Label, Btn, Chips, KIco, save, Empty, Switch } from '../kit/ui.jsx'
 
 const L = [['en-US', 'English (US)'], ['en-GB', 'English (UK)'], ['en-IN', 'English (India)'], ['ur-PK', 'Urdu · اردو'], ['hi-IN', 'Hindi'], ['ar-SA', 'Arabic'], ['fr-FR', 'French'], ['de-DE', 'German'], ['es-ES', 'Spanish'], ['tr-TR', 'Turkish']]
 export default function Dictate({ toast }) {

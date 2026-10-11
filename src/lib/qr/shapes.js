@@ -1,4 +1,3 @@
-import { Path } from './paths.js'
 
 export const DOT_SHAPES = [
   ['square', 'Square'], ['liquid', 'Liquid'], ['soft', 'Soft'], ['dots', 'Dots'], ['diamond', 'Diamond'], ['star', 'Sparkle'],

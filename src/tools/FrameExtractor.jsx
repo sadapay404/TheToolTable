@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Dropzone, AnimatedNumber } from '../components/ui.jsx'
 import { Icon } from './studio/controls.jsx'

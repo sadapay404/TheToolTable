@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Panel, Label, Btn, Drop, Chips, Range, Switch, Field, KIco, SPRING, Dock, Swap, Seg, useToast, usePref, save, fmtSize, Stat2 } from './kit/ui.jsx'
+import { Panel, Label, Btn, Drop, Chips, Range, Switch, Field, KIco, SPRING, Dock, Swap, Seg, useToast, usePref, save, fmtSize } from './kit/ui.jsx'
 import { DEFAULTS, SHAPES, FONTS, PRESETS, PACKS, normalizeIconOptions, drawIcon, buildPack, zipOf } from '../lib/icons/forge.js'
 
 function Ic({ size, o, img, variant, css, px, className = '', style }) {

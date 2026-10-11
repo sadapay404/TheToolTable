@@ -1,5 +1,5 @@
 import { perf, usePerf } from '../lib/perf.js'
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import fixWebm from 'fix-webm-duration'
 import { Dropzone, AnimatedNumber } from '../components/ui.jsx'

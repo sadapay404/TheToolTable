@@ -1,7 +1,5 @@
-import React from 'react'
 import { motion } from 'framer-motion'
 import { TOOLS } from '../toolsRegistry.jsx'
-import { Logo } from './Logo.jsx'
 import MobileFooter from './MobileFooter.jsx'
 import { useScroll, useTransform } from 'framer-motion'
 import { AMBIENT_STATIC } from '../lib/motion.js'

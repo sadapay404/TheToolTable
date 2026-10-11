@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Panel, Label, Chips, Btn, Field, KIco, SPRING, Switch, Empty } from '../kit/ui.jsx'
 import { TYPES, CURRENCIES, num, totals, money } from '../../lib/invoice/calc.js'

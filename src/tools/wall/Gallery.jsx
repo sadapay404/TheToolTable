@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { GALLERY, MOODS } from '../../lib/wall/presets.js'
 import { fromGallery } from '../../lib/wall/design.js'

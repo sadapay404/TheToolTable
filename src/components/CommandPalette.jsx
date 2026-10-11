@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { TOOLS } from '../toolsRegistry.jsx'
 import { THEMES, THEME_ORDER } from '../themes.js'

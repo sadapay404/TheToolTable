@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { Panel, Label, Seg, Btn, Range, Field, Bar, Empty } from '../kit/ui.jsx'
 import { DocSelect, Thumb } from './shared.jsx'
 import { parseRanges, rangeToIdx, renderCanvas, zipFiles, MAX_ARCHIVE_ENTRIES, MAX_PDF_BATCH_PIXELS } from '../../lib/pdf/engine.js'

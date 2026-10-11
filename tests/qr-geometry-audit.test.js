@@ -8,7 +8,7 @@
  */
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { makeMatrix, buildQR, withDefaults, effectiveEcc, heuristics, contrast } from '../src/lib/qr/render.js'
+import { makeMatrix, buildQR, withDefaults, heuristics } from '../src/lib/qr/render.js'
 import { DEFAULT_STYLE } from '../src/lib/qr/render.js'
 
 const LEVELS = ['L', 'M', 'Q', 'H']

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Ico, SPRING } from './exchange/parts.jsx'
 import CurrencyTab from './exchange/CurrencyTab.jsx'

@@ -1,6 +1,6 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Panel, Label, Seg, Stage, PrimaryBtn, Burst, Switch, Stepper, ChipRow, DIco, usePersist, useLog, useSafeTimeout, rnd, rndf, sfx, SPRING } from './parts.jsx'
+import { Panel, Label, Seg, Stage, PrimaryBtn, Burst, Switch, Stepper, usePersist, useLog, useSafeTimeout, rnd, rndf, sfx, SPRING } from './parts.jsx'
 
 const TRUTHS = ['What is your most embarrassing moment?', 'What is a secret talent you have?', 'Who was your first celebrity crush?', 'What is the last lie you told?', 'What is your biggest fear?', 'Which habit of yours annoys others most?', 'What is the best gift you ever received?', 'What would you do with a million dollars?', 'What is the weirdest food you have eaten?', 'Who here would you swap lives with for a day?']
 const DARES = ['Do your best impression of someone here.', 'Sing the chorus of any song.', 'Speak in a funny accent for 3 rounds.', 'Do 10 jumping jacks.', 'Let the group pick a contact and text them “hello”.', 'Tell a joke — you must make someone laugh.', 'Balance a spoon on your nose for 10 seconds.', 'Dance with no music for 20 seconds.', 'Say the alphabet backwards.', 'Walk like a runway model across the room.']

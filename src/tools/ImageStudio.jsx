@@ -1,5 +1,5 @@
 import { perf, usePerf } from '../lib/perf.js'
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence, useMotionValue, useSpring, useReducedMotion } from 'framer-motion'
 import { Dropzone, AnimatedNumber } from '../components/ui.jsx'
 import { Icon, SPRING, computeHistogram } from './studio/controls.jsx'

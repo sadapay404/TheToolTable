@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence, animate, useMotionValue } from 'framer-motion'
 import { Panel, Label, Seg, Stage, PrimaryBtn, Burst, ChipRow, Switch, DIco, usePersist, useLog, useSafeTimeout, rnd, rndf, weighted, sfx, SPRING } from './parts.jsx'
 

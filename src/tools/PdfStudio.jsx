@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Drop, Dock, Swap, KIco, Btn, SPRING, fmtSize, useToast, uid } from './kit/ui.jsx'
+import { Drop, Dock, Swap, KIco, SPRING, fmtSize, useToast, uid } from './kit/ui.jsx'
 import { ResultBar } from './pdf/shared.jsx'
 import { loadDoc, fromBytes, forget, MAX_PDF_BYTES, MAX_PDF_DOCS, MAX_WORKSPACE_PDF_BYTES, MAX_PDF_PAGES } from '../lib/pdf/engine.js'
 import { recentAction } from '../lib/utils.js'

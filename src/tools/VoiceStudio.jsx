@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Dock, Swap, useToast } from './kit/ui.jsx'
 import { decodeFile, voiceMediaKind } from '../lib/voice/audio.js'
 import { stopWhisper } from '../lib/voice/whisper.js'

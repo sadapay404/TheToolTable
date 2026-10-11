@@ -1,9 +1,9 @@
-import React, { useRef, useState } from 'react'
+import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { SIZE_GROUPS } from '../../lib/wall/sizes.js'
-import { DEFAULT_FX, DEFAULT_TEXT } from '../../lib/wall/design.js'
+import { DEFAULT_FX } from '../../lib/wall/design.js'
 import { FONTS } from '../../lib/wall/textlayer.js'
-import { Ico, Slider, Toggle, Chips, Btn, Seg, Label, ColorDot, SPRING, useWall } from './ui.jsx'
+import { Slider, Toggle, Chips, Btn, Seg, ColorDot, SPRING, useWall } from './ui.jsx'
 
 const pct = (v) => Math.round(v * 100) + '%'
 export function FinishPanel() {

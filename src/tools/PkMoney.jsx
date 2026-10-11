@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Panel, Label, Chips, Seg, Btn, Dock, Swap, KIco, SPRING, usePref, save, Switch, Range } from './kit/ui.jsx'
+import { Panel, Label, Chips, Seg, Btn, Dock, Swap, SPRING, usePref, save, Range } from './kit/ui.jsx'
 import { TOLA, MASHA, RATTI, OZ, NISAB, NISAB_G, PRICES, TAX_TABLES, incomeTax, grossForNet, loan, profit, pk, rs, short, csv } from '../lib/pk/calc.js'
 import { Money, Num, Big, Donut, Spark, Note } from './pk/parts.jsx'
 

@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { download, recentAction } from '../../lib/utils.js'
 import { exportImage, exportPack, recordLoop, videoTypes, liveHTML, outSize, MAX_SIDE, MAX_CANVAS_PIXELS, MAX_VIDEO_SIDE, MAX_VIDEO_PIXELS } from '../../lib/wall/exporters.js'

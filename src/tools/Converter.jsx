@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Dropzone, Progress, Note } from '../components/ui.jsx'
 import { convertFile, GROUPS, KIND_TARGETS, kindOf, KIND_LABEL } from '../lib/engines.js'

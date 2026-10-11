@@ -1,6 +1,6 @@
-import React, { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { QIco, Tabs, SPRING } from './qr/ui.jsx'
+import { Tabs } from './qr/ui.jsx'
 import { QRCtx, useStore } from './qr/store.js'
 import { DEFAULT_STYLE, withDefaults, lightStyle } from './../lib/qr/render.js'
 import { buildPayload, defaultsFor, typeById } from './../lib/qr/payloads.js'

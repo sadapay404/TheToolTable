@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { CARD_SPRING } from '../../lib/motion.js'
 import { clamp } from '../../lib/utils.js'

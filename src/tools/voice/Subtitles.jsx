@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Panel, Label, Seg, Btn, Drop, Range, Field, Bar, KIco, SPRING, Empty, save, baseName, usePref } from '../kit/ui.jsx'
 import { fmtTime, parseTime, toSrt, toVtt, toTxt, parseSubs, newId, MAX_SUBTITLE_SECONDS, MAX_SUBTITLE_FILE_CHARS } from '../../lib/voice/subs.js'

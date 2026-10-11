@@ -2,7 +2,7 @@ import Footer from './components/Footer.jsx'
 import React, { Suspense, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import ReactDOM from 'react-dom'
 import { exit, onBackButtonPress } from '@tauri-apps/api/app'
-import { AnimatePresence, MotionConfig, motion, useMotionValue, useReducedMotion, useScroll, useSpring, useTransform } from 'framer-motion'
+import { AnimatePresence, MotionConfig, motion, useReducedMotion, useScroll, useSpring, useTransform } from 'framer-motion'
 import { usePerf, setPerfMode, runBenchmark } from './lib/perf.js'
 import { TOOLS } from './toolsRegistry.jsx'
 import { THEME_CHOICES, SYSTEM_THEME, applyTheme, savedTheme, themeLabel, themeIsDark, themeVars as themeVarsOf, watchSystemTheme } from './themes.js'
@@ -20,7 +20,6 @@ import { cancelTransfer } from './lib/transfers.js'
 import { Logo } from './components/Logo.jsx'
 import ToolCard from './components/ToolCard.jsx'
 import ToolActions from './components/ToolActions.jsx'
-import { ToolIcon } from './components/ToolIcon.jsx'
 
 const SPRING = { type: 'spring', stiffness: 300, damping: 25 }
 

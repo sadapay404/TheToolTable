@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Slider, Icon, SPRING } from '../studio/controls.jsx'
 import { GRADIENTS, SWATCHES, fitSize } from '../../lib/bg/compose.js'

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import {
   TRANSFER_STATUS, useTransfers, formatBytes, clearFinishedTransfers, cancelTransfer, activeTransferCount,

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { isTauri } from '@tauri-apps/api/core'
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import { Icon } from '../studio/controls.jsx'

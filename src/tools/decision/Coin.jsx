@@ -1,6 +1,6 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Panel, Label, Seg, Stage, Stepper, PrimaryBtn, Burst, ChipRow, DIco, usePersist, useLog, useSafeTimeout, rnd, sfx, SPRING, CountText } from './parts.jsx'
+import { Panel, Label, Seg, Stage, Stepper, PrimaryBtn, Burst, ChipRow, usePersist, useLog, useSafeTimeout, rnd, sfx, SPRING, CountText } from './parts.jsx'
 
 const METALS = {
   gold: { name: 'Gold', a: '#FFE9B8', b: '#E8B84B', c: '#B8860B', rim: '#9a7010', ink: '#5a4208' },

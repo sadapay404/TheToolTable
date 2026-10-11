@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { clock } from '../../components/RangeTrack.jsx'
 import { clamp } from '../../lib/utils.js'

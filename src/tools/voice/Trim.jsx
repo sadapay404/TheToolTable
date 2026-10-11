@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Panel, Label, Btn, Drop, Range, Switch, KIco, SPRING, save, baseName, Stat2 } from '../kit/ui.jsx'
+import { Panel, Label, Btn, Drop, Range, Switch, KIco, save, baseName, Stat2 } from '../kit/ui.jsx'
 import { mono, peaks, encodeWav } from '../../lib/voice/audio.js'
 import { fmtTime } from '../../lib/voice/subs.js'
 

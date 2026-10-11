@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Panel, Label, Seg, Btn, Range, Field, Switch, Empty, Bar, KIco, SPRING, usePref } from '../kit/ui.jsx'
+import { Panel, Label, Seg, Btn, Range, Field, Switch, Empty, KIco, usePref } from '../kit/ui.jsx'
 import { DocSelect } from './shared.jsx'
 import { applyMarks, extractPages, renderCanvas, parseRanges, rangeToIdx, forget, normalizeMarkOptions, MAX_IMAGE_BYTES } from '../../lib/pdf/engine.js'
 

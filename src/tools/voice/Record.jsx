@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Panel, Label, Btn, KIco, SPRING, save, Switch, fmtSize } from '../kit/ui.jsx'
 import { decodeFile, encodeWav } from '../../lib/voice/audio.js'

@@ -1,4 +1,3 @@
-import React, { useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Icon, Slider, SPRING } from '../studio/controls.jsx'
 import { AnimatedNumber } from '../../components/ui.jsx'

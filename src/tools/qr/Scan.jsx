@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { QIco, Btn, Panel, Label, Seg, Switch, Drop, SPRING, useToast, CountText } from './ui.jsx'
+import { QIco, Btn, Panel, Label, Seg, Switch, Drop, useToast, CountText } from './ui.jsx'
 import { useQR, useStore, uid } from './store.js'
 import { decodeSource } from '../../lib/qr/zx.js'
 import { parse } from '../../lib/qr/parse.js'

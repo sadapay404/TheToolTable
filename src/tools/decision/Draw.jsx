@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Panel, Label, Seg, Stage, PrimaryBtn, Burst, Switch, Stepper, DIco, usePersist, useLog, useSafeTimeout, shuffle, sfx, SPRING } from './parts.jsx'
 import { useDecorativeMotion } from '../../lib/motion.js'

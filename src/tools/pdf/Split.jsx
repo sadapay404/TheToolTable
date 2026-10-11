@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Panel, Label, Seg, Btn, Range, Field, Bar, Empty, CountText } from '../kit/ui.jsx'
 import { DocSelect } from './shared.jsx'

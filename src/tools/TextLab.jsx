@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Panel, Label, Chips, Seg, Btn, Dock, Swap, KIco, SPRING, usePref, useToast, save, Switch, Field, Empty, CountText } from './kit/ui.jsx'
+import { Panel, Label, Chips, Seg, Btn, Dock, Swap, SPRING, usePref, useToast, save, Switch, Field, Empty, CountText } from './kit/ui.jsx'
 import { stats, fleschLabel, CASES, CLEAN, EXTRACT, ENCODE, findRe, diff, romanToUrdu, urduToRoman } from '../lib/text/ops.js'
 
 const TABS = [['write', 'Write & count', 'text'], ['tools', 'Transform', 'wand'], ['find', 'Find & replace', 'search'], ['diff', 'Compare', 'layers'], ['urdu', 'Urdu · Roman', 'lang']]

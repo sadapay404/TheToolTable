@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { CATEGORIES, CAT, convertUnit, fmtNum, parseUnitValue, isUnitNumberDraft } from '../../lib/units/units'
 import { Ico, SwapButton, Picker, SelectChip, CopyBtn, Panel, Label, Seg, CountText, WordsPanel, usePersist, SPRING } from './parts'

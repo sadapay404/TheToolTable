@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Btn, KIco, SPRING, Label } from '../kit/ui.jsx'
 import { makeMatrix } from '../../lib/qr/render.js'

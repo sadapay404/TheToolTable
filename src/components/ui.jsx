@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence, useMotionValue, useReducedMotion, useSpring, useMotionValueEvent } from 'framer-motion'
 import { ToolIcon } from './ToolIcon.jsx'
 import { useRipple } from '../lib/ripple.js'

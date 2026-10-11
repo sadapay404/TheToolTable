@@ -1,4 +1,3 @@
-import React from 'react'
 import { motion, useReducedMotion, AnimatePresence } from 'framer-motion'
 import { ToolIcon } from './ToolIcon.jsx'
 import { useRipple } from '../lib/ripple.js'

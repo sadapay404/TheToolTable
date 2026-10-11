@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Panel, Label, Seg, Btn, Drop, Bar, KIco, SPRING, Switch, fmtSize, usePref } from '../kit/ui.jsx'
 import { MODELS, WLANGS, transcribe } from '../../lib/voice/whisper.js'

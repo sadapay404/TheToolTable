@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { KIco, Btn, SPRING, fmtSize, save } from '../kit/ui.jsx'
 import { thumb } from '../../lib/pdf/engine.js'

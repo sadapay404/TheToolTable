@@ -1,11 +1,11 @@
 import { perf } from '../../lib/perf.js'
-import React, { forwardRef, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { forwardRef, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import { WallRenderer, probe } from '../../lib/wall/renderer.js'
 import { drawText, ensureFonts } from '../../lib/wall/textlayer.js'
 import { textColorFor } from '../../lib/wall/design.js'
 import { contrast } from '../../lib/wall/color.js'
-import { Ico, Seg, SPRING, useWall } from './ui.jsx'
+import { Ico, Seg, useWall } from './ui.jsx'
 
 const MODES = [['flat', 'Flat'], ['phone', 'Phone'], ['desktop', 'Desktop'], ['call', 'Call'], ['web', 'Web']]
 const ASPECT = { phone: 9 / 19.5, desktop: 16 / 10, call: 16 / 9, web: 16 / 10 }

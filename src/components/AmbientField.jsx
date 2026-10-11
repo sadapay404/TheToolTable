@@ -1,4 +1,3 @@
-import React from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import { AMBIENT_STATIC, EASE, DURATION, t, spinLoop, breatheLoop } from '../lib/motion.js'
 

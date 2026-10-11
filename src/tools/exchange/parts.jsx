@@ -1,9 +1,8 @@
-import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence, animate } from 'framer-motion'
 import { numberWords } from '../../lib/units/words'
-import { CARD_SPRING, SPRING as MSPRING, EASE, DURATION, t } from '../../lib/motion.js'
-import { ToolIcon } from '../../components/ToolIcon.jsx'
+import { CARD_SPRING, SPRING as MSPRING } from '../../lib/motion.js'
 
 export const SPRING = CARD_SPRING
 

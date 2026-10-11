@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useRef } from 'react'
+import { createContext, useContext, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 export { SPRING, Panel, Label, Seg } from '../exchange/parts.jsx'
 import { SPRING } from '../exchange/parts.jsx'

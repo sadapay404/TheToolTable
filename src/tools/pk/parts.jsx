@@ -1,4 +1,3 @@
-import React from 'react'
 import { motion } from 'framer-motion'
 import { CountText, SPRING } from '../kit/ui.jsx'
 import { pk, short, parseNum } from '../../lib/pk/calc.js'

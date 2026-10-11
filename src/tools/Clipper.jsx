@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Dropzone, Note, AnimatedNumber, LiveProgress } from '../components/ui.jsx'
 import RangeTrack, { TimeField, clock } from '../components/RangeTrack.jsx'

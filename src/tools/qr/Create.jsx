@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence, useMotionValue, useSpring, useTransform } from 'framer-motion'
 import { QIco, Tabs, Btn, Panel, SPRING, useToast } from './ui.jsx'
 import { useQR, useStore, uid } from './store.js'

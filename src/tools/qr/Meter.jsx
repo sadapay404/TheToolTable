@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { QIco, SPRING, CountText } from './ui.jsx'
 import { toCanvas, heuristics } from '../../lib/qr/render.js'

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ToolIcon } from './ToolIcon.jsx'
 import { EASE, DURATION, t, stagger, riseIn } from '../lib/motion.js'

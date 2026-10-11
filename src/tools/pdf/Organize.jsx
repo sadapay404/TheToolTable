@@ -1,8 +1,8 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Panel, Label, Btn, KIco, SPRING, Empty, Bar } from '../kit/ui.jsx'
+import { Panel, Btn, KIco, SPRING, Empty, Bar } from '../kit/ui.jsx'
 import { Thumb } from './shared.jsx'
-import { buildOrganized, extractPages, MAX_PDF_PAGES } from '../../lib/pdf/engine.js'
+import { buildOrganized, MAX_PDF_PAGES } from '../../lib/pdf/engine.js'
 
 export default function Organize({ docs, pages, setPages, publish, toast }) {
   const [sel, setSel] = useState(new Set()), [drag, setDrag] = useState(null), [busy, setBusy] = useState(0)

@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { QIco, Btn, Panel, Label, Choice, Seg, Switch, Range, Color, TextIn, Tabs, SPRING, useToast, CountText } from './ui.jsx'
+import { QIco, Btn, Panel, Label, Choice, Seg, Switch, Range, Color, TextIn, Tabs, SPRING, useToast } from './ui.jsx'
 import { useStore } from './store.js'
 import { BARCODES, validateBarcode, makeBarcode } from '../../lib/qr/barcode.js'
 import { decodeSource } from '../../lib/qr/zx.js'

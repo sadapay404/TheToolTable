@@ -1,5 +1,4 @@
-import React, { useEffect, useState } from 'react'
-import { motion } from 'framer-motion'
+import { useEffect, useState } from 'react'
 import { Panel, Label, Btn, Field, Empty, Stat2, fmtSize } from '../kit/ui.jsx'
 import { DocSelect, Thumb } from './shared.jsx'
 import { readInfo, writeInfo, pageSizes } from '../../lib/pdf/engine.js'

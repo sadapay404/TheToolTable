@@ -1,6 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Icon, Slider, SPRING } from '../studio/controls.jsx'
+import { Icon, SPRING } from '../studio/controls.jsx'
 import { Chip, Switch } from '../frames/Panels.jsx'
 import { AnimatedNumber } from '../../components/ui.jsx'
 import { ThumbCard, ColorField, LiveMeter, BeatDot, clock } from './parts.jsx'

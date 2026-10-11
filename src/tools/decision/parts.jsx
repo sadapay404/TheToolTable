@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { normalizeDecisionState, randomFraction, randomIndex, shuffleSecure, weightedIndex } from '../../lib/decision.js'
 export { SPRING } from '../exchange/parts.jsx'

@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Panel, Label, Btn, Drop, Bar, KIco, SPRING, Chips, Empty, Seg, useToast, save, fmtSize, uid } from './kit/ui.jsx'
+import { Panel, Label, Btn, Drop, Bar, KIco, SPRING, Empty, Seg, useToast, save, fmtSize, uid } from './kit/ui.jsx'
 import { Peer, MAX_BEAM_FILE_SIZE, MAX_BEAM_CHAT_CHARS } from '../lib/beam/peer.js'
 import { beginBackgroundTransfer, createTransferNotifier } from '../lib/backgroundTransfers.js'
 import { CodeOut, CodeIn, Step } from './beam/parts.jsx'

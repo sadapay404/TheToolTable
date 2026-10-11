@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { normalize, randomDesign, normalizeSavedDesigns, MAX_SAVED_DESIGNS } from '../lib/wall/design.js'
 import { thumbURL } from '../lib/wall/renderer.js'

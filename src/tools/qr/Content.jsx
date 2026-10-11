@@ -1,6 +1,5 @@
-import React, { useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { QIco, Tabs, Choice, TextIn, Select, Switch, Seg, Btn, SPRING, Label } from './ui.jsx'
+import { QIco, Tabs, Choice, TextIn, Select, Switch, Seg, SPRING, Label } from './ui.jsx'
 import { TYPES, GROUPS, typeById } from '../../lib/qr/payloads.js'
 import { useQR } from './store.js'
 

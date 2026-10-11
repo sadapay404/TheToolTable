@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { motion, motionValue, useMotionValue, useReducedMotion, useSpring, useTransform } from 'framer-motion'
 import { ToolIcon } from './ToolIcon.jsx'
 import { useRipple } from '../lib/ripple.js'

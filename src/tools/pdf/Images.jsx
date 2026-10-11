@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react'
-import { motion, Reorder } from 'framer-motion'
+import { useEffect, useRef, useState } from 'react'
+import { Reorder } from 'framer-motion'
 import { Panel, Label, Seg, Btn, Range, Drop, Bar, KIco, SPRING, fmtSize, uid } from '../kit/ui.jsx'
 import { imagesToPdf, MAX_IMAGE_BYTES, MAX_PDF_BYTES } from '../../lib/pdf/engine.js'
 

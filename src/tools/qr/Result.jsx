@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { QIco, Btn, SPRING } from './ui.jsx'
 import { parse } from '../../lib/qr/parse.js'

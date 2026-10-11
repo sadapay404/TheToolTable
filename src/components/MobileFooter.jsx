@@ -238,11 +238,19 @@ function Constellation({ ambient = AMBIENT_STATIC }) {
           whileInView={{ opacity: 1, scale: 1 }}
           viewport={{ once: true, amount: 0.2 }}
           transition={{ ...SPRING.bouncy, delay: i * 0.022 }}
-          animate={ambient.enabled ? { y: [0, -3, 0] } : { y: 0 }}
-          style={{ transition: undefined }}
         >
-          <span className="mfoot-star-mark"><ToolIcon name={tool.icon} size={15} /></span>
-          <span className="mfoot-star-num">{String(tool.n).padStart(2, '0')}</span>
+          {/* The float lives on an inner wrapper: a separate `animate` on this
+              same node would fight `whileInView` for the element — Framer lets
+              one target override the other, which is how stars stayed invisible
+              or popped mid-loop. */}
+          <motion.span
+            className="mfoot-star-float"
+            animate={ambient.enabled ? { y: [0, -3, 0] } : { y: 0 }}
+            transition={ambient.enabled ? { duration: 3.6, repeat: Infinity, ease: 'easeInOut', delay: (i % 4) * 0.55 } : { duration: 0 }}
+          >
+            <span className="mfoot-star-mark"><ToolIcon name={tool.icon} size={15} /></span>
+            <span className="mfoot-star-num">{String(tool.n).padStart(2, '0')}</span>
+          </motion.span>
         </motion.span>
       ))}
     </motion.div>

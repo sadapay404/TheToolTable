@@ -20,9 +20,8 @@ export function RevealLine({ children, delay = 0, className = '', distance = '10
       <motion.span
         initial={reduced ? false : { y: distance }}
         animate={{ y: 0 }}
-        transition={t(duration, EASE.emphasizedDecelerate, delay)}
-        style={{ willChange: 'transform' }}
-      >
+      transition={t(duration, EASE.emphasizedDecelerate, delay)}
+    >
         {children}
       </motion.span>
     </span>
@@ -43,7 +42,6 @@ export function RevealBlock({ children, delay = 0, distance = 18, className = ''
       {...motionProps}
       className={className}
       transition={t(DURATION.long2, EASE.emphasizedDecelerate, delay)}
-      style={{ willChange: 'transform, opacity' }}
     >
       {children}
       {yoyo ? <span aria-hidden="true" /> : null}

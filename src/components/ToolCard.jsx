@@ -144,8 +144,8 @@ function TiltSurface({ tool, onOpen, i, level }) {
     >
     <motion.div
       className="h-full"
-      initial={reduceMotion ? false : { opacity: 0, y: 34, scale: 0.92, filter: 'blur(8px)' }}
-      whileInView={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
+      initial={reduceMotion ? false : { opacity: 0, y: 34, scale: 0.92 }}
+      whileInView={{ opacity: 1, y: 0, scale: 1 }}
       viewport={{ once: true, amount: 0.16 }}
       transition={reduceMotion ? { duration: 0 } : { ...t(DURATION.long2, EASE.emphasizedDecelerate), delay: 0.05 * (i % 8) }}
     >

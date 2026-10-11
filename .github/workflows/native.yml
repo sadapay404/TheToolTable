@@ -589,21 +589,36 @@ jobs:
           # loads the ARM library, and a package that merely *calls* itself
           # arm64 would pass every other check here and still die on a phone.
           # ELF e_machine 0xB7 is AArch64.
-          arm_lib=$(printf '%s\n' "$LISTING" | sed -n '/^lib\/arm64-v8a\/.*\.so$/{p;q;}')
+          # `sed {q}` quits at the first match; piped against printf that closes
+          # the reader on a still-writing builtin, pipefail turns the SIGPIPE
+          # (141) into a silent `set -e` death — no ::error, empty log, good
+          # packages refused roughly one run in ten. A herestring hands sed a
+          # file, so quitting early has no writer left to kill.
+          arm_lib=$(sed -n '/^lib\/arm64-v8a\/.*\.so$/{p;q;}' <<< "$LISTING")
           if [ -z "$arm_lib" ]; then
             fail "$APK has no lib/arm64-v8a/*.so to inspect."
           fi
           arm_elf=""
-          if arm_elf=$(unzip -p "$APK" "$arm_lib" 2>/dev/null | dd bs=1 skip=18 count=2 2>/dev/null | od -An -tx1 | tr -d ' \n'); then
-            :
+          # Never `unzip -p | dd`: once dd has its two bytes it exits, and any
+          # library larger than the pipe buffer makes unzip die of SIGPIPE —
+          # which read every real multi-megabyte libthetooltable.so as
+          # "unreadable". The harness mock is twenty bytes, so only real
+          # packages hit that. Extract to a file first, read the header from it.
+          arm_tmp=$(mktemp)
+          if unzip -p "$APK" "$arm_lib" > "$arm_tmp" 2>/dev/null; then
+            arm_elf=$(dd bs=1 skip=18 count=2 < "$arm_tmp" 2>/dev/null | od -An -tx1 | tr -d ' \n')
           else
             arm_elf="unreadable"
           fi
+          rm -f "$arm_tmp"
           if [ "$arm_elf" != "b700" ]; then
             fail "$arm_lib is not an AArch64 ELF (e_machine=$arm_elf, expected b7). A file in lib/arm64-v8a that is not ARM64 aborts on launch."
           fi
           {
-            echo "| ARM native library | \\`$arm_lib\\`, e_machine \\`$arm_elf\\` (AArch64) |"
+            # Single-backslash backticks, like every other summary line: with
+            # `\\`` the closing backslash-quote pair left a naked backtick, and
+            # bash ran $arm_lib and $arm_elf as commands on every invocation.
+            echo "| ARM native library | \`$arm_lib\`, e_machine \`$arm_elf\` (AArch64) |"
           } >> "$GITHUB_STEP_SUMMARY"
 
           # 3b. The shipped manifest must defer WorkManager out of AndroidX

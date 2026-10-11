@@ -33,7 +33,7 @@ MIN_HOME_GB=1
 
 step() { printf '\n==== %s\n' "$*"; }
 die() { printf '\nERROR: %s\n' "$*" >&2; exit 1; }
-trap 'printf "\nFAILED at line %s (exit %s). Re-run this script to resume; finished steps are skipped.\n" "$LINENO" "$?" >&2' ERR
+trap 'printf "\nFAILED at line %s (exit %s). Fix the cause above, then re-run this script. Rust and the SDK are not downloaded again if already present in /tmp.\n" "$LINENO" "$?" >&2' ERR
 
 free_gb() { df -P -BG "$1" | awk 'NR==2 {gsub("G","",$4); print $4}'; }
 
@@ -113,16 +113,36 @@ for attempt in 1 2 3; do
   [ "$attempt" -lt 3 ] || die "cargo fetch failed three times."
   sleep 15
 done
+# The Tauri CLI refuses to build when a Rust plugin crate and its npm package
+# differ in major.minor. src-tauri/Cargo.lock is not committed, so cargo picks
+# the newest crates, which can run ahead of the npm packages in package-lock.json.
+# Pin each Rust plugin crate to the version of its npm package.
+for pkg_dir in node_modules/@tauri-apps/plugin-*; do
+  [ -f "$pkg_dir/package.json" ] || continue
+  name="$(basename "$pkg_dir")"
+  crate="tauri-plugin-${name#plugin-}"
+  npm_ver="$(node -p "require('./$pkg_dir/package.json').version")"
+  locked_ver="$(awk -v c="$crate" '$0 == "name = \"" c "\"" {getline; sub(/^version = "/, ""); sub(/"$/, ""); print; exit}' src-tauri/Cargo.lock)"
+  [ -n "$locked_ver" ] || continue
+  if [ "${locked_ver%.*}" != "${npm_ver%.*}" ]; then
+    echo "Pinning $crate $locked_ver -> $npm_ver to match @tauri-apps/$name"
+    cargo update --manifest-path src-tauri/Cargo.toml -p "$crate" --precise "$npm_ver" \
+      || die "Could not pin $crate to $npm_ver."
+  fi
+done
+
 node scripts/patch-android-download-plugin.mjs
 node scripts/patch-android-background-service.mjs
 node scripts/ensure-android-transfer-permissions.mjs
 node scripts/ensure-android-launch-survives.mjs
 
 # Same Gradle retry settings the workflow uses for transient Maven rate limits.
-cat >> src-tauri/gen/android/gradle.properties <<'EOF'
+if ! grep -q 'org.gradle.internal.repository.max.retries' src-tauri/gen/android/gradle.properties; then
+  cat >> src-tauri/gen/android/gradle.properties <<'EOF'
 systemProp.org.gradle.internal.repository.max.retries=8
 systemProp.org.gradle.internal.repository.initial.backoff=1000
 EOF
+fi
 
 # ---------------------------------------------------------------- build
 step "5/9 Build the arm64 release APK (this takes a long time on the first run)"

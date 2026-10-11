@@ -32,20 +32,50 @@ export function LiveThumb({ P, assets, className = '' }) {
   const cv = useRef(null), pr = useRef(P), as = useRef(assets), vis = useRef(false)
   const perfNow = usePerf(), reduceMotion = useReducedMotion() || perfNow.level === 'lite'
   pr.current = P; as.current = assets
+  /* Contents-identical params must not schedule a repaint: the callers build P
+     with fresh object literals on every render. */
+  const lastDrawn = useRef({ P: null, assets: null })
+  const drawStatic = useRef(null)
   useEffect(() => {
     const el = cv.current, ctx = el?.getContext('2d'), rd = new VizRenderer(), W = el?.width || 256, H = el?.height || 144
-    if (!ctx) { rd.destroy(); return }
-    if (reduceMotion) {
+    if (!ctx) { rd.destroy(); return undefined }
+    const paint = () => {
       const bass = synth(0, raw, wave, 1)
       thumbAn.feed(raw, wave, 0.016, 0.55, bass, 1)
       rd.draw(ctx, W, H, thumbAn, thumbParams(pr.current), as.current, 0)
-      return () => rd.destroy()
+      lastDrawn.current = { P: pr.current, assets: as.current }
     }
+    if (reduceMotion) {
+      drawStatic.current = paint
+      paint()
+      return () => { drawStatic.current = null; rd.destroy() }
+    }
+    drawStatic.current = null
     const io = new IntersectionObserver(([e]) => { vis.current = e.isIntersecting }, { threshold: 0.01 }); io.observe(el)
     const un = subscribe((ts) => { if (vis.current) rd.draw(ctx, W, H, thumbAn, thumbParams(pr.current), as.current, ts) })
-    return () => { un(); io.disconnect(); rd.destroy() }
+    return () => { drawStatic.current = null; un(); io.disconnect(); rd.destroy() }
+  }, [reduceMotion])
+  /* The animated path reads the refs live on every tick; the static path only
+     repaints when the values actually changed. Rebuilding renderer, observer and
+     hub subscription for identity-only prop changes — which is what fresh object
+     literals from the panels produce — was teardown churn on every panel render,
+     for every thumbnail at once. */
+  useEffect(() => {
+    if (!reduceMotion || !drawStatic.current) return
+    const prev = lastDrawn.current
+    if (prev.assets === as.current && (prev.P === pr.current || sameParams(prev.P, pr.current))) return
+    drawStatic.current()
   }, [reduceMotion, P, assets])
   return <canvas ref={cv} width={256} height={144} className={`block w-full h-full ${className}`} />
+}
+
+/* Shallow value compare for the flat param objects VizRenderer receives. */
+function sameParams(a, b) {
+  if (a === b) return true
+  if (!a || !b) return false
+  const ka = Object.keys(a)
+  if (ka.length !== Object.keys(b).length) return false
+  return ka.every((k) => a[k] === b[k])
 }
 
 /** A selectable card containing a live thumbnail. */

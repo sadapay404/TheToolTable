@@ -321,10 +321,17 @@ export default function Visualizer() {
     } catch { if (mountedRef.current) setErr('Could not play this media file in the current browser.') }
   }
 
-  /* ---------------- render loop ---------------- */
+  /* ---------------- render loop ----------------
+     The loop only keeps scheduling frames while the preview is actually moving:
+     playback or an export. A paused preview draws one still frame and parks, so
+     an idle tool no longer runs a 40 fps synth animation (and Lite no longer
+     redraws identical stills twelve times a second). `kickRef` wakes it for a
+     single pass whenever params, assets, the stage, the playhead, playback or
+     an export change. */
+  const kickRef = useRef(() => {})
   useEffect(() => {
-    if (!file) return
-    let id, last = 0, slow = 0, q = perf.scale(), fr = 0, lastRun = 0
+    if (!file) return undefined
+    let id = 0, last = 0, slow = 0, q = perf.scale(), fr = 0, lastRun = 0
     const raw = new Float32Array(NB), wave = new Float32Array(512), tmp = { f: new Uint8Array(2048), w: new Uint8Array(4096) }
     const prev = new VizRenderer()
     const frame = (ts) => {
@@ -334,10 +341,11 @@ export default function Visualizer() {
       if (!cv || !el) return
       const dt = last ? Math.min(0.1, (ts - last) / 1000) : 0.016; last = ts
       const live = !el.paused && !el.ended && g
+      const paused = el.paused || el.ended
       a.setRange(Pm.fmin, Pm.fmax)
       let bass
       if (live) bass = bandsFromAnalyser(g.node, g.ctx.sampleRate, a.freqs, raw, wave, tmp)
-      else bass = synth(reduceMotion && !ex ? 0 : ts / 1000, raw, wave, 0.85)
+      else bass = synth((paused || (reduceMotion && !ex)) ? 0 : ts / 1000, raw, wave, 0.85)
       a.feed(raw, wave, dt, Pm.smooth, bass, Pm.beatSens)
       const [rs, re] = ex ? [ex.start, ex.end] : [0, el.duration || 0]
       a.time = live || ex ? Math.max(0, el.currentTime - rs) : undefined
@@ -349,14 +357,37 @@ export default function Visualizer() {
       // while exporting, the capture canvas gets priority and the on-screen preview refreshes less often
       if (ex?.ready && ts - ex.last >= 1000 / ex.fps - 4) { ex.last = ts; ex.n = (ex.n || 0) + 1; ex.rd.draw(ex.ctx, ex.cv.width, ex.cv.height, a, ex.params, ex.assets, ts) }
       else if (!ex || !ex.ready || fr++ % 3 === 0) {
-        const still = reduceMotion && !live && !ex
+        // Paused (or reduced motion) with no export running freezes the preview
+        // into one still frame instead of animating an idle canvas.
+        const still = ((reduceMotion && !live) || paused) && !ex
         const previewP = still ? { ...Pm, spin: 0, shake: 0, zoom: 0, flash: 0, cycle: 0, bgPulse: 0, tanim: 'none', coverSpin: 0 } : (ex?.params || Pm)
         prev.draw(cv.getContext('2d'), cv.width, cv.height, a, previewP, ex?.assets || assetsRef.current, still ? 0 : ts)
       }
+      /* Idle and not exporting: this pass was the whole request — park. */
+      if (paused && !ex) { cancelAnimationFrame(id); id = 0 }
     }
-    id = requestAnimationFrame(frame)
-    return () => { cancelAnimationFrame(id); prev.destroy() }
+    const kick = () => { if (!id) { lastRun = 0; id = requestAnimationFrame(frame) } }
+    kickRef.current = kick
+    kick()
+    return () => { cancelAnimationFrame(id); id = 0; kickRef.current = () => {}; prev.destroy() }
   }, [file, reduceMotion])
+
+  /* One pass for every change a parked loop would otherwise have observed. */
+  useEffect(() => { kickRef.current() }, [P, assets, stageSize, pd])
+  useEffect(() => {
+    const el = audioRef.current; if (!el) return undefined
+    const kick = () => kickRef.current()
+    el.addEventListener('play', kick)
+    el.addEventListener('pause', kick)
+    el.addEventListener('seeked', kick)
+    el.addEventListener('ended', kick)
+    return () => {
+      el.removeEventListener('play', kick)
+      el.removeEventListener('pause', kick)
+      el.removeEventListener('seeked', kick)
+      el.removeEventListener('ended', kick)
+    }
+  }, [])
 
   /* ---------------- stage size + fullscreen ---------------- */
   useEffect(() => {
@@ -468,6 +499,7 @@ export default function Visualizer() {
       previousTime: el.currentTime, wasPlaying: !el.paused,
     }
     exportRef.current = ex
+    kickRef.current()
     setBusy(true); setProg(0)
     let graph = null, chunks = [], stopped = null
 

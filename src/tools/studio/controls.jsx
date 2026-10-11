@@ -177,31 +177,55 @@ export function Histogram({ data }) {
   const ref = useRef(null)
   const cur = useRef(new Float32Array(64 * 3))
   const tgt = useRef(new Float32Array(64 * 3))
-  useEffect(() => { if (data) tgt.current.set(data) }, [data])
+  const raf = useRef(0)
+  const kick = useRef(() => {})
   useEffect(() => {
-    let raf
-    const loop = () => {
+    const paint = () => {
       const c = ref.current
-      if (c) {
-        const W = (c.width = c.clientWidth * 2), H = (c.height = c.clientHeight * 2)
-        const x = c.getContext('2d'); x.clearRect(0, 0, W, H)
-        const cols = ['rgba(232,70,60,.55)', 'rgba(70,190,95,.55)', 'rgba(70,120,235,.55)']
-        x.globalCompositeOperation = 'lighter'
-        for (let ch = 0; ch < 3; ch++) {
-          x.fillStyle = cols[ch]; x.beginPath(); x.moveTo(0, H)
-          for (let i = 0; i < 64; i++) {
-            const k = ch * 64 + i
-            cur.current[k] += (tgt.current[k] - cur.current[k]) * 0.2
-            x.lineTo((i / 63) * W, H - cur.current[k] * H * 0.92)
-          }
-          x.lineTo(W, H); x.fill()
+      if (!c) return
+      const W = c.clientWidth * 2, H = c.clientHeight * 2
+      if (!W || !H) return
+      /* Only touch the backing store when the size actually changed — assigning
+         `c.width` clears and reallocates the canvas even for the same value. */
+      if (c.width !== W) c.width = W
+      if (c.height !== H) c.height = H
+      const x = c.getContext('2d'); x.clearRect(0, 0, W, H)
+      const cols = ['rgba(232,70,60,.55)', 'rgba(70,190,95,.55)', 'rgba(70,120,235,.55)']
+      x.globalCompositeOperation = 'lighter'
+      for (let ch = 0; ch < 3; ch++) {
+        x.fillStyle = cols[ch]; x.beginPath(); x.moveTo(0, H)
+        for (let i = 0; i < 64; i++) {
+          const k = ch * 64 + i
+          x.lineTo((i / 63) * W, H - cur.current[k] * H * 0.92)
         }
+        x.lineTo(W, H); x.fill()
       }
-      raf = requestAnimationFrame(loop)
     }
-    raf = requestAnimationFrame(loop)
-    return () => cancelAnimationFrame(raf)
+    /* Ease toward the target only while a change is in flight. A converged
+       histogram must not keep a 60 fps canvas loop (and its per-frame
+       reallocation) alive for as long as the panel happens to be mounted —
+       that was idle battery drain even in Lite. */
+    const tick = () => {
+      raf.current = 0
+      let moving = false
+      for (let k = 0; k < cur.current.length; k++) {
+        const d = tgt.current[k] - cur.current[k]
+        if (d > 1e-4 || d < -1e-4) { cur.current[k] += d * 0.2; moving = true }
+        else if (d !== 0) cur.current[k] = tgt.current[k]
+      }
+      paint()
+      if (moving) raf.current = requestAnimationFrame(tick)
+    }
+    kick.current = () => { if (!raf.current) raf.current = requestAnimationFrame(tick) }
+    kick.current()
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => paint()) : null
+    if (ro && ref.current) ro.observe(ref.current)
+    return () => { cancelAnimationFrame(raf.current); raf.current = 0; if (ro) ro.disconnect() }
   }, [])
+  useEffect(() => {
+    if (data) tgt.current.set(data)
+    kick.current()
+  }, [data])
   return <canvas ref={ref} className="w-full rounded-lg" style={{ height: 64, background: 'var(--surface2)', border: '1px solid var(--border)' }} />
 }
 

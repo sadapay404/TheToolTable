@@ -394,6 +394,12 @@ html[data-phone="true"][data-perf="balanced"] * {
 .app-shell[data-ambient="static"] .footer-aura-scan,
 .app-shell[data-ambient="static"] .footer-top-link::after,
 .app-shell[data-ambient="static"] .tool-intro-glow,
+/* Missing from this gate, the primary-button sheen and the exchange tape kept
+   sweeping forever on the automatic Balanced-phone profile — Lite had them but
+   the default handset tier did not, which is where the battery went. */
+.app-shell[data-ambient="static"] .btn-sheen::after,
+.app-shell[data-ambient="static"] .ex-ticker,
+.app-shell[data-ambient="static"] .ex-live-dot,
 .app-shell[data-ambient="static"] .mfoot-aurora-blob,
 .app-shell[data-ambient="static"] .mfoot-aurora-scan,
 .app-shell[data-ambient="static"] .mfoot-mark-sweep,

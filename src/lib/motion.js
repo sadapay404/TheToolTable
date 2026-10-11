@@ -110,6 +110,21 @@ export const sharedAxis = (direction = 1) => ({
   exit: { opacity: 0, y: direction * -8, transition: t(DURATION.medium1, EASE.emphasizedAccelerate) },
 })
 
+/**
+ * Screen swap for the single mounted screen (AnimatePresence mode="wait").
+ *
+ * Only one screen is ever mounted, so the Android black-screen fix stays intact.
+ * The old swap faded the outgoing screen over 250 ms and then mounted an incoming
+ * one that started at opacity 0, so every tap showed an empty table for a
+ * moment: the "blink". The incoming screen now starts visible, and the outgoing
+ * one clears quickly.
+ */
+export const screenSwap = (direction = 1) => ({
+  initial: { opacity: 0.35, y: direction * 12 },
+  animate: { opacity: 1, y: 0, transition: t(DURATION.medium3, EASE.emphasizedDecelerate) },
+  exit: { opacity: 0, y: direction * -6, transition: t(DURATION.short3, EASE.emphasizedAccelerate) },
+})
+
 /** A line that draws itself from the left as it enters view. */
 export const drawRule = (origin = 'left') => ({
   hidden: { scaleX: 0 },

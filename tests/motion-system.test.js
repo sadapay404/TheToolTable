@@ -194,7 +194,7 @@ test('part 1-3 animation is still present after the part 4 rewrite', () => {
   const mustSurvive = [
     [appSource, 'mobile-orbit-ring', 'phone hero orbit rings'],
     [appSource, 'scroll-progress', 'scroll progress bar'],
-    [appSource, 'sharedAxis', 'shared-axis screen transitions'],
+    [appSource, 'screenSwap', 'shared-axis screen transitions (screenSwap)'],
     [cardSource, 'whileHover="hover"', 'desktop card hover state'],
     [cardSource, 'rotateX', 'desktop 3-D tilt'],
     [cardSource, 'sheen', 'existing card sheen'],

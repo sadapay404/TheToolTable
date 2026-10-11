@@ -46,7 +46,7 @@ export function ToolIntro({ tool, children }) {
       className="tool-intro"
       initial={reduceMotion ? false : { opacity: 0, y: 22 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={t(DURATION.extraLong2, EASE.emphasizedDecelerate)}
+      transition={t(DURATION.long2, EASE.emphasizedDecelerate)}
       aria-label={`${tool.name} introduction`}
     >
       <div className="tool-intro-glow" aria-hidden="true" />

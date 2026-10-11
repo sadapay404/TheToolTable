@@ -10,7 +10,7 @@ import { pushToolHistory, resetToolHistory, resolveBack, installHistorySentinel 
 import CommandPalette from './components/CommandPalette.jsx'
 import MobileNavBar from './components/MobileNavBar.jsx'
 import MobileSearch from './components/MobileSearch.jsx'
-import { ambientProfile, EASE, DURATION, t, sharedAxis, useCountUp, usePointerDrift, useMotionValueEvent } from './lib/motion.js'
+import { ambientProfile, EASE, DURATION, t, screenSwap, useCountUp, usePointerDrift, useMotionValueEvent } from './lib/motion.js'
 import AmbientField from './components/AmbientField.jsx'
 import { AmbientSpinner } from './components/AmbientField.jsx'
 import { RevealLine, RevealBlock, RevealRule } from './components/Reveal.jsx'
@@ -309,6 +309,18 @@ function ToolLoading() {
   )
 }
 
+/* A tool chunk that is already cached resolves within a frame. Showing the
+   spinner for that frame was a second blink on every open, so the loader only
+   appears if the tool is still arriving after a short beat. */
+function DelayedToolLoading({ delay = 180 }) {
+  const [show, setShow] = useState(false)
+  useEffect(() => {
+    const id = window.setTimeout(() => setShow(true), delay)
+    return () => window.clearTimeout(id)
+  }, [delay])
+  return show ? <ToolLoading /> : null
+}
+
 /**
  * A counter that rolls to its value instead of snapping to it. Used on the phone
  * hero and the collection header so the numbers feel alive on first paint.
@@ -581,7 +593,7 @@ export default function App() {
             tore down <main> and the user got a header-only black screen. */}
         <AnimatePresence mode="wait" initial={false}>
           {!active ? (
-            <motion.div key="home" className="home-screen" {...sharedAxis(1)}>
+            <motion.div key="home" className="home-screen" {...screenSwap(1)}>
               <motion.section
                 className="home-hero pt-12 pb-10 sm:pt-20 sm:pb-16 text-center relative"
                 style={{ y: ambient.enabled ? heroY : 0, opacity: ambient.enabled ? heroOpacity : 1, scale: ambient.enabled ? heroScale : 1 }}
@@ -705,7 +717,7 @@ export default function App() {
               )}
             </motion.div>
           ) : (
-            <motion.div key={`tool-${active.id}`} className="tool-screen" {...sharedAxis(-1)}>
+            <motion.div key={`tool-${active.id}`} className="tool-screen" {...screenSwap(-1)}>
               <div className="tool-screen-header pt-5 pb-4 sm:pt-10 sm:pb-8 flex items-center gap-3 sm:gap-5 min-w-0">
                 <motion.button type="button" className="btn btn-ghost tool-back-button shrink-0 !px-3 sm:!px-4" aria-label="Go back" whileTap={{ scale: 0.94 }} onClick={() => navigateBack(false)}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M19 12H5m7-7-7 7 7 7" /></svg>
@@ -728,7 +740,7 @@ export default function App() {
                       scale — it may not switch the animation off, which is what
                       'always' here would do to every tool on a two-core phone. */}
                   <MotionConfig reducedMotion="user">
-                    <Suspense fallback={<ToolLoading />}>
+                    <Suspense fallback={<DelayedToolLoading />}>
                       {/* Every tool gets the same frame and the same introduction. */}
                       <ToolShell>
                         <ToolIntro tool={active} />

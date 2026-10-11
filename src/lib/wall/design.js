@@ -132,7 +132,7 @@ export function randomDesign(base, keep = {}) {
 export function fromGallery(g, cur) {
   const keepSize = cur ? { size: cur.size, text: cur.text, loop: cur.loop } : {}
   const o = g.o || {}
-  return normalize({ ...DEFAULT_DESIGN, ...keepSize, style: g.style, pal: o.pal || g.pal, seed: 4, scale: 1, detail: 0.5, warp: 0.45, soft: 0.75, angle: 0, amp: 0.6, sub: 0, sym: { mode: 0, n: 6 }, pixel: 0,
+  return normalize({ ...DEFAULT_DESIGN, ...keepSize, style: g.style, pal: o.pal || g.pal, seed: 4, scale: 1, detail: 0.5, warp: 0.45, soft: 0.75, angle: 0, amp: 0.6, sub: 0, pixel: 0,
     ...Object.fromEntries(Object.entries(o).filter(([k]) => !['fx', 'pal', 'sym'].includes(k))), sym: o.sym ? { ...DEFAULT_DESIGN.sym, ...o.sym } : { mode: 0, n: 6 }, fx: { ...DEFAULT_FX, ...(o.fx || {}) } })
 }
 

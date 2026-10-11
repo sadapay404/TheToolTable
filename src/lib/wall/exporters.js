@@ -129,7 +129,7 @@ export async function recordLoop(d, { W, H, fps = 30, loops = 1, ext, mime, bps 
     }
     stream = out.captureStream(fps)
     const bitrate = Number.isFinite(+bps) ? Math.max(250_000, Math.min(60_000_000, Math.round(+bps))) : Math.max(1_000_000, Math.min(60_000_000, Math.round(size.w * size.h * fps * 0.08)))
-    recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: bitrate })
+    recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: bitrate })
     const total = design.loop * loops * 1000
     const blob = await new Promise((resolve, reject) => {
       const chunks = []; let t0 = 0, settled = false, cancelled = !!signal?.aborted

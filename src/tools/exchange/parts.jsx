@@ -134,7 +134,7 @@ const Row = memo(function Row({ it, active, selected, pinned, onPick, onPin, onH
  * items: [{ key, title, sub, meta?, group, icon, hay }]   value: key   onChange(key)
  * filters: [[label, (item)=>bool]]   storeId: persists pins + recents per picker family
  */
-export function Picker({ items, value, onChange, storeId, filters, defaultPins = [], placeholder = 'Search…', trigger, groupOrder, emptyText = 'Nothing matches', width = 380 }) {
+export function Picker({ items, value, onChange, storeId, filters, defaultPins = [], placeholder = 'Search…', ariaLabel, trigger, groupOrder, emptyText = 'Nothing matches', width = 380 }) {
   const [open, setOpen] = useState(false)
   const [q, setQ] = useState('')
   const [filt, setFilt] = useState(0)

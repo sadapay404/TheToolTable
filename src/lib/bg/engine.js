@@ -162,7 +162,7 @@ async function prepareNativeModel(e, plan, generation = e.generation) {
       expectedBytes: plan.bytes,
       /* Named so the notification says what it is: this download is long, it is
          resumable, and it is safe to switch apps while it runs. */
-      title: `${TIERS[tier]?.name || 'Background remover'} model`,
+      title: `${TIERS[plan.tier]?.name || 'Background remover'} model`,
       detail: 'Keeps running if you leave the app',
       onProgress: (progress) => {
         if (e.generation !== generation) return

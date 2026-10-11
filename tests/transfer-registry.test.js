@@ -183,7 +183,7 @@ test('progress notifications are throttled in one place', () => {
 })
 
 test('the model download names itself so the notification is meaningful', () => {
-  assert.match(engine, /title: `\$\{TIERS\[tier\][^`]*model`/, 'the notification must say which model')
+  assert.match(engine, /title: `\$\{TIERS\[plan\.tier\][^`]*model`/, 'the notification must say which model')
   assert.match(engine, /detail: 'Keeps running if you leave the app'/)
 })
 

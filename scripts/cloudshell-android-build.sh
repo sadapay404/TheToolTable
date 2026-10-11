@@ -51,16 +51,18 @@ node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 20 ? 0 : 1)
 command -v git >/dev/null || die "git is missing."
 command -v unzip >/dev/null || die "unzip is missing. Install it with: sudo apt-get install -y unzip"
 
-if [ -z "${JAVA_HOME:-}" ] || ! "$JAVA_HOME/bin/javac" -version >/dev/null 2>&1; then
+# The build needs JDK 17 (as in CI), even when the default JDK is newer.
+jdk_is_17() {
+  [ -x "$1/bin/javac" ] && [ "$("$1/bin/javac" -version 2>&1 | awk '{print $2}' | cut -d. -f1)" = "17" ]
+}
+if ! jdk_is_17 "${JAVA_HOME:-/nonexistent}"; then
+  unset JAVA_HOME
   for jdk in /usr/lib/jvm/java-17-openjdk-amd64 /usr/lib/jvm/temurin-17-jdk-amd64; do
-    [ -x "$jdk/bin/javac" ] && export JAVA_HOME="$jdk" && break
+    if jdk_is_17 "$jdk"; then export JAVA_HOME="$jdk"; break; fi
   done
 fi
-if [ -z "${JAVA_HOME:-}" ]; then
-  die "JDK 17 not found. Install it with: sudo apt-get update && sudo apt-get install -y openjdk-17-jdk-headless   then re-run."
-fi
-java_major="$("$JAVA_HOME/bin/javac" -version 2>&1 | awk '{print $2}' | cut -d. -f1)"
-[ "$java_major" = "17" ] || die "JAVA_HOME points to JDK $java_major. Use JDK 17."
+[ -n "${JAVA_HOME:-}" ] || die "JDK 17 not found (the default Java here is newer). Install it with: sudo apt-get update && sudo apt-get install -y openjdk-17-jdk-headless   then re-run this script."
+export PATH="$JAVA_HOME/bin:$PATH"
 echo "JDK: $JAVA_HOME"
 
 # Keep every heavy cache out of $HOME.

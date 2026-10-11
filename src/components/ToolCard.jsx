@@ -1,8 +1,46 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { motion, useMotionValue, useReducedMotion, useScroll, useSpring, useTransform } from 'framer-motion'
+import { motion, motionValue, useMotionValue, useReducedMotion, useSpring, useTransform } from 'framer-motion'
 import { ToolIcon } from './ToolIcon.jsx'
 import { useRipple } from '../lib/ripple.js'
 import { EASE, DURATION, t, riseIn, useMagnetic } from '../lib/motion.js'
+
+/* ------------------------------------------------ shared scroll position --
+   Every Balanced/Full card used to call `useScroll()`, which attaches its own
+   window scroll listener and its own frame bookkeeping: twenty cards meant
+   twenty listeners firing on every scroll tick. One window listener now feeds a
+   single MotionValue, coalesced to one write per frame and shared by all cards.
+   It is reference-counted, so the listener exists only while a tilt card is
+   mounted, and Lite never subscribes at all. */
+let sharedScrollY = null
+let scrollSubscribers = 0
+let scrollFrame = 0
+const flushScrollY = () => { scrollFrame = 0; sharedScrollY?.set(window.scrollY) }
+const onSharedScroll = () => { if (!scrollFrame) scrollFrame = requestAnimationFrame(flushScrollY) }
+function sharedScrollMotionValue() {
+  if (!sharedScrollY) sharedScrollY = motionValue(typeof window !== 'undefined' ? window.scrollY : 0)
+  return sharedScrollY
+}
+function acquireSharedScroll() {
+  const value = sharedScrollMotionValue()
+  if (scrollSubscribers++ === 0) window.addEventListener('scroll', onSharedScroll, { passive: true })
+  value.set(window.scrollY)
+  return value
+}
+function releaseSharedScroll() {
+  if (--scrollSubscribers > 0) return
+  window.removeEventListener('scroll', onSharedScroll)
+  if (scrollFrame) cancelAnimationFrame(scrollFrame)
+  scrollFrame = 0
+}
+/** The shared scroll MotionValue, subscribed for the lifetime of the caller. */
+function useSharedScrollY() {
+  const value = sharedScrollMotionValue()
+  useEffect(() => {
+    acquireSharedScroll()
+    return releaseSharedScroll
+  }, [])
+  return value
+}
 
 /* ----------------------------------------------------------- Lite desktop --
    Lite is deliberately a normal DOM surface. It keeps native keyboard/click and
@@ -70,7 +108,7 @@ function TiltSurface({ tool, onOpen, i, level }) {
      measured from the card's own document position so the grid reads as a stack
      rather than a flat wall; Lite never mounts this path. */
   const stageRef = useRef(null)
-  const { scrollY: cardScrollY } = useScroll()
+  const cardScrollY = useSharedScrollY()
   const depth = reduceMotion ? 0 : level === 'balanced' ? 18 : 24
   const [travel, setTravel] = useState(() => [0, 1])
   useEffect(() => {

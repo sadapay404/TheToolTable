@@ -33,7 +33,18 @@ test('Lite cards retain native tool access, preload, focus, and press feedback',
 
 test('Balanced and Full retain the existing rich desktop motion path', () => {
   const tilt = card.slice(card.indexOf('function TiltSurface'), card.indexOf('/* ------------------------------------------------------------------ phone --'))
-  for (const needle of ['useScroll()', 'ResizeObserver', 'useMagnetic', 'whileHover="hover"', 'whileInView']) {
+  for (const needle of ['useSharedScrollY()', 'ResizeObserver', 'useMagnetic', 'whileHover="hover"', 'whileInView']) {
     assert.ok(tilt.includes(needle), `non-Lite cards lost ${needle}`)
   }
+})
+
+test('desktop cards share one scroll subscription instead of one listener each', () => {
+  const tilt = card.slice(card.indexOf('function TiltSurface'), card.indexOf('/* ------------------------------------------------------------------ phone --'))
+  assert.doesNotMatch(tilt, /useScroll\(\)/, 'a per-card useScroll() attaches a window listener for every card')
+  assert.match(card, /function acquireSharedScroll\(\)[\s\S]*?if \(scrollSubscribers\+\+ === 0\) window\.addEventListener\('scroll', onSharedScroll/,
+    'the shared listener must be attached once, by the first subscriber')
+  assert.match(card, /function releaseSharedScroll\(\)[\s\S]*?window\.removeEventListener\('scroll', onSharedScroll\)/,
+    'the shared listener must go away with the last subscriber')
+  assert.match(card, /const onSharedScroll = \(\) => \{ if \(!scrollFrame\) scrollFrame = requestAnimationFrame/,
+    'scroll writes must be coalesced to one per frame')
 })

@@ -1,5 +1,5 @@
 import Footer from './components/Footer.jsx'
-import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { Suspense, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import ReactDOM from 'react-dom'
 import { exit, onBackButtonPress } from '@tauri-apps/api/app'
 import { AnimatePresence, MotionConfig, motion, useMotionValue, useReducedMotion, useScroll, useSpring, useTransform } from 'framer-motion'
@@ -470,15 +470,19 @@ export default function App() {
 
   useEffect(() => { window.scrollTo(0, 0) }, [active])
 
+  /* The input stays bound to `homeQuery` and repaints on every key. The filter
+     that re-runs over the collection and remounts the card grid follows at lower
+     priority, so typing never waits on the grid — the phone-typing jank path. */
+  const deferredQuery = useDeferredValue(homeQuery)
   const visibleTools = useMemo(() => {
     const group = HOME_FILTERS.find((filter) => filter.id === homeFilter) || HOME_FILTERS[0]
-    const query = homeQuery.trim().toLowerCase()
+    const query = deferredQuery.trim().toLowerCase()
     return TOOLS.filter((tool) => {
       if (group.ids && !group.ids.includes(tool.id)) return false
       if (!query) return true
       return `${tool.name} ${tool.tag} ${tool.desc} ${tool.keywords || ''}`.toLowerCase().includes(query)
     })
-  }, [homeFilter, homeQuery])
+  }, [homeFilter, deferredQuery])
   const ActiveComp = useMemo(() => active?.comp, [active])
 
   const perfNow = usePerf()

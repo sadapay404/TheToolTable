@@ -168,7 +168,7 @@ done
 
 # ---------------------------------------------------------------- locate
 step "6/9 Locate the built APK"
-UNSIGNED="$(find src-tauri/gen/android -path '*outputs/apk*' -name '*release*.apk' | head -n 1)"
+UNSIGNED="$(find src-tauri/gen/android -path '*outputs/apk*' -name '*release*.apk' -print -quit)"
 [ -n "$UNSIGNED" ] || die "No release APK found under src-tauri/gen/android/app/build/outputs/apk."
 echo "Built: $UNSIGNED"
 
@@ -186,7 +186,10 @@ fi
 
 # ---------------------------------------------------------------- verify
 step "8/9 Check the package"
-unzip -l "$OUT" | grep -q 'lib/arm64-v8a/' || die "The APK has no arm64-v8a native libraries."
+# Write the listing to a file first. Piping into `grep -q` makes unzip hit
+# SIGPIPE on a large APK, and pipefail then reports a false failure.
+unzip -Z1 "$OUT" > "$WORK/apk-contents.txt"
+grep -q 'lib/arm64-v8a/' "$WORK/apk-contents.txt" || die "The APK has no arm64-v8a native libraries."
 "$BT/aapt2" dump badging "$OUT" 2>/dev/null | sed -n "s/^package: name='\([^']*\)' versionCode='\([^']*\)' versionName='\([^']*\)'.*/package \1  versionCode \2  versionName \3/p" || true
 echo "Size: $(du -h "$OUT" | cut -f1)"
 sha256sum "$OUT"

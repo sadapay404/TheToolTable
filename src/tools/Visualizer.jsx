@@ -372,8 +372,6 @@ export default function Visualizer() {
     return () => { cancelAnimationFrame(id); id = 0; kickRef.current = () => {}; prev.destroy() }
   }, [file, reduceMotion])
 
-  /* One pass for every change a parked loop would otherwise have observed. */
-  useEffect(() => { kickRef.current() }, [P, assets, stageSize, pd])
   useEffect(() => {
     const el = audioRef.current; if (!el) return undefined
     const kick = () => kickRef.current()
@@ -410,6 +408,11 @@ export default function Visualizer() {
     return [Math.max(2, Math.round((outDims[0] * k) / 2) * 2), Math.max(2, Math.round((outDims[1] * k) / 2) * 2)]
   }, [Math.round(dw / 8), Math.round(dh / 8), outDims])
   const pdRef = useRef(pd); pdRef.current = pd
+
+  /* One pass for every change a parked loop would otherwise have observed.
+     Declared after `pd`: this array reads it, and reading a `const` before its
+     declaration throws on every render, which kept the whole tool from opening. */
+  useEffect(() => { kickRef.current() }, [P, assets, stageSize, pd])
 
   /* ---------------- keyboard ---------------- */
   useEffect(() => {

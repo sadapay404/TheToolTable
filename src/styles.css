@@ -775,6 +775,13 @@ html.android-native button, html.android-native [role="button"] { -webkit-tap-hi
 .md3-ripple[data-state="fade"] { animation: md3-ripple-fade var(--md-dur-5) var(--md-ease-standard-accel) forwards; }
 @keyframes md3-ripple-grow { to { transform: scale(2.6); opacity: var(--md-state-hover); } }
 @keyframes md3-ripple-fade { to { transform: scale(2.6); opacity: 0; } }
+/* Several hosts set `> * { position: relative }` (.tool-tile, .tool-btn, .btn,
+   .chip). That rule has the same specificity as `.md3-ripple` and comes later,
+   so the ripple became an in-flow flex item as wide as its button: it squeezed
+   the title to one letter per line on tap and shifted button labels. This
+   selector is more specific, so the ripple stays out of layout and sits under
+   the content. */
+.md3-ripple[data-state] { position: absolute; z-index: 0; }
 
 /* ------------------------------------------------------- M3 primitive surfaces */
 .md3-surface { background: var(--surface-container); color: var(--on-surface); }
